@@ -163,6 +163,29 @@
             "displayName": "Unix 32bit VCPKG Release"
         },
         {
+            "name": "apple-arm64",
+            "displayName": "macOS Apple Silicon (arm64) Release",
+            "generator": "Ninja Multi-Config",
+            "hidden": false,
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchains/apple-arm64.cmake",
+            "cacheVariables": {
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/apple-arm64.cmake",
+                "VCPKG_TARGET_TRIPLET": "arm64-osx"
+            }
+        },
+        {
+            "name": "apple-arm64-debug",
+            "inherits": "apple-arm64",
+            "displayName": "macOS Apple Silicon (arm64) Debug",
+            "cacheVariables": {
+                "RTS_BUILD_OPTION_DEBUG": "ON"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -273,6 +296,20 @@
             "displayName": "Build Unix 32bit VCPKG Release",
             "description": "Build Unix 32bit VCPKG Release",
             "configuration": "Release"
+        },
+        {
+            "name": "apple-arm64",
+            "configurePreset": "apple-arm64",
+            "displayName": "Build macOS Apple Silicon Release",
+            "description": "Build macOS Apple Silicon (arm64) Release",
+            "configuration": "Release"
+        },
+        {
+            "name": "apple-arm64-debug",
+            "configurePreset": "apple-arm64-debug",
+            "displayName": "Build macOS Apple Silicon Debug",
+            "description": "Build macOS Apple Silicon (arm64) Debug",
+            "configuration": "Debug"
         },
         {
             "name": "mingw-w64-i686",
@@ -447,6 +484,32 @@
                 {
                     "type": "build",
                     "name": "unix"
+                }
+            ]
+        },
+        {
+            "name": "apple-arm64",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "apple-arm64"
+                },
+                {
+                    "type": "build",
+                    "name": "apple-arm64"
+                }
+            ]
+        },
+        {
+            "name": "apple-arm64-debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "apple-arm64-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "apple-arm64-debug"
                 }
             ]
         },

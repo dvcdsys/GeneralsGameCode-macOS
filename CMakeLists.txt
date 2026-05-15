@@ -48,7 +48,19 @@ if(MINGW)
     include(cmake/widl.cmake)
 endif()
 
-# Find/Add build dependencies and stubs shared by all projects
+# macOS (Darwin) specific configuration.
+if(APPLE)
+    include(cmake/apple.cmake)
+endif()
+
+# Find/Add build dependencies and stubs shared by all projects.
+#
+# Miles (audio) and Bink (video) are Windows-only proprietary middleware; they
+# are only fetched on the legacy 32-bit Windows path. The DX8 stub headers are
+# needed everywhere they are referenced, but the runtime DX8 path is also gated
+# to 32-bit Windows. macOS and 64-bit builds substitute their own backends
+# (OpenAL Soft for audio, FFmpeg for video, d3d8to9 -> dxvk-native -> MoltenVK
+# for graphics).
 if((WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows") AND ${CMAKE_SIZEOF_VOID_P} EQUAL 4)
     include(cmake/miles.cmake)
     include(cmake/bink.cmake)

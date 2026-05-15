@@ -25,6 +25,13 @@
 // For isdigit
 #include <cctype>
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+// macOS uses backtrace() instead of CaptureStackBackTrace; pulled in here so
+// downstream debug code can rely on it being present.
+#include <execinfo.h>
+#endif
+
 // __forceinline
 #ifndef __forceinline
 #if defined __has_attribute && __has_attribute(always_inline)

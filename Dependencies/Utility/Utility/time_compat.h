@@ -28,7 +28,13 @@ static inline MMRESULT timeEndPeriod(int) { return TIMERR_NOERROR; }
 inline unsigned int timeGetTime()
 {
   struct timespec ts;
+  // CLOCK_BOOTTIME is Linux-specific. macOS and BSDs expose the equivalent
+  // "monotonic, includes suspend" semantics via CLOCK_MONOTONIC_RAW.
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__)
+  clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+#else
   clock_gettime(CLOCK_BOOTTIME, &ts);
+#endif
   return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 inline unsigned int GetTickCount()
