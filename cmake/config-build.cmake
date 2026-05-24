@@ -65,6 +65,9 @@ endif()
 
 if(UNIX)
     target_compile_definitions(core_config INTERFACE _UNIX)
+    # The WWVegas libraries include "osdep.h" on the _UNIX path; the original
+    # Westwood header is not in this repo, so provide a forwarding shim.
+    target_include_directories(core_config INTERFACE ${CMAKE_SOURCE_DIR}/Dependencies/Utility/osdep_compat)
 endif()
 
 if(RTS_BUILD_OPTION_DEBUG)

@@ -138,7 +138,16 @@ struct LegacyDDSURFACEDESC2 {
 	};
 	unsigned AlphaBitDepth;
 	unsigned Reserved;
-	void* Surface;
+	// TheSuperHackers @fix macOS-port: this mirrors the on-disk DX7 DDSURFACEDESC2,
+	// whose lpSurface field is a 32-bit placeholder (the file stores 124 bytes).
+	// A real `void*` is 8 bytes + 8-byte-aligned on LP64 (macOS arm64), which
+	// inflated sizeof(LegacyDDSURFACEDESC2) past 124 so the header read tripped the
+	// `read_bytes != SurfaceDesc.Size` check and EVERY .dds load failed -> the
+	// engine fell back to the (nonexistent) .tga -> all model/terrain skins came up
+	// as the missing-texture placeholder (black). It is never used as a pointer.
+	// `unsigned` is 4 bytes on both Win32 (where void* was also 4) and LP64, so this
+	// is layout-identical on Windows. Same LP64 class as the bittype.h uint32 fix.
+	unsigned Surface;
 	union
 	{
 		LegacyDDCOLORKEY CKDestOverlay;

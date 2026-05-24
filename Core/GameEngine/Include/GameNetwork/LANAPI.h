@@ -267,7 +267,15 @@ struct LANMessage
 };
 #pragma pack(pop)
 
+// TODO(macos): On non-Windows, WideChar maps to the platform wchar_t (4 bytes
+// on macOS/Linux) rather than the 2-byte UTF-16 unit assumed by the wire format,
+// so the WideChar[] members inside LANMessage are twice as large and the struct
+// overflows MAX_LANAPI_PACKET_SIZE. LAN multiplayer is not wire-compatible (or
+// functional) on this port yet, so this layout assert is Windows-only. A future
+// phase that wants cross-platform LAN play must make WideChar a true 16-bit type.
+#if defined(_WIN32)
 static_assert(sizeof(LANMessage) <= MAX_LANAPI_PACKET_SIZE, "LANMessage struct cannot be larger than the max packet size");
+#endif
 
 
 /**

@@ -2933,7 +2933,14 @@ ChipsetType W3DShaderManager::getChipset()
 		D3DADAPTER_IDENTIFIER8 did;
 		::ZeroMemory(&did, sizeof(D3DADAPTER_IDENTIFIER8));
 	/*	HRESULT res = */ d3d8Interface->GetAdapterIdentifier(0,D3DENUM_NO_WHQL_LEVEL,&did);
+#if defined(_WIN32)
 		*((LARGE_INTEGER*)&m_driverVersion) = did.DriverVersion;
+#else
+		// TODO(macos): the non-Windows D3DADAPTER_IDENTIFIER8 splits DriverVersion
+		// into hi/lo DWORDs. Reassemble them into the 64-bit driver-version slot.
+		((LARGE_INTEGER*)&m_driverVersion)->u.LowPart  = did.DriverVersionLowPart;
+		((LARGE_INTEGER*)&m_driverVersion)->u.HighPart = (int32_t)did.DriverVersionHighPart;
+#endif
 
 		if(did.VendorId == DC_NVIDIA_VENDOR_ID)
 		{

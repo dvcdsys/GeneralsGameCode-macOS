@@ -38,6 +38,8 @@
 *
 ****************************************************************************/
 
+#include <cstdint>
+
 #pragma pack(push, 1)
 
 // If you wish to display loading error messages call targa functions inside of
@@ -133,8 +135,12 @@ typedef struct _TGAHeader
  */
 typedef struct _TGA2Footer
 	{
-	long Extension;
-	long Developer;
+	// TheSuperHackers @port On-disk TGA offsets are 32-bit. `long` is 8 bytes on
+	// LP64 (macOS/Linux) which made sizeof(TGA2Footer)==34 instead of 26, so the
+	// footer read (seek -26 from EOF, read sizeof) came up short and failed every
+	// TGA load. Use a fixed 32-bit type.
+	int32_t Extension;
+	int32_t Developer;
 	char Signature[16];
 	char RsvdChar;
 	char BZST;
@@ -224,12 +230,12 @@ typedef struct _TGA2Extension
 	TGA2TimeStamp JobTime;
 	char          SoftID[41];
 	TGA2SoftVer   SoftVer;
-	long          KeyColor;
+	int32_t       KeyColor;     // @port 32-bit on-disk field (was `long`; 8B on LP64)
 	TGA2Ratio     Aspect;
 	TGA2Ratio     Gamma;
-	long          ColorCor;
-	long          PostStamp;
-	long          ScanLine;
+	int32_t       ColorCor;     // @port 32-bit on-disk field
+	int32_t       PostStamp;    // @port 32-bit on-disk field
+	int32_t       ScanLine;     // @port 32-bit on-disk field
 	char          Attributes;
 	} TGA2Extension;
 
@@ -241,6 +247,12 @@ typedef struct _TGA2Extension
 #define EXTA_PREMULT 4  /* Pre-Multiplied alpha data */
 
 #pragma pack(pop)
+
+// TheSuperHackers @port These on-disk layouts are read/seeked with hardcoded
+// byte sizes (e.g. seek -26 from EOF for the footer), so they must match the
+// TGA spec exactly on every platform. Catch any width regression at compile.
+static_assert(sizeof(TGAHeader)   == 18, "TGAHeader must be 18 bytes (packed)");
+static_assert(sizeof(TGA2Footer)  == 26, "TGA2Footer must be 26 bytes (packed)");
 
 /*
 ** This define changes this code from code that works with standard IO calls,

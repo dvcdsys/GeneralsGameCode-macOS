@@ -9,21 +9,28 @@ endif()
 
 target_link_libraries(z_generals PRIVATE
     binkstub
-    comctl32
     core_debug
     core_profile_legacy
     d3d8
     d3dx8
     dinput8
     dxguid
-    imm32
     milesstub
-    vfw32
-    winmm
     z_gameengine
     z_gameenginedevice
     zi_always
 )
+
+# Windows-only system import libraries. On macOS the engine code that used these
+# is satisfied by the header-only Win32 shims (osdep_compat), so they are not linked.
+if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
+    target_link_libraries(z_generals PRIVATE
+        comctl32
+        imm32
+        vfw32
+        winmm
+    )
+endif()
 
 # TODO Originally referred to build host and user, replace with git info perhaps?
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/GeneratedVersion.h

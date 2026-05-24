@@ -39,6 +39,23 @@
 
 typedef unsigned char	uint8;
 typedef unsigned short	uint16;
+#if defined(__APPLE__)
+// TheSuperHackers @fix macOS-port: on LP64 (macOS/arm64) `long` is 64-bit, but a
+// type named uint32/sint32 MUST be exactly 32 bits — it backs the on-disk binary
+// layout of W3D structs (W3dMeshHeader3Struct etc.) and the chunk header
+// (ChunkHeader in chunkio.h). With `long` here, sizeof(uint32)==8 doubled every
+// such struct, so cload.Read(&hdr, sizeof(hdr)) over-read and desynced the W3D
+// stream → "Old format mesh" / garbage chunk ids → NO 3D model could load.
+// `unsigned int` is 32-bit on both macOS-LP64 and Win32 (where long is also 32),
+// so this is a no-op for the Windows build. Same class as the TGA2Footer fix.
+typedef unsigned int	uint32;
+typedef unsigned int    uint;
+
+typedef signed char		sint8;
+typedef signed short		sint16;
+typedef signed int		sint32;
+typedef signed int      sint;
+#else
 typedef unsigned long	uint32;
 typedef unsigned int    uint;
 
@@ -46,6 +63,7 @@ typedef signed char		sint8;
 typedef signed short		sint16;
 typedef signed long		sint32;
 typedef signed int      sint;
+#endif
 
 typedef float				float32;
 typedef double				float64;

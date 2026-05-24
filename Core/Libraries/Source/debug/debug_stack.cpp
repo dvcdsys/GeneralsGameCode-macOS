@@ -31,6 +31,15 @@
 #include "debug_stack.h"
 #include <windows.h>
 #include "stringex.h"
+
+// TheSuperHackers @port macos: The stack walker is built on dbghelp.dll /
+// imagehlp.h and 32-bit x86 register layout (CONTEXT::Eip/Esp/Ebp, IMAGE_FILE_
+// MACHINE_I386, inline asm). None of that exists on macOS/arm64. The whole
+// Win32 implementation is compiled only on Windows; elsewhere we provide stub
+// implementations of the public DebugStackwalk methods so the diagnostic libs
+// link and run (stack traces just come back empty / "(unknown)").
+#ifdef _WIN32
+
 #include <imagehlp.h>
 
 // Definitions to allow run-time linking to the dbghelp.dll functions.
@@ -403,3 +412,74 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
 
 	return sig.m_numAddr;
 }
+
+#else // !_WIN32
+
+// TheSuperHackers @port macos: POSIX stub implementation. No symbolic stack
+// walking; signatures stay empty and symbol lookups return placeholders.
+
+DebugStackwalk::Signature::Signature(const Signature &src)
+{
+  *this=src;
+}
+
+DebugStackwalk::Signature& DebugStackwalk::Signature::operator=(const Signature& src)
+{
+  if (&src!=this)
+  {
+    m_numAddr=src.m_numAddr;
+    memcpy(m_addr,src.m_addr,m_numAddr*sizeof(*m_addr));
+  }
+  return *this;
+}
+
+unsigned DebugStackwalk::Signature::GetAddress(int n) const
+{
+  DFAIL_IF_MSG(n<0||n>=MAX_ADDR,n << "/" << MAX_ADDR) return 0;
+  return m_addr[n];
+}
+
+void DebugStackwalk::Signature::GetSymbol(unsigned addr, char *buf, unsigned bufSize)
+{
+  DFAIL_IF(!buf) return;
+  DFAIL_IF(bufSize<64||bufSize>=0x80000000) return;
+  wsprintf(buf,"%08x (no symbols)",addr);
+}
+
+void DebugStackwalk::Signature::GetSymbol(unsigned /*addr*/,
+                                          char *bufMod, unsigned /*sizeMod*/, unsigned *relMod,
+                                          char *bufSym, unsigned /*sizeSym*/, unsigned *relSym,
+                                          char *bufFile, unsigned /*sizeFile*/, unsigned *linePtr, unsigned *relLine)
+{
+  if (bufMod)  strcpy(bufMod,"(unknown mod)");
+  if (relMod)  *relMod=0;
+  if (bufSym)  strcpy(bufSym,"(unknown)");
+  if (relSym)  *relSym=0;
+  if (bufFile) strcpy(bufFile,"(unknown)");
+  if (linePtr) *linePtr=0;
+  if (relLine) *relLine=0;
+}
+
+Debug& operator<<(Debug &dbg, const DebugStackwalk::Signature &sig)
+{
+  dbg << sig.Size() << " addresses:\n";
+  for (unsigned k=0;k<sig.Size();k++)
+  {
+    char buf[512];
+    sig.GetSymbol(sig.GetAddress(k),buf,sizeof(buf));
+    dbg << buf << "\n";
+  }
+  return dbg;
+}
+
+DebugStackwalk::DebugStackwalk()  {}
+DebugStackwalk::~DebugStackwalk() {}
+void *DebugStackwalk::GetDbghelpHandle() { return nullptr; }
+bool DebugStackwalk::IsOldDbghelp()      { return false; }
+int  DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT * /*ctx*/)
+{
+  sig.m_numAddr=0; // TODO(macos): backtrace()/backtrace_symbols() if traces are wanted.
+  return 0;
+}
+
+#endif // _WIN32

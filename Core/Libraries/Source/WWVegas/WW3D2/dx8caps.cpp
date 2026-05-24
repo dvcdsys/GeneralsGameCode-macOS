@@ -546,10 +546,21 @@ void DX8Caps::Compute_Caps(WW3DFormat display_format, const D3DADAPTER_IDENTIFIE
 	DXLOG(("Driver: %s\r\n",adapter_id.Driver));
 
 	DriverDLL=adapter_id.Driver;
+#ifndef _WIN32
+	// TheSuperHackers @fix macos: _D3DADAPTER_IDENTIFIER8::DriverVersion is only
+	// declared on the _WIN32 path of the DX8 SDK header. No real driver to query
+	// yet, so default all version components to zero.
+	// TODO(macos): real impl needs Metal-backed device enumeration.
+	int Product = 0;
+	int Version = 0;
+	int SubVersion = 0;
+	DriverBuildVersion = 0;
+#else
 	int Product = HIWORD(adapter_id.DriverVersion.HighPart);
 	int Version = LOWORD(adapter_id.DriverVersion.HighPart);
 	int SubVersion = HIWORD(adapter_id.DriverVersion.LowPart);
 	DriverBuildVersion = LOWORD(adapter_id.DriverVersion.LowPart);
+#endif
 
 	DXLOG(("Product=%d, Version=%d, SubVersion=%d, Build=%d\r\n",Product, Version, SubVersion, DriverBuildVersion));
 

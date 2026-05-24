@@ -373,8 +373,12 @@ UDP::sockStat UDP::GetStatus()
       return ALREADY;
     case EAGAIN:
       return AGAIN;
+#if EWOULDBLOCK != EAGAIN
+    // On macOS/BSD EWOULDBLOCK == EAGAIN, so this case would duplicate the one
+    // above; only emit it on platforms where the two codes differ.
     case EWOULDBLOCK:
       return WOULDBLOCK;
+#endif
     case EBADF:
       return BADF;
     default:

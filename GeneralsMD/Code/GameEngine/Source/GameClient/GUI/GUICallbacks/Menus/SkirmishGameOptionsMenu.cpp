@@ -461,6 +461,86 @@ void reallyDoStart()
 	}
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Headless debug entry point: build a 1-human-vs-1-AI skirmish GameInfo and start it
+  * immediately, with no GUI interaction. This mirrors the non-GUI portions of
+  * SkirmishGameOptionsMenuInit() + reallyDoStart() so the macOS port can be driven straight
+  * into a playable skirmish (via the GEN_AUTO_SKIRMISH env var) instead of clicking through
+  * the shell menus on every run. Safe on all platforms; only the call site is gated. */
+//-------------------------------------------------------------------------------------------------
+void DebugAutoStartSkirmish( const char *mapName )
+{
+	// (Re)create the skirmish game info, exactly like the menu does.
+	if ( !TheSkirmishGameInfo )
+		TheSkirmishGameInfo = NEW SkirmishGameInfo;
+	else if ( TheSkirmishGameInfo->isInGame() )
+		TheSkirmishGameInfo->endGame();
+
+	TheSkirmishGameInfo->init();
+	TheSkirmishGameInfo->clearSlotList();
+	TheSkirmishGameInfo->reset();
+	Int localIP = TheSkirmishGameInfo->getSlot(0)->getIP();
+	TheSkirmishGameInfo->setLocalIP(localIP);
+	TheSkirmishGameInfo->enterGame();
+
+	SkirmishPreferences prefs;
+
+	// Slot 0: the local human player.
+	GameSlot gSlot;
+	gSlot.setName(prefs.getUserName());
+	gSlot.setState( SLOT_PLAYER, prefs.getUserName() );
+	gSlot.setColor(prefs.getPreferredColor());
+	gSlot.setPlayerTemplate(prefs.getPreferredFaction());
+	TheSkirmishGameInfo->setSlot(0, gSlot);
+
+	// Slot 1: a single easy AI opponent (random color/faction/start filled in later).
+	GameSlot aiSlot;
+	aiSlot.setState(SLOT_EASY_AI);
+	TheSkirmishGameInfo->setSlot(1, aiSlot);
+
+	TheSkirmishGameInfo->setSeed(GetTickCount());
+	TheSkirmishGameInfo->setStartingCash( prefs.getStartingCash() );
+	TheSkirmishGameInfo->setSuperweaponRestriction( prefs.getSuperweaponRestricted() ? 1 : 0 );
+
+	// Pick the map: explicit override, else preferred/default multiplayer map.
+	AsciiString map;
+	if ( mapName && mapName[0] )
+		map = mapName;
+	else
+		map = prefs.getPreferredMap();
+
+	// Validate against the cache; fall back to the default multiplayer map if unknown.
+	if ( !TheMapCache || !TheMapCache->findMap(map) )
+		map = getDefaultMap(TRUE);
+
+	TheSkirmishGameInfo->setMap(map);
+	const MapMetaData *md = TheMapCache ? TheMapCache->findMap(map) : nullptr;
+	if (!md)
+	{
+		TheSkirmishGameInfo->setMapCRC(0);
+		TheSkirmishGameInfo->setMapSize(0);
+	}
+	else
+	{
+		TheSkirmishGameInfo->setMapCRC(md->m_CRC);
+		TheSkirmishGameInfo->setMapSize(md->m_filesize);
+	}
+
+	// Close empty slots / fit the map, then mark the game started.
+	TheSkirmishGameInfo->adjustSlotsForMap();
+	TheWritableGlobalData->m_mapName = TheSkirmishGameInfo->getMap();
+	TheSkirmishGameInfo->startGame(0);
+
+	DEBUG_LOG(("DebugAutoStartSkirmish: launching skirmish on map '%s' (1 human + 1 easy AI)", map.str()));
+
+	InitRandom(TheSkirmishGameInfo->getSeed());
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
+	msg->appendIntegerArgument(GAME_SKIRMISH);
+	msg->appendIntegerArgument(DIFFICULTY_NORMAL);
+	msg->appendIntegerArgument(0);
+	msg->appendIntegerArgument(30);	// FPS limit
+}
+
 Bool sandboxOk = FALSE;
 static void startPressed()
 {
@@ -854,7 +934,7 @@ static void handlePlayerSelection(int index)
 	Int playerType, selIndex;
 	GadgetComboBoxGetSelectedPos(combo, &selIndex);
   UnicodeString title = GadgetComboBoxGetText(combo);
-	playerType = (Int)GadgetComboBoxGetItemData(combo, selIndex);
+	playerType = (Int)(uintptr_t)GadgetComboBoxGetItemData(combo, selIndex);
 	GameInfo *myGame = TheSkirmishGameInfo;
 
 	if (myGame)
@@ -873,7 +953,7 @@ static void handleColorSelection(int index)
 	GameWindow *combo = comboBoxColor[index];
 	Int color, selIndex;
 	GadgetComboBoxGetSelectedPos(combo, &selIndex);
-	color = (Int)GadgetComboBoxGetItemData(combo, selIndex);
+	color = (Int)(uintptr_t)GadgetComboBoxGetItemData(combo, selIndex);
 
 	GameInfo *myGame = TheSkirmishGameInfo;
 
@@ -913,7 +993,7 @@ static void handlePlayerTemplateSelection(int index)
 	GameWindow *combo = comboBoxPlayerTemplate[index];
 	Int playerTemplate, selIndex;
 	GadgetComboBoxGetSelectedPos(combo, &selIndex);
-	playerTemplate = (Int)GadgetComboBoxGetItemData(combo, selIndex);
+	playerTemplate = (Int)(uintptr_t)GadgetComboBoxGetItemData(combo, selIndex);
 	GameInfo *myGame = TheSkirmishGameInfo;
 
 	if (myGame)
@@ -966,7 +1046,7 @@ static void handleTeamSelection(int index)
 	GameWindow *combo = comboBoxTeam[index];
 	Int team, selIndex;
 	GadgetComboBoxGetSelectedPos(combo, &selIndex);
-	team = (Int)GadgetComboBoxGetItemData(combo, selIndex);
+	team = (Int)(uintptr_t)GadgetComboBoxGetItemData(combo, selIndex);
 	GameInfo *myGame = TheSkirmishGameInfo;
 
 	if (myGame)
@@ -992,7 +1072,7 @@ static void handleStartingCashSelection()
     GadgetComboBoxGetSelectedPos(comboBoxStartingCash, &selIndex);
 
     Money startingCash;
-    startingCash.deposit( (UnsignedInt)GadgetComboBoxGetItemData( comboBoxStartingCash, selIndex ), FALSE, FALSE );
+    startingCash.deposit( (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData( comboBoxStartingCash, selIndex ), FALSE, FALSE );
     myGame->setStartingCash( startingCash );
   }
 }
@@ -1238,7 +1318,7 @@ void updateSkirmishGameOptions()
   Int index = 0;
   for ( ; index < itemCount; index++ )
   {
-    Int value  = (Int)GadgetComboBoxGetItemData(comboBoxStartingCash, index);
+    Int value  = (Int)(uintptr_t)GadgetComboBoxGetItemData(comboBoxStartingCash, index);
     if ( value == TheSkirmishGameInfo->getStartingCash().countMoney() )
     {
       GadgetComboBoxSetSelectedPos(comboBoxStartingCash, index, TRUE);
@@ -1498,7 +1578,7 @@ WindowMsgHandledType SkirmishGameOptionsMenuInput( GameWindow *window, UnsignedI
 					if( BitIsSet( state, KEY_STATE_UP ) )
 					{
 						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
-																							(WindowMsgData)buttonExit, buttonExitID );
+																							(WindowMsgData)(uintptr_t)buttonExit, buttonExitID );
 					}
 					// don't let key fall through anywhere else
 					return MSG_HANDLED;

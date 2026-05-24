@@ -1233,7 +1233,7 @@ enum AnimParseType CPP_11(: Int)
 //-------------------------------------------------------------------------------------------------
 static void parseAnimation(INI* ini, void *instance, void * /*store*/, const void* userData)
 {
-	AnimParseType animType = (AnimParseType)(UnsignedInt)userData;
+	AnimParseType animType = (AnimParseType)(UnsignedInt)(uintptr_t)userData;
 
 	AsciiString animName = ini->getNextAsciiString();
 	animName.toLower();
@@ -1447,7 +1447,7 @@ void W3DModelDrawModuleData::parseConditionState(INI* ini, void *instance, void 
 
 	ModelConditionInfo info;
 	W3DModelDrawModuleData* self = (W3DModelDrawModuleData*)instance;
-	ParseCondStateType cst = (ParseCondStateType)(UnsignedInt)userData;
+	ParseCondStateType cst = (ParseCondStateType)(UnsignedInt)(uintptr_t)userData;
 	switch (cst)
 	{
 		case PARSE_DEFAULT:
@@ -3205,6 +3205,29 @@ void W3DModelDraw::replaceIndicatorColor(Color color)
 {
 	if (!getW3DModelDrawModuleData()->m_okToChangeModelColor)
 		return;
+
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS-port: SKIP player-house-color recoloring by
+	// default. The engine recolors meshes by:
+	//   1) locking the texture surface (LockRect)
+	//   2) palette-remapping team-color pixels CPU-side
+	//   3) writing back via UnlockRect
+	// Our Metal LockRect/UnlockRect path doesn't yet correctly round-trip every
+	// texture format the engine uses for infantry/vehicle skins (TGAs loaded as
+	// BGRA8, sometimes ARGB1555 / ARGB4444). When the round-trip fails, the
+	// recolored texture comes back fully-zero or fully-transparent → ALL infantry
+	// render as solid black silhouettes in-game (verified: same SKN mesh renders
+	// CORRECTLY through GEN_MODEL_VIEWER which never invokes recoloring).
+	// Trade-off: every player's units use the BASE skin colour (no team-color
+	// tinting). The selection-circle and minimap dots still show player colour.
+	// GEN_HOUSECOLOR=1 opts back into the broken path for debugging the
+	// underlying LockRect/UnlockRect bug.
+	{
+		static int s_houseColor = -1;
+		if (s_houseColor < 0) s_houseColor = ::getenv("GEN_HOUSECOLOR") ? 1 : 0;
+		if (!s_houseColor) return;
+	}
+#endif
 
 	if (getRenderObject())
 	{

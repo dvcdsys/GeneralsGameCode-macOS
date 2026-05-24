@@ -99,7 +99,7 @@ static void mapListTooltipFunc(GameWindow *window,
 		return;
 	}
 
-	Int imageItemData = (Int)GadgetListBoxGetItemData(window, row, 1);
+	Int imageItemData = (Int)(uintptr_t)GadgetListBoxGetItemData(window, row, 1);
 	UnicodeString tooltip;
 	switch (imageItemData)
 	{
@@ -372,7 +372,7 @@ WindowMsgHandledType SkirmishMapSelectMenuInput( GameWindow *window, UnsignedInt
 						GameWindow *button = TheWindowManager->winGetWindowFromId( window, buttonID );
 
 						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
-																								(WindowMsgData)button, buttonID );
+																								(WindowMsgData)(uintptr_t)button, buttonID );
 
 					}
 
@@ -443,7 +443,7 @@ WindowMsgHandledType SkirmishMapSelectMenuSystem( GameWindow *window, UnsignedIn
 						GameWindow *button = TheWindowManager->winGetWindowFromId( window, buttonOK );
 
 						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
-																								(WindowMsgData)button, buttonOK );
+																								(WindowMsgData)(uintptr_t)button, buttonOK );
 					}
 				}
 				break;

@@ -1011,9 +1011,15 @@ unsigned long MyIPAddress( int sockfd )
 	if( sockfd != -1 )
 	{
 		i = sizeof( sin );
+#if defined(_WIN32)
 		getsockname( sockfd, (struct sockaddr *)&sin, &i );
-
 		ip = sin.sin_addr.S_un.S_addr;
+#else
+		// POSIX getsockname expects socklen_t*; in_addr exposes s_addr directly.
+		socklen_t slen = (socklen_t)i;
+		getsockname( sockfd, (struct sockaddr *)&sin, &slen );
+		ip = sin.sin_addr.s_addr;
+#endif
 	}
 	else
 	{
@@ -1129,7 +1135,13 @@ int Cftp::SendNewPort()
 
 		i = sizeof( m_DataSockAddr);
 
+#if defined(_WIN32)
 		getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &i );
+#else
+		// POSIX getsockname expects socklen_t* for the address-length argument.
+		socklen_t dataSlen = (socklen_t)i;
+		getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &dataSlen );
+#endif
 
 		listen( m_iDataSocket, 5 );
 

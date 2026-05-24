@@ -92,7 +92,10 @@ MYEIP1:
 		: "memory"
 	);
 #else
-	#error "Unsupported compiler or architecture for register capture"
+	// TODO(macos): no x86 register capture on arm64. The dbghelp stack-walk path
+	// is dead on macOS (DbgHelpLoader::load() fails), so zeroed registers are
+	// harmless here -- this only has to compile.
+	myeip = myesp = myebp = 0;
 #endif
 
 
@@ -354,7 +357,10 @@ MYEIP2:
 		: "eax", "memory"
 	);
 #else
-	#error "Unsupported compiler or architecture for register capture"
+	// TODO(macos): no x86 register capture on arm64. The dbghelp stack-walk path
+	// is dead on macOS (DbgHelpLoader::load() fails), so zeroed registers are
+	// harmless here -- this only has to compile.
+	myeip = myesp = myebp = 0;
 #endif
 memset(&stack_frame, 0, sizeof(STACKFRAME));
 stack_frame.AddrPC.Mode = AddrModeFlat;
@@ -559,8 +565,13 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	{
 		DOUBLE_DEBUG (("Exception code is %x", e_info->ExceptionRecord->ExceptionCode));
 	}
+#if defined(_WIN32)
 	Int *winMainAddr = (Int *)WinMain;
 	DOUBLE_DEBUG(("WinMain at %x", winMainAddr));
+#else
+	// TODO(macos): WinMain is not the entry point here; this is diagnostic only.
+	DOUBLE_DEBUG(("WinMain at (n/a on macOS)"));
+#endif
 	/*
 	** Match the exception type with the error string and print it out
 	*/

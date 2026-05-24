@@ -3398,6 +3398,13 @@ void W3DVolumetricShadowManager::renderStencilShadows()
 
 void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: same GEN_NO_SHADOWS gate as
+	// W3DProjectedShadowManager::renderShadows.
+	{ static int s_noShadow = -1; if (s_noShadow < 0) s_noShadow = getenv("GEN_NO_SHADOWS") ? 1 : 0;
+	  if (s_noShadow) return; }
+#endif
+
 	W3DVolumetricShadow *shadow;
 	Int numRenderedShadows = 0;
 

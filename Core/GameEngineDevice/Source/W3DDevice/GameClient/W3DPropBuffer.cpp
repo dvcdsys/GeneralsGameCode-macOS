@@ -323,6 +323,13 @@ void W3DPropBuffer::drawProps(RenderInfoClass &rinfo)
 {
 	USE_PERF_TIMER(Prop_Render)
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_PROPS=1 skips prop (rocks/bushes/
+	// debris) rendering. Diagnostic A/B for "black spots on terrain" hypothesis.
+	{ static int s_noProps = -1; if (s_noProps < 0) s_noProps = getenv("GEN_NO_PROPS") ? 1 : 0;
+	  if (s_noProps) return; }
+#endif
+
 	Int i;
 	if (m_doCull) {
 		cull(&rinfo.Camera);

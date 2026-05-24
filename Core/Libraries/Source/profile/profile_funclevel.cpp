@@ -617,7 +617,12 @@ unsigned ProfileFuncLevel::Id::GetLine() const
   return func->funcLine;
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+#else
+// _int64 is a typedef on non-MSVC; match the UNSIGNED_INT64_COMPAT declaration.
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+#endif
 {
   if (!m_funcPtr)
     return 0;
@@ -634,7 +639,11 @@ unsigned _int64 ProfileFuncLevel::Id::GetCalls(unsigned frame) const
   }
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetTime(unsigned frame) const
+#else
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetTime(unsigned frame) const
+#endif
 {
   if (!m_funcPtr)
     return 0;
@@ -651,7 +660,11 @@ unsigned _int64 ProfileFuncLevel::Id::GetTime(unsigned frame) const
   }
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+#else
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+#endif
 {
   if (!m_funcPtr)
     return 0;
@@ -755,17 +768,29 @@ unsigned ProfileFuncLevel::Id::GetLine() const
   return 0;
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+#else
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+#endif
 {
   return 0;
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetTime(unsigned frame) const
+#else
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetTime(unsigned frame) const
+#endif
 {
   return 0;
 }
 
+#ifdef _WIN32
 unsigned _int64 ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+#else
+UNSIGNED_INT64_COMPAT ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+#endif
 {
   return 0;
 }

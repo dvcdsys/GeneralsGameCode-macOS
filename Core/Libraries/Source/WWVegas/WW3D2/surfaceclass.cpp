@@ -575,7 +575,9 @@ void SurfaceClass::FindBB(Vector2i *min,Vector2i*max)
 		for (x = min->I; x < max->I; x++) {
 
 			// HY - this is not endian safe
-			unsigned char *alpha=(unsigned char*) ((unsigned int)lock_rect.pBits+(y-min->J)*lock_rect.Pitch+(x-min->I)*size);
+			// TheSuperHackers @fix macos: cast through uintptr_t so the base
+			// pointer is not truncated on LP64 (was (unsigned int)).
+			unsigned char *alpha=(unsigned char*) ((uintptr_t)lock_rect.pBits+(y-min->J)*lock_rect.Pitch+(x-min->I)*size);
 			unsigned char myalpha=alpha[size-1];
 			myalpha=(myalpha>>(8-alphabits)) & mask;
 			if (myalpha) {
@@ -649,7 +651,8 @@ bool SurfaceClass::Is_Transparent_Column(unsigned int column)
 	for (y = 0; y < (int) sd.Height; y++)
 	{
 		// HY - this is not endian safe
-		unsigned char *alpha=(unsigned char*) ((unsigned int)lock_rect.pBits+y*lock_rect.Pitch);
+		// TheSuperHackers @fix macos: cast through uintptr_t (was (unsigned int)).
+		unsigned char *alpha=(unsigned char*) ((uintptr_t)lock_rect.pBits+y*lock_rect.Pitch);
 		unsigned char myalpha=alpha[size-1];
 		myalpha=(myalpha>>(8-alphabits)) & mask;
 		if (myalpha) {

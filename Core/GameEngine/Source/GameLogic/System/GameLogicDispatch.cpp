@@ -236,7 +236,7 @@ void GameLogic::closeWindows()
 	GameWindow *window = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:OptionsMenuParent") );
 	if(window)
 		TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
-																			(WindowMsgData)button, buttonID );
+																			(WindowMsgData)(uintptr_t)button, buttonID );
 }
 
 // ------------------------------------------------------------------------------------------------

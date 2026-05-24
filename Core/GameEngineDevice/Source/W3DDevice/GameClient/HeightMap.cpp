@@ -481,6 +481,38 @@ Int HeightMapRenderObjClass::updateVB(DX8VertexBufferClass	*pVB, VERTEX_FORMAT *
 				}
 #endif
 
+#if defined(__APPLE__)
+				// TheSuperHackers @port macOS-port: GEN_CLIFF_DEBUG=1 paints terrain
+				// cells by classification to localize the "black quads on cliff peaks"
+				// artifact. ALL 4 vertices of each cell get the same diffuse so the
+				// colour shows uniformly (not as a gouraud gradient from one corner):
+				//   - cliff-mapped (m_cliffInfoNdxes[ndx]!=0)        => GREEN
+				//   - missing tile (getUVForNdx -> nU==0, UVs all 0) => RED
+				//   - regular cliff (getCliffState true)             => BLUE
+				// Whichever colour appears at the location of the user's black
+				// quads is the path our cliff/UV/tile logic is mishandling.
+				{
+					static int s_cliffDbg = -1;
+					if (s_cliffDbg < 0) s_cliffDbg = ::getenv("GEN_CLIFF_DEBUG") ? 1 : 0;
+					if (s_cliffDbg) {
+						Bool cliffMapped = pMap->isCliffMappedTexture(mapX, mapY);
+						Bool isCliff     = pMap->getCliffState(xCoord, yCoord);
+						Bool missingTile = (U[0]==0.f && U[1]==0.f && U[2]==0.f && U[3]==0.f
+						                 && V[0]==0.f && V[1]==0.f && V[2]==0.f && V[3]==0.f);
+						UnsignedInt tint = 0;
+						if (missingTile)      tint = 0xFFFF0000; // ARGB red
+						else if (cliffMapped) tint = 0xFF00FF00; // ARGB green
+						else if (isCliff)     tint = 0xFF0000FF; // ARGB blue
+						if (tint) {
+							pCurVertices[0].diffuse = tint;
+							pCurVertices[1].diffuse = tint;
+							pCurVertices[2].diffuse = tint;
+							pCurVertices[3].diffuse = tint;
+						}
+					}
+				}
+#endif
+
 				if (m_showImpassableAreas) {
 					// Color impassable cells "red"
 					DEBUG_ASSERTCRASH(PATHFIND_CELL_SIZE_F == MAP_XY_FACTOR, ("Pathfind must be terrain cell size, or this code needs reworking.  John A."));
@@ -2084,8 +2116,19 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		renderShoreLines(&rinfo.Camera);
 
 		//Do additional pass over any tiles that have 3 textures blended together.
-		if (TheGlobalData->m_use3WayTerrainBlends)
+		if (TheGlobalData->m_use3WayTerrainBlends) {
+#if defined(__APPLE__)
+			// TheSuperHackers @debug macOS-port: GEN_NO_3WAY=1 skips the 3-way
+			// blend tile pass. Suspect for the "black blocks scattered on terrain"
+			// — that pass uses ST_ROAD_BASE which is a multi-stage shader we don't
+			// fully emulate without pixel shaders. Diagnostic only — opaque/blend
+			// output may differ from Windows when this is off.
+			static int s_no3w = -1;
+			if (s_no3w < 0) s_no3w = getenv("GEN_NO_3WAY") ? 1 : 0;
+			if (!s_no3w)
+#endif
 			renderExtraBlendTiles();
+		}
 
 		Int yCoordMin = m_map->getDrawOrgY();
 		Int yCoordMax = m_y+m_map->getDrawOrgY()-1;
@@ -2105,6 +2148,15 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		m_stageTwoTexture->restore();
 
 		ShaderClass::Invalidate();
+#if defined(__APPLE__)
+		// TheSuperHackers @debug macOS-port: GEN_NO_ROADS=1 skips road rendering
+		// for diagnosis of the "black cell" terrain artifacts. Roads use a multi-
+		// pass W3DShader (ST_ROAD_BASE/_NOISE12) that may not fully work without
+		// pixel shaders on macOS.
+		static int s_noRoads = -1;
+		if (s_noRoads < 0) s_noRoads = getenv("GEN_NO_ROADS") ? 1 : 0;
+		if (!s_noRoads)
+#endif
 		if (!ShaderClass::Is_Backface_Culling_Inverted()) {
 			DX8Wrapper::Set_Material(m_vertexMaterialClass);
 			if (Scene) {
@@ -2116,6 +2168,21 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		}
 	#endif
 	if (m_propBuffer) {
+#if defined(__APPLE__)
+		// TheSuperHackers @port macOS-port: bisect overlay sources of the
+		// "black quads on rock peaks" artifact. Each layer that draws OVER
+		// terrain can be skipped independently via env-var:
+		//   GEN_NO_PROPS   trees / static props
+		//   GEN_NO_SCORCH  scorch decals
+		//   GEN_NO_BRIDGE  bridges
+		//   GEN_NO_TRACKS  vehicle tread / tracks
+		//   GEN_NO_SHROUD  shroud / fog-of-war overlay (renderTerrainPass)
+		// SHROUD is the prime suspect — port-plan note says shroud paints pure
+		// black 0,0,0 for unexplored cells, and grid-aligned sharp edges match.
+		static int s_noProps = -1;
+		if (s_noProps < 0) s_noProps = ::getenv("GEN_NO_PROPS") ? 1 : 0;
+		if (!s_noProps)
+#endif
 		m_propBuffer->drawProps(rinfo);
 	}
 	#ifdef DO_SCORCH
@@ -2125,6 +2192,11 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 
 		ShaderClass::Invalidate();
 		if (!ShaderClass::Is_Backface_Culling_Inverted()) {
+#if defined(__APPLE__)
+			static int s_noScorch = -1;
+			if (s_noScorch < 0) s_noScorch = ::getenv("GEN_NO_SCORCH") ? 1 : 0;
+			if (!s_noScorch)
+#endif
 			drawScorches();
 		}
 	#endif
@@ -2134,17 +2206,49 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 		ShaderClass::Invalidate();
 		DX8Wrapper::Apply_Render_State_Changes();
 
+#if defined(__APPLE__)
+		{ static int s_noBridge = -1; if (s_noBridge < 0) s_noBridge = ::getenv("GEN_NO_BRIDGE") ? 1 : 0;
+		  if (!s_noBridge)
+#endif
 		m_bridgeBuffer->drawBridges(&rinfo.Camera, m_disableTextures, doCloud?m_stageTwoTexture:nullptr);
-
+#if defined(__APPLE__)
+		}
+		{ static int s_noTracks = -1; if (s_noTracks < 0) s_noTracks = ::getenv("GEN_NO_TRACKS") ? 1 : 0;
+		  if (!s_noTracks)
+#endif
 		if (TheTerrainTracksRenderObjClassSystem)
 			TheTerrainTracksRenderObjClassSystem->flush();
+#if defined(__APPLE__)
+		}
+#endif
 
+#if defined(__APPLE__)
+		// TheSuperHackers @port macOS-port: SKIP the in-game shroud overlay by
+		// default. The shroud pass sets D3DTSS_TEXCOORDINDEX =
+		// D3DTSS_TCI_CAMERASPACEPOSITION (high-bit flag) + D3DTTFF_COUNT2 and a
+		// view-derived texture transform — our Metal shim masks off the TCI
+		// high bits, so the shroud texture got sampled with terrain-atlas UVs
+		// and produced solid black quads on high-elevation vertices (rock peaks,
+		// cliff tops). FIXED: the shim now plumbs TCI mode + view +
+		// D3DTS_TEXTURE0 (cmake/dx8_stub/dx8_device.cpp FillCommon) and the MSL
+		// vs derives UV from (texXform * view * world * pos).xy when
+		// tciMode==CAMERASPACEPOSITION (cmake/dx8_stub/metal_backend.mm vs_main).
+		// Shroud is now ON by default on macOS again. GEN_NO_SHROUD=1 still
+		// works as an emergency opt-out if the TCI path regresses.
+		{
+			static int s_noShroud = -1;
+			if (s_noShroud < 0) s_noShroud = ::getenv("GEN_NO_SHROUD") ? 1 : 0;
+			if (!s_noShroud)
+#endif
 		if (m_shroud && rinfo.Additional_Pass_Count())
 		{
 			rinfo.Peek_Additional_Pass(0)->Install_Materials();
 			renderTerrainPass(&rinfo.Camera);
 			rinfo.Peek_Additional_Pass(0)->UnInstall_Materials();
 		}
+#if defined(__APPLE__)
+		}
+#endif
 
 		ShaderClass::Invalidate();
 		DX8Wrapper::Apply_Render_State_Changes();
@@ -2155,7 +2259,14 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
   if ( m_waypointBuffer )
 	  m_waypointBuffer->drawWaypoints(rinfo);
 
-	m_bibBuffer->renderBibs();
+#if defined(__APPLE__)
+	{ static int s_noBib = -1; if (s_noBib < 0) s_noBib = getenv("GEN_NO_BIB") ? 1 : 0;
+	  if (!s_noBib)
+#endif
+		m_bibBuffer->renderBibs();
+#if defined(__APPLE__)
+	}
+#endif
 
 	// We do some custom blending, so tell the shader class to reset everything.
 	DX8Wrapper::Set_Texture(0,nullptr);

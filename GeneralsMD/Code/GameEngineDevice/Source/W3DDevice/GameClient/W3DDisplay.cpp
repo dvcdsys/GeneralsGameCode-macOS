@@ -94,6 +94,14 @@ static void drawFramerateBar();
 #include "WW3D2/render2dsentence.h"
 #include "WW3D2/sortingrenderer.h"
 #include "WW3D2/textureloader.h"
+#if defined(__APPLE__)
+#include "WW3D2/camera.h"
+#include "WW3D2/assetmgr.h"
+#include "WW3D2/rendobj.h"
+#include "WW3D2/hanim.h"
+#include "WWMath/matrix3d.h"
+#include "WWMath/sphere.h"
+#endif
 #include "WW3D2/dx8webbrowser.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/hlod.h"
@@ -1797,6 +1805,95 @@ void W3DDisplay::draw()
 	if (TheGlobalData->m_headless)
 		return;
 
+#if defined(__APPLE__)
+	// --- macOS port: isolated W3D model-viewer (GEN_MODEL_VIEWER=1) ---------------
+	// Renders ONE render object through the normal WW3D mesh path (asset load ->
+	// mesh -> DrawIndexedPrimitive -> Metal), bypassing the whole in-game scene.
+	// This isolates "does mesh rendering work at all?" from in-game scene/culling/
+	// transform issues. GEN_MODEL=<name> picks the model (default ABBarracks_AC).
+	// All [modelviewer] diagnostics go to stderr.
+	{
+		static int s_mvEnv = -1;
+		if (s_mvEnv < 0) s_mvEnv = ::getenv("GEN_MODEL_VIEWER") ? 1 : 0;
+		if (s_mvEnv)
+		{
+			static SimpleSceneClass *s_mvScene = nullptr;
+			static CameraClass      *s_mvCam   = nullptr;
+			static RenderObjClass   *s_mvObj   = nullptr;
+			static HAnimClass       *s_mvAnim  = nullptr;
+			static float             s_mvFrame = 0.0f;
+			static float             s_mvFrameStep = 0.5f;  // frames advanced per render call
+			static bool              s_mvInit  = false;
+			if (!s_mvInit)
+			{
+				s_mvInit = true;
+				const char *model = ::getenv("GEN_MODEL");
+				if (!model || !model[0]) model = "ABBarracks_AC";
+				s_mvScene = NEW_REF(SimpleSceneClass, ());
+				s_mvScene->Set_Ambient_Light(Vector3(1.0f, 1.0f, 1.0f));
+				s_mvCam = NEW_REF(CameraClass, ());
+				s_mvObj = WW3DAssetManager::Get_Instance()->Create_Render_Obj(model);
+				DEBUG_LOG(("[modelviewer] Create_Render_Obj('%s') -> %p", model, (void*)s_mvObj));
+				if (s_mvObj)
+				{
+					s_mvObj->Set_Position(Vector3(0.0f, 0.0f, 0.0f));
+					s_mvScene->Add_Render_Object(s_mvObj);
+					const SphereClass &bs = s_mvObj->Get_Bounding_Sphere();
+					float r = (bs.Radius > 0.01f) ? bs.Radius : 10.0f;
+					DEBUG_LOG(("[modelviewer] '%s' bsphere c=(%.2f,%.2f,%.2f) r=%.2f numPolys=%d",
+						model, bs.Center.X, bs.Center.Y, bs.Center.Z, r, s_mvObj->Get_Num_Polys()));
+					Vector3 ctr = bs.Center;
+					Vector3 eye(ctr.X + r * 2.2f, ctr.Y + r * 2.2f, ctr.Z + r * 1.6f);
+					Matrix3D tm;
+					tm.Look_At(eye, ctr, 0.0f);
+					s_mvCam->Set_Transform(tm);
+					s_mvCam->Set_Clip_Planes(0.5f, r * 30.0f);
+					s_mvCam->Set_View_Plane((float)(50.0 * 3.14159265358979 / 180.0));
+
+					// Drive a looped animation for repro'ing bone-animated bugs.
+					// GEN_MODEL_ANIM=HTREE.ANIM   e.g. "UBCmdHQ.UBCmdHQ"  (default
+					// behavior: <model>.<model>, which matches Generals's idle-anim
+					// naming convention for buildings — the antenna spin etc.).
+					const char *animName = ::getenv("GEN_MODEL_ANIM");
+					AsciiString animFallback;
+					if (!animName || !animName[0])
+					{
+						animFallback.format("%s.%s", model, model);
+						animName = animFallback.str();
+					}
+					s_mvAnim = WW3DAssetManager::Get_Instance()->Get_HAnim(animName);
+					DEBUG_LOG(("[modelviewer] Get_HAnim('%s') -> %p", animName, (void*)s_mvAnim));
+					if (s_mvAnim)
+					{
+						s_mvObj->Set_Animation(s_mvAnim, 0.0f, Animatable3DObjClass::ANIM_MODE_MANUAL);
+						DEBUG_LOG(("[modelviewer] anim numFrames=%d frameRate=%.2f",
+							s_mvAnim->Get_Num_Frames(), s_mvAnim->Get_Frame_Rate()));
+					}
+				}
+			}
+			// Per-frame tick: advance animation frame manually (the in-game tick
+			// path doesn't run in viewer mode, so we drive it directly).
+			if (s_mvObj && s_mvAnim)
+			{
+				int nf = s_mvAnim->Get_Num_Frames();
+				if (nf > 1)
+				{
+					s_mvFrame += s_mvFrameStep;
+					while (s_mvFrame >= (float)nf) s_mvFrame -= (float)nf;
+					s_mvObj->Set_Animation(s_mvAnim, s_mvFrame, Animatable3DObjClass::ANIM_MODE_MANUAL);
+				}
+			}
+			if (WW3D::Begin_Render(true, true, Vector3(0.15f, 0.18f, 0.25f)) == WW3D_ERROR_OK)
+			{
+				if (s_mvScene && s_mvCam)
+					WW3D::Render(s_mvScene, s_mvCam);
+				WW3D::End_Render();
+			}
+			return;
+		}
+	}
+#endif
+
 	updateAverageFPS();
 	if (TheGlobalData->m_enableDynamicLOD && TheGameLogic->getShowDynamicLOD())
 	{
@@ -1985,15 +2082,38 @@ AGAIN:
 					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
 				// draw all views of the world
+#if defined(__APPLE__)
+				// macOS port bisect (persistent player-color rect):
+				//   GEN_NO_VIEWS=1       skip drawViews() entirely (3D scene + per-drawable
+				//                        overlays + m_2DScene). Everything that's "the world"
+				//                        plus tactical-view-attached 2D goes away.
+				//   GEN_NO_INGAMEUI=1    skip TheInGameUI->DRAW() — the entire GUI window
+				//                        rendering: control bar, side bar, minimap, tooltip
+				//                        windows, build-queue panel, anything window-based.
+				//   GEN_NO_MOUSE_DRAW=1  skip TheMouse->DRAW() — cursor sprite path.
+				static int s_skipViews   = -1;
+				static int s_skipInGameUI = -1;
+				static int s_skipMouseDraw = -1;
+				if (s_skipViews     < 0) s_skipViews     = ::getenv("GEN_NO_VIEWS")      ? 1 : 0;
+				if (s_skipInGameUI  < 0) s_skipInGameUI  = ::getenv("GEN_NO_INGAMEUI")   ? 1 : 0;
+				if (s_skipMouseDraw < 0) s_skipMouseDraw = ::getenv("GEN_NO_MOUSE_DRAW") ? 1 : 0;
+				if (!s_skipViews)
+#endif
 				drawViews();
 
 				// draw the user interface
+#if defined(__APPLE__)
+				if (!s_skipInGameUI)
+#endif
 				TheInGameUI->DRAW();
 
 				// end of video example code
 
 				// draw the mouse
 				if( TheMouse )
+#if defined(__APPLE__)
+				if (!s_skipMouseDraw)
+#endif
 					TheMouse->DRAW();
 
 				if ( m_videoStream && m_videoBuffer )
@@ -2320,6 +2440,12 @@ void W3DDisplay::drawLine( Int startX, Int startY,
 void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 															 Real lineWidth, UnsignedInt lineColor )
 {
+#if defined(__APPLE__)
+	// Mirror the drawFillRect clamp — hover tooltip / health bar border lines
+	// can also blow up to span the screen when the text-extent measurement
+	// returns garbage width.
+	if (width > 4096 || height > 4096 || width < -4096 || height < -4096) return;
+#endif
 
 	if (m_isClippedEnabled)
 	{
@@ -2372,6 +2498,49 @@ void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 void W3DDisplay::drawFillRect( Int startX, Int startY, Int width, Int height,
 															 UnsignedInt color )
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS-port: bisect huge-team-colored-rect artifacts
+	// covering screen. Print + clamp obviously-bogus geometry so we can see WHO
+	// is calling drawFillRect with crazy args.
+	//   GEN_DBG_FILLRECT=1   log every call (one line per draw)
+	//   GEN_DBG_FILLRECT=2   log + also skip rects whose width|height > 4000
+	//   GEN_DBG_FILLRECT=3   skip ALL drawFillRect calls (kills health bars +
+	//                          construction bars; for negative-image test)
+	{
+		static int s_dbg = -1;
+		if (s_dbg < 0) {
+			const char* v = ::getenv("GEN_DBG_FILLRECT");
+			s_dbg = v ? atoi(v) : 0;
+		}
+		if (s_dbg >= 1) {
+			// Log EVERY drawFillRect with width > 100 OR height > 100 — those
+			// are big enough to be the visible artifact (HUD elements are
+			// usually small). Limited per-second to avoid log spam.
+			if (width > 100 || height > 100 || width < -100 || height < -100) {
+				static int s_lastSec = 0;
+				static int s_perSec = 0;
+				int now = (int)(time(nullptr));
+				if (now != s_lastSec) { s_lastSec = now; s_perSec = 0; }
+				if (s_perSec++ < 8) {
+					fprintf(stderr,
+					        "[fillrect] BIG xy=(%d,%d) wh=(%d,%d) c=0x%08X\n",
+					        startX, startY, width, height, color);
+				}
+			}
+		}
+		if (s_dbg >= 3) return;
+		if (s_dbg >= 2 && (width > 4000 || height > 4000 || width < -4000 || height < -4000)) {
+			fprintf(stderr, "[fillrect] SKIP huge xy=(%d,%d) wh=(%d,%d)\n",
+			        startX, startY, width, height);
+			return;
+		}
+	}
+	// Permanent guard against the "huge team-color rect across screen" health-
+	// bar bug — computeHealthRegion can produce nonsense width/height when
+	// worldToScreen straddles the camera plane. Health bars are at most a few
+	// hundred pixels wide; anything beyond 4096 is garbage.
+	if (width > 4096 || height > 4096 || width < -4096 || height < -4096) return;
+#endif
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 	m_2DRender->Add_Rect( RectClass( startX, startY,

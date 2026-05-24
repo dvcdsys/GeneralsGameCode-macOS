@@ -1325,9 +1325,13 @@ void W3DTreeBuffer::removeTreesForConstruction(const Coord3D* pos, const Geometr
 //=============================================================================
 Int W3DTreeBuffer::addTreeType(const W3DTreeDrawModuleData *data)
 {
+	// NOTE: failure must return a NEGATIVE sentinel — addTree() checks
+	// "if (treeType<0) return;" to skip. Returning 0 here would alias the valid
+	// first tree-type index and add a tree whose m_treeTypes[0].m_data is null,
+	// crashing later in unitMoved()/render when a model fails to load.
 	if (m_numTreeTypes>=MAX_TYPES) {
 		DEBUG_CRASH(("Too many kinds of trees in map.  Reduce kinds of trees, or raise tree limit. jba."));
-		return 0;
+		return -1;
 	}
 	m_needToUpdateTexture = true;
 
@@ -1337,7 +1341,7 @@ Int W3DTreeBuffer::addTreeType(const W3DTreeDrawModuleData *data)
 
 	if (robj==nullptr) {
 		DEBUG_CRASH(("Unable to find model for tree %s", data->m_modelName.str()));
-		return 0;
+		return -1;
 	}
 	AABoxClass box;
 
@@ -1356,7 +1360,7 @@ Int W3DTreeBuffer::addTreeType(const W3DTreeDrawModuleData *data)
 
 	if (m_treeTypes[m_numTreeTypes].m_mesh==nullptr) {
 		DEBUG_CRASH(("Tree %s is not simple mesh. Tell artist to re-export. Don't Ignore!!!", data->m_modelName.str()));
-		return 0;
+		return -1;
 	}
 
 	Int numVertex = m_treeTypes[m_numTreeTypes].m_mesh->Peek_Model()->Get_Vertex_Count();
@@ -1528,6 +1532,13 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (!m_isTerrainPass) {
 		return;
 	}
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_TREES=1 skips all tree
+	// rendering. Diagnostic A/B for "black blobs on terrain" — trees + foliage
+	// are a likely culprit.
+	{ static int s_noTrees = -1; if (s_noTrees < 0) s_noTrees = getenv("GEN_NO_TREES") ? 1 : 0;
+	  if (s_noTrees) return; }
+#endif
 
 	// if breeze changes, always process the full update, even if not visible,
 	// so that things offscreen won't 'pop' when first viewed

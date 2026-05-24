@@ -192,6 +192,7 @@ set(GAMEENGINEDEVICE_SRC
     Source/Win32Device/GameClient/Win32DIKeyboard.cpp
     #Source/Win32Device/GameClient/Win32DIMouse.cpp
     Source/Win32Device/GameClient/Win32Mouse.cpp
+    Source/Win32Device/GameClient/CocoaKeyboard.cpp   # @port macOS keyboard (no-op on Windows)
 )
 
 # Add C++ 17 FileSystem implementation for non-VS6 builds

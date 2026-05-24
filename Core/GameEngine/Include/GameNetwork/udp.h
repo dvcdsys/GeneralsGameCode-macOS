@@ -45,6 +45,10 @@
 #include <sys/time.h>
 #include <fcntl.h>
 #include <limits.h>
+// Win32 sockets vocabulary (WSAStartup/WSACleanup, closesocket, SOCKET_ERROR,
+// WSADATA, ioctlsocket, socklen_t-vs-int overloads). The engine's networking
+// code is written against the Winsock API; this shim maps it onto BSD sockets.
+#include <winsock.h>
 #endif
 
 #ifdef AIX

@@ -357,7 +357,17 @@ void DataChunkOutput::writeUnicodeString( UnicodeString theString )
 {
 	UnsignedShort len = theString.getLength();
 	::fwrite( (const char *)&len, sizeof(UnsignedShort) , 1, m_tmp_file );
-	::fwrite( theString.str(), len*sizeof(WideChar) , 1, m_tmp_file );
+	if (sizeof(WideChar) == 2) {
+		::fwrite( theString.str(), len*sizeof(WideChar) , 1, m_tmp_file );
+	} else {
+		// Keep the on-disk format 2-byte UTF-16 regardless of wchar_t width,
+		// so files round-trip and stay compatible with the canonical format.
+		const WideChar* s = theString.str();
+		for (UnsignedShort ci = 0; ci < len; ++ci) {
+			UnsignedShort wc = (UnsignedShort)s[ci];
+			::fwrite( &wc, sizeof(UnsignedShort), 1, m_tmp_file );
+		}
+	}
 }
 
 void DataChunkOutput::writeNameKey( const NameKeyType key )
@@ -970,8 +980,23 @@ UnicodeString DataChunkInput::readUnicodeString()
 	UnicodeString theString;
 	if (len>0) {
 		WideChar *str = theString.getBufferForRead(len);
-		m_file->read( (char*)str, len*sizeof(WideChar) );
-		decrementDataLeft( len*sizeof(WideChar) );
+		if (sizeof(WideChar) == 2) {
+			// On-disk width matches in-memory width: bulk read.
+			m_file->read( (char*)str, len*sizeof(WideChar) );
+			decrementDataLeft( len*sizeof(WideChar) );
+		} else {
+			// On-disk unicode is always 2-byte UTF-16 (the file format was
+			// authored where WideChar==2). Here WideChar (wchar_t) is wider
+			// (e.g. 4 bytes on macOS/Linux), so read 2-byte chars and widen.
+			// Reading len*sizeof(WideChar) would over-read and misalign every
+			// subsequent field in the chunk (corrupting e.g. build-list names).
+			for (Int ci = 0; ci < (Int)len; ++ci) {
+				UnsignedShort wc = 0;
+				m_file->read( (char*)&wc, sizeof(UnsignedShort) );
+				str[ci] = (WideChar)wc;
+			}
+			decrementDataLeft( (Int)len * sizeof(UnsignedShort) );
+		}
 		// add null delimiter to string.  Note that getBufferForRead allocates space for terminating null.
 		str[len] = '\000';
 	}

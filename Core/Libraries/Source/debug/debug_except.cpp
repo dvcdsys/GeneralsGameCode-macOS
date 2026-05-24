@@ -29,6 +29,15 @@
 #include "debug.h"
 #include "internal_except.h"
 #include <windows.h>
+
+// TheSuperHackers @port macos: This unhandled-exception handler is built on
+// Win32 SEH (_EXCEPTION_POINTERS), the 32-bit x86 CONTEXT register layout
+// (Eip/Eax/FloatSave/...), and a Win32 common-controls crash dialog
+// (commctrl.h, DialogBoxIndirect). None of that exists on macOS/arm64, so the
+// entire implementation is Windows-only. Elsewhere we expose minimal stubs of
+// the externally-referenced methods so the debug lib links.
+#ifdef _WIN32
+
 #include <commctrl.h>
 
 DebugExceptionhandler::DebugExceptionhandler()
@@ -412,3 +421,26 @@ LONG __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS
   // Now die
   return EXCEPTION_EXECUTE_HANDLER;
 }
+
+#else // !_WIN32
+
+// TheSuperHackers @port macos: POSIX stubs. The exception filter is never
+// actually installed on macOS (see Debug::InstallExceptionHandler), so these
+// exist only to satisfy references from debug_debug.cpp.
+
+DebugExceptionhandler::DebugExceptionhandler()
+{
+}
+
+const char *DebugExceptionhandler::GetExceptionType(struct _EXCEPTION_POINTERS * /*exptr*/, char *explanation)
+{
+  if (explanation) strcpy(explanation,"(exception details unavailable on this platform)");
+  return "EXCEPTION_UNKNOWN";
+}
+
+long __stdcall DebugExceptionhandler::ExceptionFilter(struct _EXCEPTION_POINTERS* /*pExPtrs*/)
+{
+  return 0; // EXCEPTION_CONTINUE_SEARCH
+}
+
+#endif // _WIN32

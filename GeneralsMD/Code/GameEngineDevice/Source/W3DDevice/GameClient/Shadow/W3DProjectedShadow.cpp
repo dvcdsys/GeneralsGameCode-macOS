@@ -1301,6 +1301,15 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 	if (!TheTerrainRenderObject)
 		return projectionCount;
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_SHADOWS=1 skips all projected
+	// shadow + decal rendering. Diagnostic A/B for the "black blobs on terrain"
+	// — if those vanish, the bug is in the shadow decal alpha/blend path; if
+	// they stay, it's in some other terrain decal pass.
+	{ static int s_noShadow = -1; if (s_noShadow < 0) s_noShadow = getenv("GEN_NO_SHADOWS") ? 1 : 0;
+	  if (s_noShadow) return projectionCount; }
+#endif
+
 	if (!m_shadowList && !m_decalList)
 		return	projectionCount;	//there are no shadows to render.
 

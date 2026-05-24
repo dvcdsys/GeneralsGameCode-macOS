@@ -59,17 +59,23 @@ FVFInfoClass::FVFInfoClass(unsigned FVF_)
 	if ((FVF&D3DFVF_XYZ)==D3DFVF_XYZ) blend_offset+=3*sizeof(float);
 	normal_offset=blend_offset;
 
+	// TheSuperHackers @port FVF colour / blend-weight fields are ALWAYS 32-bit
+	// in the vertex layout (D3DCOLOR / FLOAT). Must NOT use sizeof(DWORD) here:
+	// on macOS LP64 DWORD is `unsigned long` = 8 bytes, which would shift the
+	// texcoord offset by +4 and corrupt every UV (the "u==0 brown smear" 2D bug).
+	// 4 is correct on Win32 too (sizeof(DWORD)==4 there), so this is unguarded.
+	enum { FVF_DWORD_SIZE = 4 };
 	if ( ((FVF&D3DFVF_XYZB4)==D3DFVF_XYZB4) &&
-		  ((FVF&D3DFVF_LASTBETA_UBYTE4)==D3DFVF_LASTBETA_UBYTE4) ) normal_offset+=3*sizeof(float)+sizeof(DWORD);
+		  ((FVF&D3DFVF_LASTBETA_UBYTE4)==D3DFVF_LASTBETA_UBYTE4) ) normal_offset+=3*sizeof(float)+FVF_DWORD_SIZE;
 	diffuse_offset=normal_offset;
 
 	if ((FVF&D3DFVF_NORMAL)==D3DFVF_NORMAL) diffuse_offset+=3*sizeof(float);
 	specular_offset=diffuse_offset;
 
-	if ((FVF&D3DFVF_DIFFUSE)==D3DFVF_DIFFUSE) specular_offset+=sizeof(DWORD);
+	if ((FVF&D3DFVF_DIFFUSE)==D3DFVF_DIFFUSE) specular_offset+=FVF_DWORD_SIZE;
 	texcoord_offset[0]=specular_offset;
 
-	if ((FVF&D3DFVF_SPECULAR)==D3DFVF_SPECULAR) texcoord_offset[0]+=sizeof(DWORD);
+	if ((FVF&D3DFVF_SPECULAR)==D3DFVF_SPECULAR) texcoord_offset[0]+=FVF_DWORD_SIZE;
 
 	for (unsigned int i=1; i<D3DDP_MAXTEXCOORD; i++)
 	{

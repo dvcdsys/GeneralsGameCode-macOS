@@ -30,3 +30,11 @@ if(WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows")
 endif()
 
 target_include_directories(core_browserdispatch INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/..)
+
+# TheSuperHackers @build macOS port: MIDL is unavailable on non-Windows, so the
+# generated BrowserDispatch.h is never produced in the binary dir. A hand-written
+# stub lives in the source tree (EABrowserDispatch/BrowserDispatch.h); expose its
+# parent dir on the include path so "EABrowserDispatch/BrowserDispatch.h" resolves.
+if(NOT (WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows"))
+    target_include_directories(core_browserdispatch INTERFACE ${CMAKE_CURRENT_LIST_DIR}/..)
+endif()

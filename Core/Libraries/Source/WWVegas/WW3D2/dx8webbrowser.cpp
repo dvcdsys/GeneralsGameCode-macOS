@@ -36,6 +36,27 @@
 
 #if ENABLE_EMBEDDED_BROWSER
 
+#if !defined(_WIN32)
+// ---------------------------------------------------------------------------
+// macOS / non-Windows: the embedded browser is an Internet-Explorer ActiveX
+// embedding (BrowserEngine.dll, COM, OLE automation). It has no analogue on
+// macOS and is effectively dead. We provide no-op method bodies so the engine
+// links and the feature is simply absent at runtime.
+// TODO(macos): no replacement planned; an embedded web view would need WebKit.
+// ---------------------------------------------------------------------------
+HWND DX8WebBrowser::hWnd = nullptr;
+
+bool DX8WebBrowser::Initialize(const char*, const char*, const char*, const char*) { return false; }
+void DX8WebBrowser::Shutdown() {}
+void DX8WebBrowser::Update() {}
+void DX8WebBrowser::Render(int) {}
+void DX8WebBrowser::CreateBrowser(const char*, const char*, int, int, int, int, int, LONG, LPDISPATCH) {}
+void DX8WebBrowser::DestroyBrowser(const char*) {}
+bool DX8WebBrowser::Is_Browser_Open(const char*) { return false; }
+void DX8WebBrowser::Navigate(const char*, const char*) {}
+
+#else // _WIN32
+
 #if defined(_MSC_VER) && _MSC_VER < 1300
 
 // Import the Browser Type Library
@@ -259,5 +280,7 @@ void	DX8WebBrowser::Navigate(const char* browsername, const char* url)
 	if(pBrowser == 0) return;
 	pBrowser->Navigate(_bstr_t(browsername),_bstr_t(url));
 }
+
+#endif // _WIN32
 
 #endif

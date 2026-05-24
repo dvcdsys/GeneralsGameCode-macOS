@@ -60,6 +60,13 @@ void __attribute__((constructor(101))) GccPreStaticInit() { Debug::PreStaticInit
 void __attribute__((constructor(65434))) GccPostStaticInit() { Debug::PostStaticInit(); }
 void *Debug::PreStatic = nullptr;
 void *Debug::PostStatic = nullptr;
+#elif defined(__GNUC__) || defined(__clang__)
+// TheSuperHackers @port macos: Clang/GCC on non-Windows (e.g. macOS arm64).
+// Use the same constructor-attribute mechanism as MinGW-w64 above.
+void __attribute__((constructor(101))) GccPreStaticInit() { Debug::PreStaticInit(); }
+void __attribute__((constructor(65434))) GccPostStaticInit() { Debug::PostStaticInit(); }
+void *Debug::PreStatic = nullptr;
+void *Debug::PostStatic = nullptr;
 #else
 #error "Unsupported compiler or platform. This code requires MSVC or GCC/MinGW-w64 targeting Windows."
 #endif
@@ -292,7 +299,8 @@ void Debug::InstallExceptionHandler()
   // MinGW-w64 doesn't support _set_se_translator, use Vectored Exception Handler
   AddVectoredExceptionHandler(1, LocalVectoredExceptionHandler);
 #else
-  #error "Unsupported compiler for exception handling"
+  // TheSuperHackers @port macos: no Win32 structured exception handling on POSIX.
+  // The crash dialog / SE translation path is Windows-only; skip it here.
 #endif
 }
 
@@ -321,7 +329,13 @@ bool Debug::SkipNext()
     : "memory"
   );
 #else
-  #error "Unsupported compiler or architecture for inline assembly"
+  // Portable path (e.g. arm64/macOS): the x86 asm above just fetches the caller
+  // return address from the saved frame pointer. __builtin_return_address(0) is
+  // the architecture-neutral equivalent. The frame address is truncated into the
+  // 32-bit "help"/curStackFrame slot below; on 64-bit it loses the high bits but
+  // is only used as a hash key for per-frame log throttling, so a collision is
+  // harmless (worst case a log line is throttled slightly differently).
+  help = (unsigned)(uintptr_t)__builtin_return_address(0);
 #endif
   curStackFrame=help;
 
@@ -884,7 +898,12 @@ Debug& Debug::operator<<(__int64 val)
   return (*this) << _i64toa(val,help,m_radix);
 }
 
+#ifdef _WIN32
 Debug& Debug::operator<<(unsigned __int64 val)
+#else
+// See debug_debug.h: "unsigned __int64" is invalid where __int64 is a typedef.
+Debug& Debug::operator<<(UNSIGNED_INT64_COMPAT val)
+#endif
 {
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea
@@ -932,7 +951,7 @@ Debug& Debug::operator<<(const MemDump &dump)
   {
     // address
     char buf[9];
-    sprintf(buf,"%08x",dump.m_absAddr?unsigned(cur):cur-dump.m_startPtr);
+    sprintf(buf,"%08x",dump.m_absAddr?unsigned((uintptr_t)cur):unsigned(cur-dump.m_startPtr));
     operator<<(buf);
 
     // items
@@ -1010,9 +1029,9 @@ bool Debug::IsLogEnabled(const char *fileOrGroup)
   // to be used from the D_ISLOG macros only and those guarantee
   // that we are having real static strings let's use
   // that strings address as frame address...
-  FrameHashEntry *e=Instance.LookupFrame((unsigned)fileOrGroup);
+  FrameHashEntry *e=Instance.LookupFrame((unsigned)(uintptr_t)fileOrGroup);
   if (!e)
-    e=Instance.AddFrameEntry((unsigned)fileOrGroup,FrameTypeLog,fileOrGroup,0);
+    e=Instance.AddFrameEntry((unsigned)(uintptr_t)fileOrGroup,FrameTypeLog,fileOrGroup,0);
   if (e->status==Unknown)
     Instance.UpdateFrameStatus(*e);
   return e->status==NoSkip;
@@ -1646,12 +1665,14 @@ void Debug::ExecCommand(const char *cmdstart, const char *cmdend)
   DebugFreeMemory(strbuf);
 }
 
+#ifdef _WIN32
 // little helper to get app window
 static BOOL CALLBACK EnumThreadWndProc(HWND hwnd, LPARAM lParam)
 {
   *(HWND *)lParam=hwnd;
   return FALSE;
 }
+#endif
 
 bool Debug::IsWindowed()
 {
@@ -1659,6 +1680,7 @@ bool Debug::IsWindowed()
   if (m_isWindowed)
     return m_isWindowed>0;
 
+#ifdef _WIN32
   // find main app window
   HWND appHWnd=nullptr;
   EnumThreadWindows(GetCurrentThreadId(),EnumThreadWndProc,(LPARAM)&appHWnd);
@@ -1672,6 +1694,11 @@ bool Debug::IsWindowed()
   // we assume full screen if WS_CAPTION is not set
   m_isWindowed=(GetWindowLong(appHWnd,GWL_STYLE)&WS_CAPTION)?1:-1;
   return m_isWindowed>0;
+#else
+  // TheSuperHackers @port macos: no Win32 window enumeration; assume windowed.
+  m_isWindowed=1;
+  return true;
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////////

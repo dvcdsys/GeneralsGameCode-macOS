@@ -28,6 +28,10 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__APPLE__)
+#include <strings.h>  // strcasecmp for GEN_FORCE_* env-var harness
+#endif
+
 #include "Common/ActionManager.h"
 #include "Common/AudioAffect.h"
 #include "Common/BuildAssistant.h"
@@ -727,6 +731,123 @@ void GameEngine::init()
 				InitRandom(0);
 			}
 		}
+
+#if defined(__APPLE__)
+		// macOS port: graphics-quality test harness. Forces a static LOD preset
+		// (Low/Medium/High/VeryHigh) and/or overrides individual graphics flags
+		// AFTER the engine has applied the user's saved Options.ini preset.
+		// Used for methodical one-flag-at-a-time validation of the rendering
+		// path (see the "Graphics quality scaling" section in MACOS_PORT_PLAN.md).
+		//
+		// Boolean env vars: "0"/"no"/"false"/empty => disable; anything else => enable.
+		// GEN_FORCE_WATER_TYPE accepts 0/1/2 (translucent/FB-reflection/PS).
+		{
+			auto parseBool = [](const char* v) -> int {
+				if (!v || !v[0]) return -1;
+				if (v[0]=='0' || !strcasecmp(v,"no") || !strcasecmp(v,"false") || !strcasecmp(v,"off")) return 0;
+				return 1;
+			};
+
+			// 1) Preset first — re-apply if requested. Honoured even when Options.ini
+			//    already chose a preset, so command-line iteration is cheap.
+			if (const char *p = ::getenv("GEN_GFX_PRESET"); p && p[0] && TheGameLODManager)
+			{
+				StaticGameLODLevel lvl = STATIC_GAME_LOD_UNKNOWN;
+				if      (!strcasecmp(p, "low"))      lvl = STATIC_GAME_LOD_LOW;
+				else if (!strcasecmp(p, "medium"))   lvl = STATIC_GAME_LOD_MEDIUM;
+				else if (!strcasecmp(p, "high"))     lvl = STATIC_GAME_LOD_HIGH;
+				else if (!strcasecmp(p, "veryhigh") || !strcasecmp(p, "very_high") || !strcasecmp(p, "ultra"))
+					lvl = STATIC_GAME_LOD_VERY_HIGH;
+				if (lvl != STATIC_GAME_LOD_UNKNOWN) {
+					TheGameLODManager->setStaticLODLevel(lvl);
+					DEBUG_LOG(("[gfx-harness] forced static LOD preset = %s", p));
+				}
+			}
+
+			// 2) Individual flag overrides, applied AFTER the preset. Each var that
+			//    is unset leaves the current value alone, so harness env-vars
+			//    cleanly compose with an arbitrary base preset.
+			bool shadowsChanged = false;
+			Bool prevVol  = TheGlobalData->m_useShadowVolumes;
+			Bool prevDec  = TheGlobalData->m_useShadowDecals;
+
+			int v;
+			if ((v = parseBool(::getenv("GEN_FORCE_SHADOW_VOL")))     >= 0) TheWritableGlobalData->m_useShadowVolumes        = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_SHADOW_DECAL")))   >= 0) TheWritableGlobalData->m_useShadowDecals         = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_CLOUDMAP")))       >= 0) TheWritableGlobalData->m_useCloudMap             = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_LIGHTMAP")))       >= 0) TheWritableGlobalData->m_useLightMap             = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_SOFTWATER")))      >= 0) TheWritableGlobalData->m_showSoftWaterEdge       = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_TREESWAY")))       >= 0) TheWritableGlobalData->m_useTreeSway             = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_BUILDUPS")))       >= 0) TheWritableGlobalData->m_useDrawModuleLOD        = v ? FALSE : TRUE;  // inverted: buildups=on => DrawModuleLOD=off
+			// NOTE: m_useEmissiveNightMaterials is read from GameLOD.ini but the
+			// engine never propagates it into GlobalData and nothing actually
+			// reads the StaticGameLODInfo field at render time — it's dead. No
+			// GEN_FORCE_NIGHT_EMISSIVE override.
+			if ((v = parseBool(::getenv("GEN_FORCE_HEAT")))           >= 0) TheWritableGlobalData->m_useHeatEffects          = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_TREES")))          >= 0) TheWritableGlobalData->m_useTrees                = v ? TRUE : FALSE;
+			if ((v = parseBool(::getenv("GEN_FORCE_BUILDING_OCC")))   >= 0) TheWritableGlobalData->m_enableBehindBuildingMarkers = v ? TRUE : FALSE;
+
+			if (const char *w = ::getenv("GEN_FORCE_WATER_TYPE"); w && w[0]) {
+				int wt = atoi(w);
+				if (wt >= 0 && wt <= 2) {
+					TheWritableGlobalData->m_waterType = wt;
+					DEBUG_LOG(("[gfx-harness] forced m_waterType = %d", wt));
+				}
+			}
+
+			shadowsChanged = (TheGlobalData->m_useShadowVolumes != prevVol)
+			              || (TheGlobalData->m_useShadowDecals  != prevDec);
+			if (shadowsChanged && TheGameClient) {
+				// Match applyStaticLODLevel — shadow allocation must be cycled when
+				// the on/off state of either shadow path changes.
+				TheGameClient->releaseShadows();
+				TheGameClient->allocateShadows();
+			}
+
+			DEBUG_LOG(("[gfx-harness] FINAL: shadowVol=%d shadowDec=%d cloud=%d light=%d "
+			           "softWater=%d treeSway=%d buildups=%d heat=%d "
+			           "trees=%d behindBuilding=%d waterType=%d",
+			           (int)TheGlobalData->m_useShadowVolumes,
+			           (int)TheGlobalData->m_useShadowDecals,
+			           (int)TheGlobalData->m_useCloudMap,
+			           (int)TheGlobalData->m_useLightMap,
+			           (int)TheGlobalData->m_showSoftWaterEdge,
+			           (int)TheGlobalData->m_useTreeSway,
+			           (int)!TheGlobalData->m_useDrawModuleLOD,
+			           (int)TheGlobalData->m_useHeatEffects,
+			           (int)TheGlobalData->m_useTrees,
+			           (int)TheGlobalData->m_enableBehindBuildingMarkers,
+			           (int)TheGlobalData->m_waterType));
+		}
+
+		// macOS port debugging convenience: GEN_AUTO_SKIRMISH=1 (optionally
+		// GEN_AUTO_MAP=<map path>) launches straight into a 1-human-vs-1-easy-AI
+		// skirmish on startup, skipping the shell menus. This makes it cheap to
+		// repeatedly reproduce in-game issues without clicking through the UI.
+		{
+			const char *autoSkirmish = ::getenv("GEN_AUTO_SKIRMISH");
+			if (autoSkirmish && autoSkirmish[0] && autoSkirmish[0] != '0')
+			{
+				TheWritableGlobalData->m_shellMapOn = FALSE;
+				TheWritableGlobalData->m_playIntro = FALSE;
+				TheWritableGlobalData->m_afterIntro = TRUE;
+				const char *autoMap = ::getenv("GEN_AUTO_MAP");
+				DebugAutoStartSkirmish(autoMap ? autoMap : "");
+			}
+		}
+		// GEN_QUICK_MENU=1: skip cinematic intro + shellmap backdrop and land on
+		// the main menu immediately, for fast UI-debug iteration (menu button
+		// borders, fonts, dialog rendering, etc.).
+		{
+			const char *quickMenu = ::getenv("GEN_QUICK_MENU");
+			if (quickMenu && quickMenu[0] && quickMenu[0] != '0')
+			{
+				TheWritableGlobalData->m_shellMapOn = FALSE;
+				TheWritableGlobalData->m_playIntro = FALSE;
+				TheWritableGlobalData->m_afterIntro = TRUE;
+			}
+		}
+#endif
 
 		//
 		if (TheMapCache && TheGlobalData->m_shellMapOn)

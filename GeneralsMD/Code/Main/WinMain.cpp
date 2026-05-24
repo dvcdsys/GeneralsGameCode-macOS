@@ -974,3 +974,18 @@ GameEngine *CreateGameEngine()
 	return engine;
 
 }
+
+// main =======================================================================
+// On Windows the C runtime provides WinMainCRTStartup which calls WinMain. On
+// macOS the linker needs a standard `main`; provide one that forwards into
+// WinMain so the engine entry point is reached. The HINSTANCE/show args have
+// no meaning on macOS (no Win32 message loop yet); pass benign defaults.
+//=============================================================================
+#if !defined(_WIN32)
+int main(int argc, char* argv[])
+{
+	(void)argc;
+	(void)argv;
+	return WinMain(nullptr, nullptr, (LPSTR)"", 0 /*SW_HIDE*/);
+}
+#endif

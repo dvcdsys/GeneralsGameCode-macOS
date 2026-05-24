@@ -89,7 +89,16 @@ void MissingTexture::_Init()
 		for (unsigned x=0; x<missing_image_width; x++)
 		{
 			//*buffer++=missing_image_palette[*pixels++];
+#if defined(__APPLE__)
+			// TheSuperHackers @port On macOS a few menu/world assets are absent
+			// (e.g. the main-menu backdrop is the 3D shell scene — Stage 4). The
+			// garish 50%-alpha magenta placeholder is drawn full-screen and veils
+			// the real UI, so use a fully transparent placeholder instead: real
+			// content shows through and missing assets simply don't draw.
+			*buffer++=0x00000000;
+#else
 			*buffer++=0x7FFF00FF;
+#endif
 		}
 		buffer=(unsigned*)locked_rect.pBits;
 		buffer+=locked_rect.Pitch/sizeof(unsigned)*y;

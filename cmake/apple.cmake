@@ -28,6 +28,7 @@ if(APPLE)
     add_compile_options(
         -fno-strict-aliasing
         -Wno-deprecated-declarations    # Apple deprecates plenty of POSIX symbols we still use
+        -fdeclspec                      # engine + DX8/Bink stub headers use __declspec(...)
     )
 
     # Allow the same math constants idiom the rest of the code uses.
@@ -52,6 +53,8 @@ if(APPLE)
         "-framework Metal"
         "-framework MetalKit"
         "-framework QuartzCore"
+        "-framework CoreText"
+        "-framework CoreGraphics"
         "-framework Security"
     )
 

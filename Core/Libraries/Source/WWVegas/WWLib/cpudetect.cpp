@@ -32,6 +32,11 @@
 # include <time.h>  // for time(), localtime() and timezone variable.
 #endif
 
+#if defined(__APPLE__)
+// Apple Silicon (arm64) has no x86 CPUID/RDTSC; query CPU facts via sysctl.
+# include <sys/sysctl.h>
+#endif
+
 struct OSInfoStruct {
 	const char* Code;
 	const char* SubCode;
@@ -158,6 +163,19 @@ static unsigned Calculate_Processor_Speed(sint64& ticks_per_second)
 
 void CPUDetectClass::Init_Processor_Speed()
 {
+#if defined(__APPLE__) && defined(__aarch64__)
+	// Apple Silicon: __builtin_readcyclecounter reads the fixed ~24MHz virtual
+	// timebase (CNTVCT), not the CPU clock, so the RDTSC-style MHz estimate comes
+	// out at ~24 — which makes the engine's GameLOD heuristics think this is a
+	// "really low MHz" machine and disable features (e.g. the shell-map 3D
+	// backdrop). Establish the counter tick rate (for timing conversions), then
+	// report a representative performance-core clock so the LOD classification is
+	// correct.
+	Calculate_Processor_Speed(ProcessorTicksPerSecond);
+	InvProcessorTicksPerSecond = (ProcessorTicksPerSecond != 0) ? 1.0/double(ProcessorTicksPerSecond) : 0.0;
+	ProcessorSpeed = 3000;   // Apple Silicon P-cores run ~3-4 GHz
+	return;
+#endif
 	if (!Has_RDTSC_Instruction()) {
 		ProcessorSpeed=0;
 		return;
@@ -733,6 +751,16 @@ void CPUDetectClass::Init_Processor_Family()
 
 void CPUDetectClass::Init_Processor_String()
 {
+#if defined(__APPLE__) && defined(__aarch64__)
+	// Apple Silicon: no cpuid-based brand string. Query the human-readable CPU
+	// brand from sysctl (e.g. "Apple M1 Pro").
+	size_t len = sizeof(ProcessorString);
+	if (sysctlbyname("machdep.cpu.brand_string", ProcessorString, &len, nullptr, 0) != 0) {
+		strlcpy(ProcessorString, "Apple Silicon (arm64)", sizeof(ProcessorString));
+	}
+	return;
+#endif
+
 	if (!Has_CPUID_Instruction()) {
 		ProcessorString[0]='\0';
 	}
@@ -811,6 +839,16 @@ void CPUDetectClass::Init_CPUID_Instruction()
 {
 	unsigned long cpuid_available=0;
 
+#if defined(__APPLE__) && defined(__aarch64__)
+	// Apple Silicon: there is no x86 CPUID instruction. Mark it unavailable so
+	// the x86 feature/manufacturer/string detection (all driven by cpuid) is
+	// skipped; arm64 facts are filled in directly in Init_Processor_Features /
+	// Init_Processor_String via sysctl.
+	(void)cpuid_available;
+	HasCPUIDInstruction = false;
+	return;
+#endif
+
    // The pushfd/popfd commands are done using emits
    // because CodeWarrior seems to have problems with
    // the command (huh?)
@@ -866,6 +904,25 @@ void CPUDetectClass::Init_CPUID_Instruction()
 
 void CPUDetectClass::Init_Processor_Features()
 {
+#if defined(__APPLE__) && defined(__aarch64__)
+	// Apple Silicon: the x86 feature bits (MMX/SSE/SSE2/3DNow) do not exist on
+	// arm64, so they correctly stay false. NEON/AdvSIMD is mandatory on arm64,
+	// but the engine has no NEON feature flag to set. RDTSC has no direct arm64
+	// analogue here; high-res timing uses mach_absolute_time elsewhere, and the
+	// _rdtsc() compat shim maps to __builtin_readcyclecounter, so report the
+	// timestamp counter as available.
+	FeatureBits = 0;
+	ExtendedFeatureBits = 0;
+	HasRDTSCInstruction = true;
+	HasCMOVSupport = false;
+	HasMMXSupport = false;
+	HasSSESupport = false;
+	HasSSE2Support = false;
+	Has3DNowSupport = false;
+	HasExtended3DNowSupport = false;
+	return;
+#endif
+
 	if (!CPUDetectClass::Has_CPUID_Instruction()) return;
 
 	CPUIDStruct id(1);
@@ -918,6 +975,20 @@ void CPUDetectClass::Init_Memory()
    AvailableVirtualMemory  = mem.ullAvailVirtual;
 #endif // defined(_MSC_VER) && _MSC_VER < 1300
 
+#elif defined(__APPLE__)
+	// macOS: query installed physical RAM via sysctl. Without this the values
+	// stay 0, which makes GameLOD think the machine has < 256MB and disable
+	// features (e.g. the shell-map 3D backdrop).
+	uint64_t memsize = 0;
+	size_t   memlen  = sizeof(memsize);
+	if (sysctlbyname("hw.memsize", &memsize, &memlen, nullptr, 0) != 0)
+		memsize = 0;
+	TotalPhysicalMemory     = memsize;
+	AvailablePhysicalMemory = memsize;   // no cheap exact figure; report installed
+	TotalPageMemory         = memsize;
+	AvailablePageMemory     = memsize;
+	TotalVirtualMemory      = memsize;
+	AvailableVirtualMemory  = memsize;
 #else
 #warning FIX Init_Memory()
 #endif // WIN32
@@ -1144,6 +1215,16 @@ public:
 			CPUDetectClass::Init_Memory();
 			CPUDetectClass::Init_OS();
 		}
+#if defined(__APPLE__) && defined(__aarch64__)
+		// Apple Silicon has no x86 CPUID, so the block above is skipped. Run the
+		// sysctl-backed inits the engine still needs — most importantly
+		// Init_Memory(), without which TotalPhysicalMemory stays 0 and GameLOD
+		// disables features (e.g. the shell-map 3D backdrop) thinking the machine
+		// has < 256MB RAM.
+		CPUDetectClass::Init_Processor_String();
+		CPUDetectClass::Init_Processor_Features();
+		CPUDetectClass::Init_Memory();
+#endif
 		CPUDetectClass::Init_Processor_Speed();
 
 		CPUDetectClass::Init_Processor_Log();

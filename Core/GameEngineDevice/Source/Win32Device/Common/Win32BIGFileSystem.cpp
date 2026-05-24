@@ -65,6 +65,43 @@ void Win32BIGFileSystem::init() {
     GetStringFromGeneralsRegistry("", "InstallPath", installPath );
     //@todo this will need to be ramped up to a crash for release
     DEBUG_ASSERTCRASH(!installPath.isEmpty(), ("Be 1337! Go install Generals!"));
+#if defined(__APPLE__)
+    // TheSuperHackers @port macOS-port: registry stub doesn't auto-populate the
+    // Generals install path, so the engine ends up running with only the ZH BIGs.
+    // ZH only references terrain TGAs in its INIs; the actual files live in
+    // vanilla Generals's Terrain.big. Without these the heightmap loads no
+    // m_sourceTiles[], every vertex UV ends up at (0,0), and the entire terrain
+    // renders pitch black with only props/units visible. Hunt a sibling
+    // "Command and Conquer Generals" directory automatically + honor a
+    // GEN_GENERALS_PATH env-var override.
+    if (installPath.isEmpty()) {
+        const char* envPath = ::getenv("GEN_GENERALS_PATH");
+        if (envPath && *envPath) {
+            installPath = envPath;
+            DEBUG_LOG(("Generals install path: env GEN_GENERALS_PATH=%s", envPath));
+        }
+    }
+    if (installPath.isEmpty()) {
+        // Try a sibling directory of the ZH install (most common layout: both
+        // ".../Command and Conquer Generals Zero Hour" and ".../Command and
+        // Conquer Generals" share a parent). Probe the cwd's parent first.
+        const char* candidates[] = {
+            "../Command and Conquer Generals/",
+            "../Command and Conquer Generals/Command and Conquer Generals/",
+            "/Users/Shared/Command and Conquer Generals/",
+            NULL
+        };
+        for (int i = 0; candidates[i]; ++i) {
+            AsciiString probe = candidates[i];
+            probe.concat("INI.big");
+            if (TheLocalFileSystem->doesFileExist(probe.str())) {
+                installPath = candidates[i];
+                DEBUG_LOG(("Generals install path auto-detected: %s", candidates[i]));
+                break;
+            }
+        }
+    }
+#endif
     if (!installPath.isEmpty())
       loadBigFilesFromDirectory(installPath, "*.big");
 #endif

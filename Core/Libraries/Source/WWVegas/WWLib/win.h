@@ -82,5 +82,16 @@ void __cdecl Print_Win32Error(unsigned long win32Error);
 #endif // RTS_DEBUG
 
 #else // _WIN32
-//#include <unistd.h>	// file does not exist
+
+// Non-Windows (macOS / Linux): pull in the <windows.h> compatibility shim so
+// the Win32 type vocabulary (HINSTANCE, HWND, LONG, ...) used by this header
+// and by code that includes it (e.g. the DX8 SDK type headers) is available.
+#include <windows.h>
+
+extern HINSTANCE	ProgramInstance;
+extern HWND			MainWindow;
+extern bool GameInFocus;
+
+#define Print_Win32Error
+
 #endif // _WIN32

@@ -29,6 +29,14 @@
 
 #pragma once
 
+#ifndef _WIN32
+// These public profile headers use MSVC vocabulary (_int64, __int64,
+// __forceinline) directly. On non-Windows pull in the compat shims first so the
+// headers parse standalone. (windows.h here is the osdep_compat shim.)
+#include <windows.h>
+#include <Utility/compat.h>
+#endif
+
 // include all our public header files (use double quotes here)
 #include "profile_doc.h"
 #include "profile_highlevel.h"

@@ -1704,6 +1704,15 @@ void W3DView::update()
 
 	// render all of the visible Drawables
 	/// @todo this needs to use a real region partition or something
+#if defined(__APPLE__)
+	// macOS port bisect: GEN_NO_DRAWABLES=1 — skip all 3D drawable rendering
+	// (units, buildings, vehicles, props). Leaves terrain + UI intact. Use this
+	// to determine whether a render artefact originates from any per-drawable
+	// 3D path (W3DModelDraw, W3DProjectileStreamDraw, particles, etc.).
+	static int s_skipDrawables = -1;
+	if (s_skipDrawables < 0) s_skipDrawables = ::getenv("GEN_NO_DRAWABLES") ? 1 : 0;
+	if (!s_skipDrawables)
+#endif
 	TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawDrawable, nullptr );
 }
 
@@ -2073,13 +2082,38 @@ void W3DView::draw()
 	//
 	TheGameClient->resetRenderedObjectCount();
 
+#if defined(__APPLE__)
+	// macOS port bisect: persistent player-color rect repro
+	//   GEN_NO_POSTDRAW=1     skip drawablePostDraw (all per-drawable 2D overlays:
+	//                         health bar, caption, ammo, veterancy, emoticon, ...)
+	//   GEN_NO_TEXT_BEARING=1 skip flushTextBearingDrawables (caption text render
+	//                         pass via Render2DSentenceClass)
+	//   GEN_NO_2DSCENE=1      skip the dedicated 2D scene (mini-map, control bar
+	//                         icons, cursor sprite, anything in m_2DScene)
+	static int s_skipPostDraw    = -1;
+	static int s_skipTextBearing = -1;
+	static int s_skip2DScene     = -1;
+	if (s_skipPostDraw    < 0) s_skipPostDraw    = ::getenv("GEN_NO_POSTDRAW")     ? 1 : 0;
+	if (s_skipTextBearing < 0) s_skipTextBearing = ::getenv("GEN_NO_TEXT_BEARING") ? 1 : 0;
+	if (s_skip2DScene     < 0) s_skip2DScene     = ::getenv("GEN_NO_2DSCENE")      ? 1 : 0;
+#endif
+
 	TheDisplay->beginBatch();
+#if defined(__APPLE__)
+	if (!s_skipPostDraw)
+#endif
 	TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
 	TheDisplay->endBatch();
 
+#if defined(__APPLE__)
+	if (!s_skipTextBearing)
+#endif
 	TheGameClient->flushTextBearingDrawables();
 
 	// Render 2D scene
+#if defined(__APPLE__)
+	if (!s_skip2DScene)
+#endif
 	W3DDisplay::m_2DScene->doRender( m_2DCamera );
 }
 

@@ -36,6 +36,12 @@
 
 #pragma once
 
+#ifndef _WIN32
+// macOS / Linux: the Miles stub mss.h does not pull in the Win32 type
+// vocabulary, but this header declares a HANDLE-typed member function.
+#include <windows.h>
+#endif
+
 #pragma warning (push, 3)
 #include "mss.h"
 #pragma warning (pop)

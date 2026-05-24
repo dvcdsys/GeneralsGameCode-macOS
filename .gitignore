@@ -49,6 +49,13 @@ thumbs.db
 /Dependencies/MaxSDK/maxsdk
 /tmp/
 
+## EA proprietary game assets — NEVER commit these.
+## The `original/` directory holds the user's local Generals Zero Hour install
+## (Generals.dat, *.big archives, Activation.dll, EA shaders, audio, models).
+## These are proprietary EA content protected by copyright; even on a private
+## GitHub repo this should not be uploaded.
+/original/
+
 ## AI assistant config (user-specific)
 /.claude/
 /CLAUDE.md

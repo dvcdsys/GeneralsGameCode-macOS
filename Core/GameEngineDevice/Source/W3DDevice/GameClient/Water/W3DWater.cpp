@@ -71,6 +71,15 @@
 
 #define MIPMAP_BUMP_TEXTURE
 
+#if defined(__APPLE__)
+// TheSuperHackers @debug macOS-port: tag the trapezoid-water draw call so the
+// Metal shim's MTL_WATERGEOM probe can isolate it from the river-water draws
+// (both share FVF 0x252). Set to 1 immediately before Draw_Triangles in
+// drawTrapezoidWater(), cleared to 0 right after.
+static int g_inTrapWater = 0;
+extern "C" int MetalDebug_InTrapezoidWater(void) { return g_inTrapWater; }
+#endif
+
 // DEFINES ////////////////////////////////////////////////////////////////////////////////////////
 #define SKYPLANE_SIZE	(384.0f*MAP_XY_FACTOR)
 #define SKYPLANE_HEIGHT	(30.0f)
@@ -1532,6 +1541,22 @@ void WaterRenderObjClass::Render(RenderInfoClass & rinfo)
 	if (TheTerrainRenderObject && !TheTerrainRenderObject->getMap())
 		return;	//no map has been loaded yet.
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_WATER=1 skips all water rendering.
+	// Diagnostic A/B for the shellmap "black grid": if it vanishes, the dark grid
+	// is the water plane (and ships are likely hidden under/by it). Zero cost off.
+	{ static int s_noWater = -1; if (s_noWater < 0) s_noWater = getenv("GEN_NO_WATER") ? 1 : 0;
+	  if (s_noWater) return; }
+	{ static int s_once = 0; if (getenv("MTL_DEBUG") && s_once < 1) { ++s_once;
+	    fprintf(stderr, "[water] type=%d trapezoidPS=%d riverTex=%p doWaterGrid=%d featherWater=%d tod=%d waterDiffuse=0x%08x stdTex='%s' transpDepth=%d\n",
+	            (int)m_waterType, (int)(m_trapezoidWaterPixelShader!=0), (void*)m_riverTexture,
+	            (int)m_doWaterGrid, (int)TheGlobalData->m_featherWater, (int)m_tod,
+	            (unsigned)m_settings[m_tod].waterDiffuse,
+	            TheWaterTransparency ? TheWaterTransparency->m_standingWaterTexture.str() : "(null)",
+	            TheWaterTransparency ? (int)TheWaterTransparency->m_transparentWaterDepth : -1);
+	    fflush(stderr); } }
+#endif
+
 	if (((RTS3DScene *)rinfo.Camera.Get_User_Data())->getCustomPassMode() == SCENE_PASS_ALPHA_MASK ||
 		((SceneClass *)rinfo.Camera.Get_User_Data())->Get_Extra_Pass_Polygon_Mode() == SceneClass::EXTRA_PASS_CLEAR_LINE)
 		return;	//water is not drawn in wireframe or custom scene passes
@@ -2319,6 +2344,11 @@ void WaterRenderObjClass::renderWaterMesh()
 	alpha -= 0x20;
 	diffuse |= alpha<<24;
 
+#if defined(__APPLE__)
+	{ static int s_ws = -1; if (s_ws < 0) s_ws = getenv("GEN_WATER_SOLID") ? 1 : 0;
+	  if (s_ws) diffuse = 0xffffffff; }
+#endif
+
 	//I pulled some of these constants out of the loops for speed:
 	Real uvCosScale=0.02*cos(3*m_riverVOrigin);
 	Real sinOffset=25*m_riverVOrigin;
@@ -2797,6 +2827,15 @@ void WaterRenderObjClass::drawRiverWater(PolygonTrigger *pTrig)
 	//Keep diffuse from lighting calculations but substitute custom alpha
 	diffuse |= m_settings[m_tod].waterDiffuse & 0xff000000;	//copy alpha/opacity from ini setting
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_WATER_SOLID=1 forces opaque white water
+	// (paired with a null stage-0 texture in setupFlatWaterShader). Reveals the raw
+	// water GEOMETRY/coverage so we can tell if the "black grid" is geometry gaps vs
+	// the water texture pattern. Zero cost when unset.
+	{ static int s_ws = -1; if (s_ws < 0) s_ws = getenv("GEN_WATER_SOLID") ? 1 : 0;
+	  if (s_ws) diffuse = 0xffffffff; }
+#endif
+
 	Int innerNdx = pTrig->getRiverStart();
 	Int outerNdx = innerNdx+1;
 
@@ -2940,6 +2979,10 @@ void WaterRenderObjClass::setupFlatWaterShader()
 {
 
 	DX8Wrapper::Set_Texture(0,m_riverTexture);
+#if defined(__APPLE__)
+	{ static int s_ws = -1; if (s_ws < 0) s_ws = getenv("GEN_WATER_SOLID") ? 1 : 0;
+	  if (s_ws) DX8Wrapper::Set_Texture(0, nullptr); }  // expose raw water geometry
+#endif
 	if (!TheWaterTransparency->m_additiveBlend)
 		DX8Wrapper::Set_Shader(ShaderClass::_PresetAlphaShader);
 	else
@@ -3137,6 +3180,13 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 	//Keep diffuse from lighting calculations but substitute custom alpha
 	diffuse |= m_settings[m_tod].waterDiffuse & 0xff000000;	//copy alpha/opacity from ini setting
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_WATER_SOLID=1 -> opaque white water (+
+	// null stage-0 texture in setupFlatWaterShader) to expose raw water geometry.
+	{ static int s_ws = -1; if (s_ws < 0) s_ws = getenv("GEN_WATER_SOLID") ? 1 : 0;
+	  if (s_ws) diffuse = 0xffffffff; }
+#endif
+
 	DynamicVBAccessClass vb_access(BUFFER_TYPE_DYNAMIC_DX8,dynamic_fvf_type,(rectangleCount+1)*2);
 
 //#define WAVY_WATER
@@ -3298,7 +3348,13 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 //		}
 //#endif // FEATHER_WATER
 //#endif //WAVY_WATER
+#if defined(__APPLE__)
+		g_inTrapWater = 1;
+#endif
 		DX8Wrapper::Draw_Triangles(	0,rectangleCount*2, 0,	(rectangleCount+1)*2);//lorenzen thinks this is where to itereate the soft shoreline effect
+#if defined(__APPLE__)
+		g_inTrapWater = 0;
+#endif
 	}
 
 
@@ -3334,6 +3390,23 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 		}
 		else
 		{	//do second pass to apply the shroud on water plane for cards that can't do it in main pass.
+#if defined(__APPLE__)
+			// TheSuperHackers @fix macOS-port: this fallback "second pass" applies the shroud over
+			// water by re-drawing the trapezoid mesh with the SHROUD TEXTURE bound at stage 0 +
+			// the ST_SHROUD_TEXTURE multi-stage shader. On macOS the multi-stage TSS chain that
+			// shader expects is not emulated in the FF Metal shim, so the second pass renders as
+			// near-opaque black tiles over the water — that's the visible "black grid" on the
+			// shellmap. We have no PS path on Apple (PixelShaderVersion=0), so the proper fix
+			// (until shroud-on-water is implemented natively in Metal) is to SKIP this pass.
+			// The first water pass already drew the alpha-blended TWWater01 texture; gameplay
+			// shroud fog-of-war is still applied to terrain via TheTerrainRenderObject. Opt out
+			// of the skip with GEN_WATER_SHROUD_PASS2=1 for A/B testing.
+			static int s_skipShroudPass2 = -1;
+			if (s_skipShroudPass2 < 0)
+				s_skipShroudPass2 = getenv("GEN_WATER_SHROUD_PASS2") ? 0 : 1;
+			if (!s_skipShroudPass2)
+#endif
+			{
 			W3DShaderManager::setTexture(0,TheTerrainRenderObject->getShroud()->getShroudTexture());
 			W3DShaderManager::setShader(W3DShaderManager::ST_SHROUD_TEXTURE, 0);
 			DX8Wrapper::_Get_D3D_Device8()->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
@@ -3343,6 +3416,7 @@ void WaterRenderObjClass::drawTrapezoidWater(Vector3 points[4])
 			DX8Wrapper::Draw_Triangles(	0,rectangleCount*2, 0,	(rectangleCount+1)*2);
 			DX8Wrapper::_Get_D3D_Device8()->SetRenderState(D3DRS_ZFUNC, D3DCMP_EQUAL);
 			W3DShaderManager::resetShader(W3DShaderManager::ST_SHROUD_TEXTURE);
+			}
 		}
 	}
 	DX8Wrapper::_Get_D3D_Device8()->SetRenderState(D3DRS_CULLMODE, cull);

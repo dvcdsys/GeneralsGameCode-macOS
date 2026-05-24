@@ -65,6 +65,15 @@ if((WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows") AND ${CMAKE_SIZEOF_VOID_P} EQU
     include(cmake/miles.cmake)
     include(cmake/bink.cmake)
     include(cmake/dx8.cmake)
+elseif(APPLE)
+    # macOS MVP: the engine still references the Miles/Bink/DX8 API surface
+    # unconditionally (milesstub / binkstub / d3d8lib are linked by the Core
+    # public interface targets). Fetch the stub SDKs so the engine compiles and
+    # links; the real backends (OpenAL Soft, FFmpeg, d3d8to9 -> dxvk-native ->
+    # MoltenVK) are substituted at runtime in later porting phases.
+    include(cmake/miles.cmake)
+    include(cmake/bink.cmake)
+    include(cmake/dx8.cmake)
 endif()
 
 # Define a dummy stlport target when not on VC6.

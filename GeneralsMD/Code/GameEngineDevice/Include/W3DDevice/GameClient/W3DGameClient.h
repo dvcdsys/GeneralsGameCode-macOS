@@ -50,6 +50,9 @@
 #include "VideoDevice/FFmpeg/FFmpegVideoPlayer.h"
 #endif
 #include "Win32Device/GameClient/Win32DIKeyboard.h"
+#if defined(__APPLE__)
+#include "Win32Device/GameClient/CocoaKeyboard.h"
+#endif
 #include "Win32Device/GameClient/Win32DIMouse.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "W3DDevice/GameClient/W3DMouse.h"
@@ -126,7 +129,12 @@ protected:
 
 };
 
+#if defined(__APPLE__)
+// @port DirectInput is unavailable on macOS; use the Cocoa/NSEvent keyboard.
+inline Keyboard *W3DGameClient::createKeyboard() { return NEW CocoaKeyboard; }
+#else
 inline Keyboard *W3DGameClient::createKeyboard() { return NEW DirectInputKeyboard; }
+#endif
 inline Mouse *W3DGameClient::createMouse()
 {
 	//return new DirectInputMouse;

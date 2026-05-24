@@ -29,6 +29,15 @@
 
 #pragma once
 
+#ifndef _WIN32
+// This public header uses MSVC vocabulary (__int64, __forceinline) directly in
+// class declarations. On non-Windows pull in the compat type/keyword shims so
+// the header parses standalone. (windows.h here is the osdep_compat shim, not
+// the real Win32 header; compat.h provides __forceinline.)
+#include <windows.h>
+#include <Utility/compat.h>
+#endif
+
 /**
   \class Debug debug.h <rts/debug.h>
 
@@ -575,7 +584,13 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
     \param val unsigned 64 bit integer
     \return *this
   */
+#ifdef _WIN32
   Debug& operator<<(unsigned __int64 val);
+#else
+  // __int64 is a typedef (not a keyword) on non-MSVC, so "unsigned __int64" is
+  // not valid syntax; use the unsigned 64-bit compat typedef instead.
+  Debug& operator<<(UNSIGNED_INT64_COMPAT val);
+#endif
 
   /** \internal
 
@@ -731,8 +746,9 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
   void WriteBuildInfo();
 
 private:
-#if defined(__GNUC__) && defined(_WIN32)
-  // For GCC/MinGW-w64 targeting Windows, allow constructor functions to call init methods
+#if (defined(__GNUC__) && defined(_WIN32)) || (!defined(_WIN32) && (defined(__GNUC__) || defined(__clang__)))
+  // For GCC/MinGW-w64 (Windows) and Clang/GCC on POSIX, allow the constructor
+  // functions to call the private init methods.
   friend void GccPreStaticInit();
   friend void GccPostStaticInit();
 #endif

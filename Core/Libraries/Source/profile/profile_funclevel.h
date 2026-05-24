@@ -124,7 +124,13 @@ public:
       \param frame number of recorded frame, or Total
       \return number of calls
     */
+#ifdef _WIN32
     unsigned _int64 GetCalls(unsigned frame) const;
+#else
+    // _int64 is a typedef (not a keyword) on non-MSVC; "unsigned _int64" is not
+    // valid syntax, so use the unsigned 64-bit compat typedef instead.
+    UNSIGNED_INT64_COMPAT GetCalls(unsigned frame) const;
+#endif
 
     /**
       \brief Determine time spend in this function and its children.
@@ -132,7 +138,11 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend (in CPU ticks)
     */
+#ifdef _WIN32
     unsigned _int64 GetTime(unsigned frame) const;
+#else
+    UNSIGNED_INT64_COMPAT GetTime(unsigned frame) const;
+#endif
 
     /**
       \brief Determine time spend in this function only (exclude
@@ -141,7 +151,11 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend in this function alone (in CPU ticks)
     */
+#ifdef _WIN32
     unsigned _int64 GetFunctionTime(unsigned frame) const;
+#else
+    UNSIGNED_INT64_COMPAT GetFunctionTime(unsigned frame) const;
+#endif
 
     /**
       \brief Determine the list of caller Ids.
@@ -182,7 +196,11 @@ public:
     */
     unsigned GetId() const
     {
-      return unsigned(m_threadID);
+      // m_threadID is a pointer used as an opaque thread handle. On 64-bit
+      // builds casting straight to unsigned truncates the pointer; route through
+      // uintptr_t so the (already lossy by design) handle conversion is explicit
+      // and warning-free.
+      return unsigned(reinterpret_cast<uintptr_t>(m_threadID));
     }
 
   private:

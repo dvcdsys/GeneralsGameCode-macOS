@@ -104,7 +104,12 @@ SimplePersistFactoryClass<T,CHUNKID>::Load(ChunkLoadClass & cload) const
 
 	cload.Open_Chunk();
 	WWASSERT(cload.Cur_Chunk_ID() == SIMPLEFACTORY_CHUNKID_OBJPOINTER);
-	cload.Read(&old_obj,sizeof(T *));
+	// The on-disk pointer id is a 32-bit token (see Save below); read it as such and
+	// widen back to a pointer key. Reading sizeof(T*) would over-read on LP64 (macOS),
+	// where pointers are 64-bit but the saved field is 32-bit. No-op on Win32.
+	uint32 old_obj_id = 0;
+	cload.Read(&old_obj_id,sizeof(uint32));
+	old_obj = (T *)(uintptr_t)old_obj_id;
 	cload.Close_Chunk();
 
 	cload.Open_Chunk();
@@ -120,7 +125,10 @@ SimplePersistFactoryClass<T,CHUNKID>::Load(ChunkLoadClass & cload) const
 template<class T, int CHUNKID> void
 SimplePersistFactoryClass<T,CHUNKID>::Save(ChunkSaveClass & csave,PersistClass * obj) const
 {
-	uint32 objptr = (uint32)obj;
+	// Save the object pointer as a 32-bit fixup token (matches the historical Win32
+	// on-disk format). Cast through uintptr_t so the 64-bit pointer truncation is
+	// explicit on LP64 (macOS); no-op on Win32 where pointers are already 32-bit.
+	uint32 objptr = (uint32)(uintptr_t)obj;
 	csave.Begin_Chunk(SIMPLEFACTORY_CHUNKID_OBJPOINTER);
 	csave.Write(&objptr,sizeof(uint32));
 	csave.End_Chunk();

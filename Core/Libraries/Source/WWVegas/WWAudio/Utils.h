@@ -36,6 +36,13 @@
 
 #pragma once
 
+#ifndef _WIN32
+// macOS / Linux: pull in the Win32 type vocabulary (CRITICAL_SECTION, LPCTSTR)
+// and <cstring> for strrchr — the Miles stub mss.h does not provide them here.
+#include <windows.h>
+#include <string.h>  // ::strrchr in the global namespace
+#endif
+
 #pragma warning (push, 3)
 #include "mss.h"
 #pragma warning (pop)

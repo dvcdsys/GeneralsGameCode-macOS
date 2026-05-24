@@ -1704,6 +1704,18 @@ Bool WorldHeightMap::getUVForTileIndex(Int ndx, Short tileNdx, float U[4], float
 		if (nU==0.0) {
 			return false; // missing texture.
 		}
+#if defined(__APPLE__)
+		// TheSuperHackers @port macOS-port: env-var bisect for the "black quads
+		// on cliff peaks" artifact. GEN_CLIFF_NOSTRETCH=1 forces the function to
+		// return base-tile UVs without any cliff stretching (skipping the cliff
+		// info lookup and the OLD UV adjustment path below). If the black quads
+		// disappear with this set, the cliff UV stretching is the root cause.
+		{
+			static int s_noStretch = -1;
+			if (s_noStretch < 0) s_noStretch = ::getenv("GEN_CLIFF_NOSTRETCH") ? 1 : 0;
+			if (s_noStretch) return false;
+		}
+#endif
 		if (m_cliffInfoNdxes[ndx]) {
 			TCliffInfo info = m_cliffInfo[m_cliffInfoNdxes[ndx]];
 			Bool tilesMatch = false;

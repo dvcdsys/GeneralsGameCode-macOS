@@ -292,12 +292,20 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
+#if defined(__APPLE__)
+		// TheSuperHackers @port On macOS the Direct3D8 implementation is the
+		// Metal-backed backend statically linked into the executable (there is
+		// no D3D8.DLL to LoadLibrary). Bind Direct3DCreate8 directly; taking its
+		// address also forces the linker to retain the symbol.
+		Direct3DCreate8Ptr = &Direct3DCreate8;
+#else
 		D3D8Lib = LoadLibrary("D3D8.DLL");
 
 		if (D3D8Lib == nullptr) return false;	// Return false at this point if init failed
 
 		Direct3DCreate8Ptr = (Direct3DCreate8Type) GetProcAddress(D3D8Lib, "Direct3DCreate8");
 		if (Direct3DCreate8Ptr == nullptr) return false;
+#endif
 
 		/*
 		** Create the D3D interface object
@@ -714,11 +722,19 @@ void DX8Wrapper::Enumerate_Devices()
 			desc.set_driver_name(id.Driver);
 
 			char buf[64];
+#ifndef _WIN32
+			// TheSuperHackers @fix macos: the DX8 SDK's _D3DADAPTER_IDENTIFIER8
+			// only declares DriverVersion on the _WIN32 path; there is no real
+			// adapter to query yet, so report a placeholder driver version.
+			// TODO(macos): real impl needs a Metal-backed device enumeration.
+			strcpy(buf,"0.0.0.0");
+#else
 			sprintf(buf,"%d.%d.%d.%d", //"%04x.%04x.%04x.%04x",
 				HIWORD(id.DriverVersion.HighPart),
 				LOWORD(id.DriverVersion.HighPart),
 				HIWORD(id.DriverVersion.LowPart),
 				LOWORD(id.DriverVersion.LowPart));
+#endif
 
 			desc.set_driver_version(buf);
 
@@ -1197,6 +1213,17 @@ int DX8Wrapper::Get_Swap_Interval()
 
 bool DX8Wrapper::Has_Stencil()
 {
+#if defined(__APPLE__)
+	// macOS port: the D3D8->Metal shim now implements stencil ops (Stage 5):
+	// Depth32Float_Stencil8 attachment, D3DRS_STENCILENABLE/FUNC/REF/MASK/
+	// WRITEMASK/STENCIL{FAIL,ZFAIL,PASS} all routed into MTLStencilDescriptor
+	// + setStencilReferenceValue: per draw. Re-honour the format query.
+	// GEN_NO_STENCIL=1 escape hatch forces this off (useful for A/B if a
+	// stencil bug regresses something).
+	static int s_off = -1;
+	if (s_off < 0) s_off = ::getenv("GEN_NO_STENCIL") ? 1 : 0;
+	if (s_off) return false;
+#endif
 	bool has_stencil = (_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24S8 ||
 						_PresentParameters.AutoDepthStencilFormat == D3DFMT_D24X4S4);
 	return has_stencil;

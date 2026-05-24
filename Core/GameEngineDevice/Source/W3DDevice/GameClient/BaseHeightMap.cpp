@@ -176,6 +176,13 @@ void BaseHeightMapRenderObjClass::drawScorches()
 	if (m_curNumScorchIndices == 0) {
 		return;
 	}
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_SCORCH=1 skips the terrain
+	// scorch-mark layer. Diagnostic A/B for the "black blobs on terrain" — if
+	// the spots vanish, the bug is in scorch decal alpha/texture rendering.
+	{ static int s_noScorch = -1; if (s_noScorch < 0) s_noScorch = getenv("GEN_NO_SCORCH") ? 1 : 0;
+	  if (s_noScorch) return; }
+#endif
 	DX8Wrapper::Set_Index_Buffer(m_indexScorch,0);
 	DX8Wrapper::Set_Vertex_Buffer(m_vertexScorch);
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetAlphaShader);

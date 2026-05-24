@@ -942,30 +942,36 @@ Bool GameTextManager::parseCSF( const Char *filename )
 
 		 	file->read ( &len, sizeof ( Int ) );
 
-			if ( len )
+			// TheSuperHackers @port CSF stores each string as `len` UTF-16 (16-bit)
+			// code units. WideChar (wchar_t) is 16-bit on Windows but 32-bit on
+			// some platforms (macOS/Linux), so always read fixed 16-bit units off
+			// disk and widen into m_tbuffer, instead of reading len*sizeof(WideChar)
+			// bytes (which would over-read and desync the stream when wchar_t is
+			// wider than 16 bits). Equivalent to the original on Windows.
 			{
-				file->read ( m_tbuffer, len*sizeof(WideChar) );
-			}
+				UnsignedShort tmp16[MAX_UITEXT_LENGTH*2];
+				Int clamped = len;
+				if ( clamped > MAX_UITEXT_LENGTH*2 - 1 )
+					clamped = MAX_UITEXT_LENGTH*2 - 1;
 
-			if ( num == 0 )
-			{
-				// only use the first string found
-				m_tbuffer[len] = 0;
-
+				if ( len )
 				{
-					WideChar *ptr;
-
-					ptr = m_tbuffer;
-
-					while ( *ptr )
-					{
-						*ptr = ~*ptr;
-						ptr++;
-					}
+					file->read ( tmp16, len * sizeof(UnsignedShort) );
 				}
 
-				stripSpaces ( m_tbuffer );
-				m_stringInfo[listCount].text = m_tbuffer;
+				if ( num == 0 )
+				{
+					// only use the first string found; CSF text is stored
+					// bit-inverted, so invert each 16-bit unit before widening.
+					for ( Int c = 0; c < clamped; ++c )
+					{
+						m_tbuffer[c] = (WideChar)(UnsignedShort)(~tmp16[c]);
+					}
+					m_tbuffer[clamped] = 0;
+
+					stripSpaces ( m_tbuffer );
+					m_stringInfo[listCount].text = m_tbuffer;
+				}
 			}
 
 			if ( id == CSF_STRINGWITHWAVE )

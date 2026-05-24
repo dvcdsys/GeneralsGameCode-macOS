@@ -503,7 +503,7 @@ static void saveOptions()
 		GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
 		if (index>=0 && TheGlobalData)
 		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
+			ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxLANIP, index);
 			TheWritableGlobalData->m_defaultIP = ip;
 			pref->setLANIPAddress(ip);
 		}
@@ -515,7 +515,7 @@ static void saveOptions()
 		GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
 		if (index>=0)
 		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
+			ip = (UnsignedInt)(uintptr_t)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
 			pref->setOnlineIPAddress(ip);
 		}
 	}
@@ -1491,7 +1491,7 @@ WindowMsgHandledType OptionsMenuInput( GameWindow *window, UnsignedInt msg,
 						GameWindow *button = TheWindowManager->winGetWindowFromId( window, buttonID );
 
 						TheWindowManager->winSendSystemMsg( window, GBM_SELECTED,
-																								(WindowMsgData)button, buttonID );
+																								(WindowMsgData)(uintptr_t)button, buttonID );
 
 					}
 

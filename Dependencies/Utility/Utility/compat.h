@@ -50,8 +50,10 @@
 #endif
 
 // OutputDebugString
+// TheSuperHackers @port: route to stderr (unbuffered) so engine debug logs are
+// not lost when the process is killed/aborts before stdout's buffer flushes.
 #ifndef OutputDebugString
-#define OutputDebugString(str) printf("%s\n", str)
+#define OutputDebugString(str) fputs((str), stderr)
 #endif
 
 // _MAX_DRIVE, _MAX_DIR, _MAX_FNAME, _MAX_EXT, _MAX_PATH

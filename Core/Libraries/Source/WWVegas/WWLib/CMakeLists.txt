@@ -164,6 +164,15 @@ if(WIN32)
         WWCOMUtil.cpp
         WWCOMUtil.h
     )
+else()
+    # The real RegistryClass (registry.cpp) wraps the Win32 registry API and is
+    # WIN32-only, but the engine references it on all platforms. Provide a
+    # fail-cleanly stub so non-Windows builds link; reads return defaults and
+    # writes are no-ops until a native settings backend is added.
+    list(APPEND WWLIB_SRC
+        ${CMAKE_SOURCE_DIR}/cmake/dx8_stub/registry_stub.cpp
+        registry.h
+    )
 endif()
 
 add_library(core_wwlib STATIC)

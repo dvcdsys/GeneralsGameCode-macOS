@@ -1331,6 +1331,29 @@ FontCharsClass::Store_GDI_Char (WCHAR ch)
 	//
 	SIZE char_size = { 0 };
 	::GetTextExtentPoint32W( MemDC, &ch, 1, &char_size );
+#if defined(__APPLE__)
+	// macOS Core Text glyph-advance bug diagnostic: log raw cx + final stored
+	// Width per char. Enable with GEN_DBG_FONT=1. If we see cx > ~64 for an
+	// ASCII char that should be ~10 px, the Core Text advance is broken.
+	{
+		static int s_dbgFont = -1;
+		if (s_dbgFont < 0) s_dbgFont = ::getenv("GEN_DBG_FONT") ? 1 : 0;
+		if (s_dbgFont) {
+			::fprintf(stderr, "[font] ch=U+%04X cx_raw=%d po=%d xo=%d -> Width=%d\n",
+			          (unsigned)ch, (int)char_size.cx, PixelOverlap, xOrigin,
+			          (int)char_size.cx + PixelOverlap + xOrigin);
+		}
+	}
+	// Defensive clamp: a single character's pixel width should never exceed
+	// the font's em-box (PointSize*2). If Core Text returns garbage (huge cx),
+	// fall back to a sane default = PointSize (rough 'M' width) so the cursor
+	// still advances reasonably and we don't blow up the text-sprite surface.
+	if (char_size.cx < 0 || char_size.cx > PointSize * 2) {
+		::fprintf(stderr, "[font] CLAMP ch=U+%04X cx=%d -> %d (PointSize=%d)\n",
+		          (unsigned)ch, (int)char_size.cx, PointSize, PointSize);
+		char_size.cx = PointSize;
+	}
+#endif
 	char_size.cx += PixelOverlap + xOrigin;
 	//
 	//	Get a pointer to the surface that this character should use

@@ -526,6 +526,16 @@ void W3DShroud::render(CameraClass *cam)
 	if (!m_pSrcTexture)
 		return; //nothing to update from.  Must be in reset state.
 
+#if defined(__APPLE__)
+	// TheSuperHackers @debug macOS-port: GEN_NO_SHROUD=1 forces the whole map
+	// fully revealed (level 255 -> white shroud texels -> terrain unmodified).
+	// Diagnostic A/B for the "black grid" on the shellmap: if the grid vanishes
+	// with this set, the dark tiles are the shroud (reveal/copy/sample), not water
+	// or terrain. Zero cost when the env var is unset.
+	{ static int s_noShroud = -1; if (s_noShroud < 0) s_noShroud = getenv("GEN_NO_SHROUD") ? 1 : 0;
+	  if (s_noShroud) fillShroudData(255); }
+#endif
+
 	if (DX8Wrapper::_Get_D3D_Device8() && (DX8Wrapper::_Get_D3D_Device8()->TestCooperativeLevel()) != D3D_OK)
 		return;	//device not ready to render anything
 

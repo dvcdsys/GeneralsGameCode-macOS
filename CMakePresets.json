@@ -171,10 +171,14 @@
             "toolchainFile": "${sourceDir}/cmake/toolchains/apple-arm64.cmake",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-                "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_CHAINLOAD_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/apple-arm64.cmake",
-                "VCPKG_TARGET_TRIPLET": "arm64-osx"
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_CRASHDUMP_ENABLE": "OFF",
+                "RTS_DEBUG_LOGGING": "ON",
+                "RTS_DEBUG_PROFILE": "OFF",
+                "RTS_DEBUG_STACKTRACE": "OFF",
+                "RTS_DEBUG_CRASHING": "OFF"
             }
         },
         {

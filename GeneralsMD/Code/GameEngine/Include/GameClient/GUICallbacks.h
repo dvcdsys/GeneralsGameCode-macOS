@@ -109,6 +109,10 @@ extern void SkirmishGameOptionsMenuUpdate( WindowLayout *layout, void *userData 
 extern void SkirmishGameOptionsMenuShutdown( WindowLayout *layout, void *userData );
 extern WindowMsgHandledType SkirmishGameOptionsMenuSystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
 extern WindowMsgHandledType SkirmishGameOptionsMenuInput( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
+// Headless debug helper: build a 1v1 skirmish GameInfo and start it without any
+// GUI interaction. Driven by the GEN_AUTO_SKIRMISH env var from GameEngine::init
+// (macOS port debugging convenience). mapName may be empty to use the preferred/default map.
+extern void DebugAutoStartSkirmish( const char *mapName );
 
 // SkirmishMapSelectMenu
 extern void SkirmishMapSelectMenuInit( WindowLayout *layout, void *userData );

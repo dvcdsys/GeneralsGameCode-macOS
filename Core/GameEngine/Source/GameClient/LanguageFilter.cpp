@@ -157,19 +157,31 @@ Bool LanguageFilter::readWord(File *file1, WideChar *buf) {
 	Int val = 0;
 
 	WideChar c;
+	// TheSuperHackers @port The bad-word file stores UTF-16 (2-byte) code units.
+	// WideChar (wchar_t) is 4 bytes on macOS/Linux, so reading sizeof(WideChar)
+	// over-read 2x and desynced/overflowed the fixed buf. Read fixed 16-bit units
+	// and widen. The index guard prevents overrun of the caller's wchar_t[128].
+	UnsignedShort c16 = 0;
 
-	val = file1->read(&c, sizeof(WideChar));
+	val = file1->read(&c16, sizeof(UnsignedShort));
 	if ((val == -1) || (val == 0)) {
 		buf[index] = 0;
 		return FALSE;
 	}
+	c = (WideChar)c16;
 	buf[index] = c;
 
 	while (buf[index] != L' ') {
 		++index;
-		val = file1->read(&c, sizeof(WideChar));
+		if (index >= 127) {		// caller buffer is wchar_t[128]
+			buf[index] = 0;
+			break;
+		}
+		val = file1->read(&c16, sizeof(UnsignedShort));
 		if ((val == -1) || (val == 0)) {
 			c = WEOF;
+		} else {
+			c = (WideChar)c16;
 		}
 
 		if ((c == WEOF) || (c == L' ')) {

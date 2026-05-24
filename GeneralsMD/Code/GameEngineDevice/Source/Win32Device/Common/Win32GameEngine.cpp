@@ -131,8 +131,53 @@ void Win32GameEngine::update()
 	* we would call this at least once each time around the game loop to keep
 	* Windows services from backing up */
 //-------------------------------------------------------------------------------------------------
+#if defined(__APPLE__)
+// TheSuperHackers @port On macOS there is no Win32 WndProc; the Cocoa window
+// (Metal backend) captures NSEvents into a global queue. Drain the mouse queue
+// here each frame and synthesize the same Win32 messages the Win32Mouse event
+// translator already understands, so all of Win32Mouse/W3DMouse (incl. the
+// in-game cursor drawing) works unchanged.
+extern "C" int MetalInput_PollMouse(int* type, int* x, int* y, int* delta);
+#include "Win32Device/GameClient/Win32Mouse.h"
+extern Win32Mouse *TheWin32Mouse;
+// Mirror of MetalMouseEventType in cmake/dx8_stub/metal_backend.h (not on the
+// include path here). Keep in sync.
+enum {
+	METAL_MOUSE_MOVE = 1, METAL_MOUSE_LDOWN = 2, METAL_MOUSE_LUP = 3, METAL_MOUSE_LDBL = 4,
+	METAL_MOUSE_RDOWN = 5, METAL_MOUSE_RUP = 6, METAL_MOUSE_MDOWN = 7, METAL_MOUSE_MUP = 8,
+	METAL_MOUSE_WHEEL = 9,
+};
+static void Apple_PumpMouseInput()
+{
+	if (!TheWin32Mouse) return;
+	int type, x, y, delta;
+	while (MetalInput_PollMouse(&type, &x, &y, &delta)) {
+		UINT   msg    = 0;
+		WPARAM wParam = 0;
+		LPARAM lParam = (LPARAM)(((y & 0xFFFF) << 16) | (x & 0xFFFF));
+		switch (type) {
+			case METAL_MOUSE_MOVE:  msg = WM_MOUSEMOVE;     break;
+			case METAL_MOUSE_LDOWN: msg = WM_LBUTTONDOWN;   break;
+			case METAL_MOUSE_LUP:   msg = WM_LBUTTONUP;     break;
+			case METAL_MOUSE_LDBL:  msg = WM_LBUTTONDBLCLK; break;
+			case METAL_MOUSE_RDOWN: msg = WM_RBUTTONDOWN;   break;
+			case METAL_MOUSE_RUP:   msg = WM_RBUTTONUP;     break;
+			case METAL_MOUSE_MDOWN: msg = WM_MBUTTONDOWN;   break;
+			case METAL_MOUSE_MUP:   msg = WM_MBUTTONUP;     break;
+			case METAL_MOUSE_WHEEL: msg = WM_MOUSEWHEEL;
+			                        wParam = (WPARAM)(((delta & 0xFFFF) << 16)); break;
+			default: continue;
+		}
+		TheWin32Mouse->addWin32Event(msg, wParam, lParam, 0);
+	}
+}
+#endif
+
 void Win32GameEngine::serviceWindowsOS()
 {
+#if defined(__APPLE__)
+	Apple_PumpMouseInput();
+#endif
 	MSG msg;
   Int returnValue;
 

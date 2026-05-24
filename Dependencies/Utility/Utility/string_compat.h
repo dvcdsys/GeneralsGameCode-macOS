@@ -19,12 +19,17 @@
 // This file contains string macros and alias functions to help compiling on non-windows platforms
 #pragma once
 #include <ctype.h>
+#include <strings.h> // strcasecmp / strncasecmp
+#include <string.h>  // strcmp / strncmp
 
 typedef const char* LPCSTR;
 typedef char* LPSTR;
 
 // String functions
-inline char *_strlwr(char *str) {
+// NB: declared with C language linkage so this definition is compatible with
+// the GameSpy SDK's `extern "C" char* _strlwr(char*)` prototype (gsplatform.h).
+// Without this, clang reports "different language linkage" when both are visible.
+extern "C" inline char *_strlwr(char *str) {
   for (int i = 0; str[i] != '\0'; i++) {
     str[i] = tolower(str[i]);
   }
@@ -35,4 +40,9 @@ inline char *_strlwr(char *str) {
 #define stricmp strcasecmp
 #define strnicmp strncasecmp
 #define strcmpi strcasecmp
+// MSVC underscore-prefixed spellings used throughout the engine (AsciiString, etc.).
+#define _stricmp strcasecmp
+#define _strnicmp strncasecmp
+#define _strcmpi strcasecmp
+#define _memicmp(a, b, n) strncasecmp((const char*)(a), (const char*)(b), (n))
 

@@ -72,8 +72,14 @@ struct GameWindowEditData;
 enum { WIN_COLOR_UNDEFINED = GAME_COLOR_UNDEFINED };
 
 // WindowMsgData --------------------------------------------------------------
+// TheSuperHackers @port Must be pointer-width: the GUI message system routinely
+// passes pointers through mData1/mData2 (e.g. `(WindowMsgData)(uintptr_t)&text`
+// in GadgetStaticTextSetText). On Win32 `UnsignedInt` was already pointer-width
+// (32-bit), but on LP64 (macOS/Linux 64-bit) it truncated pointers → garbage
+// derefs. `uintptr_t` is pointer-width on every platform and equals UnsignedInt
+// on Win32, so this is a no-op there. Mirrors Win32 WPARAM/LPARAM.
 //-----------------------------------------------------------------------------
-typedef UnsignedInt WindowMsgData;
+typedef uintptr_t WindowMsgData;
 
 //-----------------------------------------------------------------------------
 enum WindowMsgHandledType CPP_11(: Int) { MSG_IGNORED, MSG_HANDLED };

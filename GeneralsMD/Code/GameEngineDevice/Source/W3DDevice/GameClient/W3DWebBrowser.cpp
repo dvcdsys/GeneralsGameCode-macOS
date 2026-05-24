@@ -57,7 +57,9 @@ Bool W3DWebBrowser::createBrowserWindow(const char *tag, GameWindow *win)
 		return FALSE;
 	}
 
-#ifdef __GNUC__
+// TODO(macos): clang defines __GNUC__ but lacks the MinGW CComQIIDPtr/I_ID
+// helpers; use the plain CComQIPtr spelling (our atlbase shim provides it).
+#if defined(__GNUC__) && !defined(__clang__)
 	CComQIIDPtr<I_ID(IDispatch)> idisp(m_dispatch);
 #else
 	CComQIPtr<IDispatch> idisp(m_dispatch);

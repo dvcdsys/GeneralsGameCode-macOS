@@ -59,7 +59,10 @@
 #include "GameLogic/ScriptEngine.h"
 #include "GameLogic/Weapon.h"
 
-#if __cplusplus >= 201611L
+// TODO(macos): Apple's libc++ marks the floating-point std::from_chars overload
+// as unavailable before macOS 26, so scanType<Real> fails to compile. Fall back
+// to the sscanf-based parser on Apple platforms (functionally equivalent here).
+#if __cplusplus >= 201611L && !defined(__APPLE__)
 #define USE_STD_FROM_CHARS_PARSING 1
 #else
 #define USE_STD_FROM_CHARS_PARSING 0
@@ -645,7 +648,7 @@ void INI::parseBool( INI* ini, void * /*instance*/, void *store, const void* /*u
 void INI::parseBitInInt32( INI *ini, void *instance, void *store, const void* userData )
 {
 	UnsignedInt* s = (UnsignedInt*)store;
-	UnsignedInt mask = (UnsignedInt)userData;
+	UnsignedInt mask = (UnsignedInt)(uintptr_t)userData;
 
 	if (INI::scanBool(ini->getNextToken()))
 		*s |= mask;
