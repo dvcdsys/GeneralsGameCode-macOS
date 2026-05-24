@@ -12,6 +12,7 @@
 #include "metal_backend.h"
 
 #include <cstring>
+#include <strings.h>   // strcasecmp for env-var parsing
 #include <unordered_map>
 #include <deque>
 
@@ -260,9 +261,10 @@ struct FSParams {
     int   shadowEnable;   // 1 => sample shadowTex; <=0 => skip shadow path entirely
     float shadowBias;     // depth bias to avoid self-shadow acne (default ~0.001)
     float shadowDarken;   // multiplier applied to fragment color in shadow (e.g. 0.5)
-    // 4 trailing pads round the leading scalar block to 16 ints (=64 bytes)
+    float shadowTexelSize;// 1.0 / SHADOW_MAP_SIZE — PCF kernel uses it to step
+                          // by one texel between samples for soft edges.
+    // 3 trailing pads round the leading scalar block to 16 ints (=64 bytes)
     // so the float4-aligned `tfactor` lands at offset 64 on both CPU and MSL.
-    int   _pad0;
     int   _pad1;
     int   _pad2;
     int   _pad3;
@@ -357,22 +359,41 @@ fragment float4 fs_main(VSOut in [[stage_in]],
 
     if (p.alphaTestEnable != 0 && c.a < p.alphaRef) discard_fragment();
 
-    // Stage 6: shadow mapping. Perspective divide light-space pos to NDC, flip
-    // Y (Metal tex coords are top-left, light-space NDC is bottom-left), then
-    // sample shadowTex and compare. When the fragment's light-space z is
-    // farther than the stored depth (+ bias), the fragment is shadowed.
-    // 1-tap (no PCF) for Phase 1; PCF later.
+    // Stage 6: shadow mapping with 3×3 PCF (Percentage-Closer Filtering).
+    // Perspective divide light-space pos to NDC, flip Y (Metal top-left vs
+    // NDC bottom-left), then sample shadowTex 9 times in a 3×3 kernel around
+    // the projected UV. Each tap contributes 1/9th of a shadow factor; the
+    // average gives a soft 0..1 gradient at silhouette edges instead of the
+    // hard 0/1 of single-tap sampling.
+    //
+    // 9-tap (3×3) is the cheap soft-shadow sweet spot — visible softening,
+    // ~0% measurable perf cost on Apple Silicon. Quality follows the
+    // shadowTexelSize: smaller texelSize (= larger shadow map) → tighter
+    // softening; larger texel = blockier softening.
     if (p.shadowEnable != 0) {
         float3 lp = in.lpos.xyz / max(in.lpos.w, 1e-6);
         float2 suv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
-        // Reject samples outside the shadow map's bounds — those fragments are
-        // outside the sun's frustum and shouldn't be darkened (treat as lit).
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0 &&
             lp.z >= 0.0 && lp.z <= 1.0)
         {
-            float storedZ = shadowTex.sample(shadowSmp, suv);
-            if (lp.z > storedZ + p.shadowBias)
-                c.rgb *= p.shadowDarken;
+            float refZ = lp.z - p.shadowBias;
+            float occluded = 0.0;
+            // Unrolled 3×3 PCF kernel — Metal compiler auto-unrolls but writing
+            // it out gets best constant-folding for the offsets.
+            float2 ts = float2(p.shadowTexelSize);
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2(-1.0,-1.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2( 0.0,-1.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2( 1.0,-1.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2(-1.0, 0.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv                       )) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2( 1.0, 0.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2(-1.0, 1.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2( 0.0, 1.0)*ts)) ? 1.0 : 0.0;
+            occluded += (refZ > shadowTex.sample(shadowSmp, suv + float2( 1.0, 1.0)*ts)) ? 1.0 : 0.0;
+            float shadowFactor = occluded / 9.0;   // 0=lit, 1=fully shadowed
+            // Lerp colour between fully-lit and fully-darkened by shadowFactor.
+            // shadowDarken=1.0 → no shadow; 0.0 → fully black.
+            c.rgb = mix(c.rgb, c.rgb * p.shadowDarken, shadowFactor);
         }
     }
     return c;
@@ -431,10 +452,10 @@ struct FSParams {
     int   shadowEnable;
     float shadowBias;
     float shadowDarken;
-    int   _pad0;     // round leading block to 16 floats / 64 bytes so the
-    int   _pad1;     // 16-aligned MSL `float4 tfactor` lands at the same
-    int   _pad2;     // offset on CPU + GPU. Without this, tfactor on CPU
-    int   _pad3;     // sat at 52 while MSL aligned it to 64 → bgra leaked.
+    float shadowTexelSize; // 1/SHADOW_MAP_SIZE for PCF kernel step
+    int   _pad1;     // round leading block to 16 floats / 64 bytes so the
+    int   _pad2;     // 16-aligned MSL `float4 tfactor` lands at the same
+    int   _pad3;     // offset on CPU + GPU.
     float tfactor[4];
 };
 
@@ -504,12 +525,36 @@ struct MetalContext {
         float         world[16];
     };
     std::vector<CapturedDraw> shadowCaptures;
-    // Last seen lighting/view state — sampled on every captured draw so
-    // RunShadowReplay can derive sun direction + camera focus at Present time.
+    // Last seen lighting/view state — derived by majority vote at the end of
+    // each frame (see ViewBucket below + RunShadowReplay). Single-snapshot
+    // approaches pick up the WRONG view when side passes (mini-map render-
+    // to-texture, post-effect quads, UI billboards) submit their own draws
+    // with a different D3DTS_VIEW than the tactical camera.
     float                lastView[16];
     MetalLight           lastLights[8];
     int                  lastNumLights;
     bool                 haveCaptureSnapshot;
+
+    // Per-frame view-matrix tally. Each captured 3D draw bumps the count of
+    // the bucket whose view matrix matches exactly. At Present time we pick
+    // the bucket with the most captures — that's almost always the main
+    // scene's tactical camera view (~hundreds of draws), and mini-map /
+    // post-FX views (~tens of draws) get outvoted.
+    struct ViewBucket {
+        float       view[16];
+        MetalLight  lights[8];
+        int         numLights;
+        int         count;
+    };
+    std::vector<ViewBucket> viewBuckets;
+
+    // MTL_SHADOW_DBG diagnostic counters (per frame).
+    int                  dbgRejPosFloats;
+    int                  dbgRejBlend;
+    int                  dbgRejColorWrite;
+    int                  dbgRejAccepted;
+    int                  dbgTotalDraws;
+    uint64_t             dbgFvfMask;
 
     // Per-frame render state (lazily created on first draw / present).
     id<CAMetalDrawable>          drawable;
@@ -886,7 +931,10 @@ static void EnsureDepthTexture(MetalContext* ctx)
 // Stage 6: shadow mapping. Lazy-allocate the shadow map texture, depth-stencil
 // state (depth write on / depth read LESS / no stencil), and sampler. Called
 // from BeginShadowPass; reuses on subsequent frames.
-#define METAL_SHADOWMAP_SIZE 2048
+// 4096² Depth32Float ≈ 64 MB GPU memory — fine on Apple Silicon, gives
+// ~1 world-unit-per-texel coverage when halfExt=2000 (vs ~3.4 at 2048/3500).
+// Override at runtime via MTL_SHADOW_MAP_SIZE if you want to A/B vs 2048.
+#define METAL_SHADOWMAP_SIZE 4096
 static void EnsureShadowResources(MetalContext* ctx)
 {
     if (!ctx->shadowMap) {
@@ -1032,6 +1080,13 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->lightVP[0] = 1.0f; ctx->lightVP[5] = 1.0f; ctx->lightVP[10] = 1.0f; ctx->lightVP[15] = 1.0f;
         ctx->shadowsEnabled   = 0;
         ctx->shadowPassActive = false;
+        ctx->lastNumLights        = 0;
+        ctx->haveCaptureSnapshot  = false;
+        // Pre-allocate the shadow map so the main pipeline's texture(2) binding
+        // is always valid even before any shadow replay has run (frame 1, or
+        // when MTL_SHADOW is off — the fs gates sampling on p.shadowEnable, but
+        // Metal still validates the binding).
+        EnsureShadowResources(ctx);
         // Single active context for the engine wrappers (the engine never
         // creates more than one MetalContext in practice).
         extern MetalContext* g_activeMetalCtx;
@@ -1178,6 +1233,336 @@ extern "C" void MetalContext_Resize(MetalContext* ctx, int width, int height)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Stage 6: end-of-frame shadow-map replay.
+//
+// Walks ctx->shadowCaptures (filled by MetalContext_Draw), derives the sun
+// direction from ctx->lastLights + camera focus from invert(lastView), builds
+// an orthographic light view+projection, and re-renders every captured
+// (opaque, 3D, colour-writing) draw into the shadow map texture as depth-only.
+// The NEXT frame's main fragment shader samples this shadow map.
+//
+// Memory: every captured draw retained its VB (+IB), so the underlying
+// MTLBuffer pool isn't reused until we release at the end of replay. This
+// works because the shim's per-draw buffers are themselves command-buffer-
+// tracked — Metal won't reuse them while a command buffer references them.
+// ---------------------------------------------------------------------------
+static void RunShadowReplay(MetalContext* ctx)
+{
+    static int s_envEnabled = -1;
+    if (s_envEnabled < 0) s_envEnabled = getenv("MTL_SHADOW") ? 1 : 0;
+
+    // Disabled or empty capture list → just clean up and signal "no shadows".
+    if (!s_envEnabled || ctx->shadowCaptures.empty() || !ctx->cmd || !ctx->haveCaptureSnapshot) {
+        for (auto& c : ctx->shadowCaptures) {
+            if (c.vb) [c.vb release];
+            if (c.ib) [c.ib release];
+        }
+        ctx->shadowCaptures.clear();
+        ctx->viewBuckets.clear();
+        ctx->haveCaptureSnapshot = false;
+        if (!s_envEnabled) ctx->shadowsEnabled = 0;
+        return;
+    }
+
+    // Majority-vote winner: the view that the most captures used. This is
+    // almost always the main scene's tactical camera view; mini-map render-
+    // to-texture passes and post-effect quads use different views with far
+    // fewer associated draws and get outvoted.
+    if (!ctx->viewBuckets.empty()) {
+        int bestIdx = 0;
+        for (size_t i = 1; i < ctx->viewBuckets.size(); ++i) {
+            if (ctx->viewBuckets[i].count > ctx->viewBuckets[bestIdx].count) bestIdx = (int)i;
+        }
+        const auto& best = ctx->viewBuckets[bestIdx];
+        std::memcpy(ctx->lastView,   best.view,   sizeof(float) * 16);
+        std::memcpy(ctx->lastLights, best.lights, sizeof(MetalLight) * 8);
+        ctx->lastNumLights = best.numLights;
+        // Log on first few frames + periodically so we can see the
+        // distribution (e.g. one frame had 3 view buckets with counts
+        // [180, 25, 4] → main scene wins by ~7×).
+        static int s_logBuckets = -1;
+        if (s_logBuckets < 0) s_logBuckets = getenv("MTL_SHADOW_DBG") ? 1 : 0;
+        if (s_logBuckets && (ctx->frameIndex < 5 || (ctx->frameIndex % 300) == 0)) {
+            fprintf(stderr, "[shadow-vote] f%ld: %zu buckets [", ctx->frameIndex, ctx->viewBuckets.size());
+            for (size_t i = 0; i < ctx->viewBuckets.size(); ++i) {
+                fprintf(stderr, "%s%d%s", i?",":"", ctx->viewBuckets[i].count, i==(size_t)bestIdx?"*":"");
+            }
+            fprintf(stderr, "]\n"); fflush(stderr);
+        }
+    }
+    ctx->viewBuckets.clear();
+
+    EnsureShadowResources(ctx);
+
+    // -- 1. Sun direction. Default: first directional light from the engine
+    //       snapshot, otherwise a reasonable overhead-from-NW sun. Two env
+    //       knobs:
+    //         MTL_SHADOW_SUN_DIR="x,y,z"      override entirely (raw, normalised)
+    //         MTL_SHADOW_FORCE_LOW_SUN=1      replace engine's sun with a low-
+    //                                          angle (-1,-1,-0.5) for dramatic
+    //                                          tests; useful because Generals'
+    //                                          maps usually configure a
+    //                                          near-vertical noon sun → short
+    //                                          shadows by design.
+    float sunDx = -0.45f, sunDy = -0.45f, sunDz = -1.0f;
+    bool sourceFromEngine = false;
+    for (int i = 0; i < ctx->lastNumLights && i < 8; ++i) {
+        const MetalLight& L = ctx->lastLights[i];
+        if (L.type == 3 /*DIRECTIONAL*/) {
+            sunDx = L.direction[0]; sunDy = L.direction[1]; sunDz = L.direction[2];
+            sourceFromEngine = true;
+            break;
+        }
+    }
+    static int s_forceLow = -1;
+    if (s_forceLow < 0) s_forceLow = getenv("MTL_SHADOW_FORCE_LOW_SUN") ? 1 : 0;
+    if (s_forceLow) { sunDx = -1.0f; sunDy = -1.0f; sunDz = -0.5f; sourceFromEngine = false; }
+    if (const char* ovr = getenv("MTL_SHADOW_SUN_DIR")) {
+        float ox, oy, oz;
+        if (sscanf(ovr, "%f,%f,%f", &ox, &oy, &oz) == 3) {
+            sunDx = ox; sunDy = oy; sunDz = oz; sourceFromEngine = false;
+        }
+    }
+    {
+        float n = sqrtf(sunDx*sunDx + sunDy*sunDy + sunDz*sunDz);
+        if (n < 1e-4f) { sunDx = -0.45f; sunDy = -0.45f; sunDz = -1.0f; n = sqrtf(0.45f*0.45f + 0.45f*0.45f + 1.0f); }
+        sunDx /= n; sunDy /= n; sunDz /= n;
+    }
+    // Log the resolved sun direction once + every ~600 frames so we can see
+    // what the engine actually fed us vs. our override. Tracks frameIndex.
+    if (ctx->frameIndex < 3 || (ctx->frameIndex % 600) == 0) {
+        fprintf(stderr, "[shadow] sun=(%.3f,%.3f,%.3f) src=%s elev=%.1f° (90=overhead, 0=horizon)\n",
+                sunDx, sunDy, sunDz, sourceFromEngine ? "engine" : "fallback",
+                asinf(-sunDz) * 180.0f / 3.14159265f);
+        fflush(stderr);
+    }
+
+    // -- 2. Camera focus: invert the view matrix to get the camera's eye, then
+    //       step forward along its -Z axis by a heuristic distance. The view
+    //       matrix is stored column-major (matches D3D's GpuLight uniform).
+    float camEyeX = 0.0f, camEyeY = 0.0f, camEyeZ = 0.0f;
+    float camFwdX = 0.0f, camFwdY = 0.0f, camFwdZ = -1.0f;
+    {
+        const float* V = ctx->lastView;
+        // For an orthonormal view matrix M (rotation + translation), the eye
+        // position in world space is `-(R^T * t)`, where R is the 3×3 rotation
+        // (cols 0..2) and t is the translation (col 3, rows 0..2). Column-major
+        // storage: V[c*4 + r] = M[r][c].
+        float tx = V[12], ty = V[13], tz = V[14];
+        camEyeX = -(V[0]*tx + V[1]*ty + V[2]*tz);
+        camEyeY = -(V[4]*tx + V[5]*ty + V[6]*tz);
+        camEyeZ = -(V[8]*tx + V[9]*ty + V[10]*tz);
+        // Camera forward in world is -Z of the view rotation (last row of R^T,
+        // which equals last column of R inverted-and-negated → just take col2
+        // of view negated, then transposed). Equivalent: third row of view's
+        // rotation = (V[2], V[6], V[10]); forward = -that.
+        camFwdX = -V[2]; camFwdY = -V[6]; camFwdZ = -V[10];
+    }
+    // Focus a bit in front of the camera along its forward direction. The
+    // tactical camera in Generals tilts down, so focus lands on the ground.
+    const float kFocusDist = 600.0f;
+    float focusX = camEyeX + camFwdX * kFocusDist;
+    float focusY = camEyeY + camFwdY * kFocusDist;
+    float focusZ = camEyeZ + camFwdZ * kFocusDist;
+
+    // -- 3. Build light view. Light "eye" sits along -sunDir from focus at
+    //       far range so the ortho's near plane is well outside the world.
+    const float farRange = 6000.0f;
+    float lightEyeX = focusX - sunDx * farRange;
+    float lightEyeY = focusY - sunDy * farRange;
+    float lightEyeZ = focusZ - sunDz * farRange;
+
+    float fwdX = sunDx, fwdY = sunDy, fwdZ = sunDz;
+    float upRefX = 0.0f, upRefY = 0.0f, upRefZ = 1.0f;     // Z-up world
+    if (fabsf(fwdX*upRefX + fwdY*upRefY + fwdZ*upRefZ) > 0.99f) { upRefX = 0.0f; upRefY = 1.0f; upRefZ = 0.0f; }
+    // right = upRef × fwd
+    float rightX = upRefY*fwdZ - upRefZ*fwdY;
+    float rightY = upRefZ*fwdX - upRefX*fwdZ;
+    float rightZ = upRefX*fwdY - upRefY*fwdX;
+    { float rn = sqrtf(rightX*rightX+rightY*rightY+rightZ*rightZ); if (rn>1e-6f){rightX/=rn;rightY/=rn;rightZ/=rn;} }
+    // up = fwd × right
+    float upX = fwdY*rightZ - fwdZ*rightY;
+    float upY = fwdZ*rightX - fwdX*rightZ;
+    float upZ = fwdX*rightY - fwdY*rightX;
+    { float un = sqrtf(upX*upX+upY*upY+upZ*upZ); if (un>1e-6f){upX/=un;upY/=un;upZ/=un;} }
+
+    // -- 3a. Stable shadow maps: snap the focus point to a texel grid in the
+    //        light's right/up basis. Without this, the slightest camera move
+    //        slides the light frustum by sub-texel amounts → every visible
+    //        edge in the shadow map shifts each frame → shadows "swim".
+    //        Snapping pins texel boundaries to world-space positions, so as
+    //        long as the camera moves less than texelSize between frames,
+    //        the shadow map texels stay on the same world coords.
+    static float s_halfExt = -1.0f;
+    if (s_halfExt < 0.0f) {
+        const char* e = getenv("MTL_SHADOW_HALF_EXT");
+        s_halfExt = e ? (float)atof(e) : 2000.0f;
+    }
+    const float halfExt   = s_halfExt;
+    const float texelSize = (2.0f * halfExt) / (float)METAL_SHADOWMAP_SIZE;
+    // Project focus onto light's right/up axes, snap, reconstruct.
+    {
+        float r = focusX*rightX + focusY*rightY + focusZ*rightZ;
+        float u = focusX*upX    + focusY*upY    + focusZ*upZ;
+        float f = focusX*fwdX   + focusY*fwdY   + focusZ*fwdZ;
+        r = roundf(r / texelSize) * texelSize;
+        u = roundf(u / texelSize) * texelSize;
+        focusX = rightX*r + upX*u + fwdX*f;
+        focusY = rightY*r + upY*u + fwdY*f;
+        focusZ = rightZ*r + upZ*u + fwdZ*f;
+        // Recompute light eye now that focus is snapped.
+        lightEyeX = focusX - sunDx * farRange;
+        lightEyeY = focusY - sunDy * farRange;
+        lightEyeZ = focusZ - sunDz * farRange;
+    }
+
+    float view[16] = {
+        rightX, upX, fwdX, 0.0f,
+        rightY, upY, fwdY, 0.0f,
+        rightZ, upZ, fwdZ, 0.0f,
+        -(rightX*lightEyeX + rightY*lightEyeY + rightZ*lightEyeZ),
+        -(upX   *lightEyeX + upY   *lightEyeY + upZ   *lightEyeZ),
+        -(fwdX  *lightEyeX + fwdY  *lightEyeY + fwdZ  *lightEyeZ),
+        1.0f
+    };
+    const float near_ = 0.0f;
+    const float far_  = farRange * 2.0f;
+    float proj[16] = {
+        1.0f/halfExt, 0.0f,         0.0f,                0.0f,
+        0.0f,         1.0f/halfExt, 0.0f,                0.0f,
+        0.0f,         0.0f,         1.0f/(far_-near_),   0.0f,
+        0.0f,         0.0f,         -near_/(far_-near_), 1.0f
+    };
+    // lvp = proj * view
+    float lvp[16];
+    for (int r = 0; r < 4; ++r)
+    for (int c = 0; c < 4; ++c) {
+        float s = 0.0f;
+        for (int k = 0; k < 4; ++k) s += proj[k*4+r] * view[c*4+k];
+        lvp[c*4+r] = s;
+    }
+    std::memcpy(ctx->lightVP, lvp, sizeof(lvp));
+    ctx->shadowsEnabled = 1;  // signal next frame's main pass to sample
+
+    // -- 4. Spin up a depth-only encoder against the shadow map.
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.depthAttachment.texture     = ctx->shadowMap;
+    pass.depthAttachment.loadAction  = MTLLoadActionClear;
+    pass.depthAttachment.storeAction = MTLStoreActionStore;  // sampled next frame
+    pass.depthAttachment.clearDepth  = 1.0;
+    id<MTLRenderCommandEncoder> enc = [ctx->cmd renderCommandEncoderWithDescriptor:pass];
+    MTLViewport vp = { 0.0, 0.0, (double)METAL_SHADOWMAP_SIZE, (double)METAL_SHADOWMAP_SIZE, 0.0, 1.0 };
+    [enc setViewport:vp];
+
+    // -- 5. Replay every captured draw, transformed by lightVP*world.
+    for (auto& c : ctx->shadowCaptures) {
+        // Build a fake MetalDrawCall to feed GetShadowPipeline (it only reads
+        // the layout-affecting fields).
+        MetalDrawCall fake; std::memset(&fake, 0, sizeof(fake));
+        fake.fvf            = c.fvf;
+        fake.stride         = c.stride;
+        fake.posOffset      = c.posOffset;
+        fake.posFloats      = c.posFloats;
+        fake.normalOffset   = c.normalOffset;
+        fake.diffuseOffset  = c.diffuseOffset;
+        fake.tex0Offset     = c.tex0Offset;
+        fake.tex1Offset     = c.tex1Offset;
+        fake.texCoordIndex  = c.texCoordIndex;
+        id<MTLRenderPipelineState> ps = GetShadowPipeline(ctx, &fake);
+        if (!ps) continue;
+
+        [enc setRenderPipelineState:ps];
+        [enc setVertexBuffer:c.vb offset:0 atIndex:0];
+
+        UniformsCPU u;
+        std::memset(&u, 0, sizeof(u));
+        std::memcpy(u.world,    c.world, sizeof(float) * 16);
+        std::memcpy(u.lightVP,  lvp,     sizeof(float) * 16);
+        u.posFloats   = c.posFloats;
+        u.shadowPass  = 1;
+        u.hasDiffuse  = (c.diffuseOffset >= 0) ? 1 : 0;
+        u.hasNormal   = (c.normalOffset  >= 0) ? 1 : 0;
+        [enc setVertexBytes:&u length:sizeof(u) atIndex:1];
+
+        [enc setDepthStencilState:ctx->shadowDS];
+        [enc setFrontFacingWinding:MTLWindingClockwise];
+        // Default to NO culling in the shadow pass. The textbook "cull front,
+        // render back faces" trick is great for fully closed solid meshes
+        // (no acne, automatic depth gap) — but Generals models include MANY
+        // thin / single-sided parts: flagpoles, fabric flags, antenna masts,
+        // bulldozer blades, decals on building walls. Front-face culling
+        // erases those entirely → no shadow at all for thin geometry.
+        //
+        // With MTLCullModeNone every face writes its depth; we rely on the
+        // depth bias in the fragment-shader compare to suppress acne. Bumped
+        // the default bias accordingly. Set MTL_SHADOW_CULL_MODE=front/back
+        // for A/B testing.
+        MTLCullMode cull = MTLCullModeNone;
+        static int s_cullOverride = -2;
+        if (s_cullOverride == -2) {
+            const char* e = getenv("MTL_SHADOW_CULL_MODE");
+            if      (!e)                     s_cullOverride = -1;        // default
+            else if (!strcasecmp(e,"none"))  s_cullOverride = 0;
+            else if (!strcasecmp(e,"back"))  s_cullOverride = 1;
+            else if (!strcasecmp(e,"front")) s_cullOverride = 2;
+            else                              s_cullOverride = -1;
+        }
+        if      (s_cullOverride == 0) cull = MTLCullModeNone;
+        else if (s_cullOverride == 1) cull = MTLCullModeBack;
+        else if (s_cullOverride == 2) cull = MTLCullModeFront;
+        [enc setCullMode:cull];
+
+        MTLPrimitiveType prim = MTLPrimitiveTypeTriangle;
+        if      (c.primType == 5 /*TRISTRIP*/) prim = MTLPrimitiveTypeTriangleStrip;
+        else if (c.primType == 6 /*TRIFAN*/)   continue;
+
+        if (c.ib) {
+            [enc drawIndexedPrimitives:prim
+                            indexCount:c.indexCount
+                             indexType:MTLIndexTypeUInt16
+                           indexBuffer:c.ib
+                     indexBufferOffset:c.indexOffsetBytes
+                         instanceCount:1
+                            baseVertex:c.baseVertex
+                          baseInstance:0];
+        } else {
+            [enc drawPrimitives:prim
+                    vertexStart:c.vertexStart
+                    vertexCount:c.vertexCount];
+        }
+    }
+    [enc endEncoding];
+
+    // -- 6. Release retained buffers + clear list.
+    for (auto& c : ctx->shadowCaptures) {
+        if (c.vb) [c.vb release];
+        if (c.ib) [c.ib release];
+    }
+    ctx->shadowCaptures.clear();
+    ctx->haveCaptureSnapshot = false;
+
+    // MTL_SHADOW_DBG — dump per-frame filter counts every 30 frames so the
+    // user can see in real time how unit selection / state changes affect
+    // capture acceptance.
+    static int s_dbg = -1;
+    if (s_dbg < 0) s_dbg = getenv("MTL_SHADOW_DBG") ? 1 : 0;
+    if (s_dbg && (ctx->frameIndex % 30) == 0) {
+        // Dump unique FVFs seen this frame (as hex bits) so we can tell which
+        // 3D vertex formats appear/disappear with selection.
+        fprintf(stderr, "[shadow-dbg] f%ld: total=%d accepted=%d rej(2D)=%d rej(blend)=%d rej(cw0)=%d fvfMask=0x%llx\n",
+                ctx->frameIndex,
+                ctx->dbgTotalDraws,
+                ctx->dbgRejAccepted, ctx->dbgRejPosFloats,
+                ctx->dbgRejBlend, ctx->dbgRejColorWrite,
+                (unsigned long long)ctx->dbgFvfMask);
+        fflush(stderr);
+    }
+    ctx->dbgRejPosFloats = ctx->dbgRejBlend = ctx->dbgRejColorWrite = ctx->dbgRejAccepted = 0;
+    ctx->dbgTotalDraws = 0;
+    ctx->dbgFvfMask = 0;
+}
+
 extern "C" void MetalContext_Present(MetalContext* ctx)
 {
     if (!ctx) return;
@@ -1185,6 +1570,11 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         // If nothing was drawn this frame, still clear+present.
         if (!ctx->enc && !ctx->drawable) EnsureEncoder(ctx);
         if (ctx->enc) { [ctx->enc endEncoding]; [ctx->enc release]; ctx->enc = nil; }
+
+        // Stage 6: replay captured draws into the shadow map BEFORE present.
+        // The next frame's main fragment shader will sample it. Same command
+        // buffer — no extra commit/wait.
+        RunShadowReplay(ctx);
 
         // Debug frame capture: blit the drawable into a shared texture so we can
         // read it back to a PNG. Gated by MTL_DUMP (which also forced
@@ -1781,8 +2171,18 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // units (Generals maps). 0.001 in light-NDC depth corresponds to a
         // few centimeters of world depth — enough to prevent self-shadow
         // acne on the receiver, small enough that real shadows stay tight.
-        fp.shadowBias   = 0.001f;
-        fp.shadowDarken = 0.55f;
+        // MTL_SHADOW_BIAS / MTL_SHADOW_DARKEN env-overrides for live tuning.
+        {
+            static float s_bias = -1.0f, s_darken = -1.0f, s_pcfMul = -1.0f;
+            if (s_bias   < 0.0f) { const char* e=getenv("MTL_SHADOW_BIAS");       s_bias   = e?atof(e):0.0015f; }
+            if (s_darken < 0.0f) { const char* e=getenv("MTL_SHADOW_DARKEN");     s_darken = e?atof(e):0.55f;  }
+            if (s_pcfMul < 0.0f) { const char* e=getenv("MTL_SHADOW_PCF_RADIUS"); s_pcfMul = e?atof(e):1.0f;   }
+            fp.shadowBias       = s_bias;
+            fp.shadowDarken     = s_darken;
+            // PCF kernel step = texelSize × radius multiplier. Larger radius =
+            // softer/larger penumbra but more blur of shadow features.
+            fp.shadowTexelSize  = (1.0f / (float)METAL_SHADOWMAP_SIZE) * s_pcfMul;
+        }
         // D3DRS_TEXTUREFACTOR is BGRA in memory; unpack to RGBA float4.
         fp.tfactor[0] = ((dc->tfactor >> 16) & 0xFF) / 255.0f;  // R
         fp.tfactor[1] = ((dc->tfactor >>  8) & 0xFF) / 255.0f;  // G
@@ -1875,6 +2275,87 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
             [ctx->enc drawPrimitives:prim
                          vertexStart:dc->vertexStart
                          vertexCount:dc->vertexCount];
+        }
+
+        // ---- Stage 6 capture for next-frame shadow replay ---------------
+        // Filter: only opaque 3D geometry that writes colour goes into the
+        // shadow map.
+        //   * posFloats != 3        → HUD / 2D, no world-space position
+        //   * blendEnable          → translucent (particles, decals, smoke)
+        //   * colorWriteMask == 0  → engine's stencil-only passes (shadow
+        //                            volume front/back faces, player-colour
+        //                            occlusion mask) — their geometry is
+        //                            extruded to infinity and would
+        //                            otherwise pollute the shadow map.
+        // MTL_SHADOW_DBG=1 prints per-frame filter rejection stats so we can
+        // diagnose "shadow disappears when X happens" bugs (e.g. unit
+        // selection toggling render state in a way that flips a filter).
+        static int s_shadowEnv = -1;
+        if (s_shadowEnv < 0) s_shadowEnv = getenv("MTL_SHADOW") ? 1 : 0;
+        static int s_shadowDbg = -1;
+        if (s_shadowDbg < 0) s_shadowDbg = getenv("MTL_SHADOW_DBG") ? 1 : 0;
+        static int s_keepBlended = -1;
+        if (s_keepBlended < 0) s_keepBlended = getenv("MTL_SHADOW_KEEP_BLENDED") ? 1 : 0;
+        if (s_shadowDbg) {
+            // Per-frame rejection counters (reset in RunShadowReplay).
+            ctx->dbgTotalDraws++;
+            if (dc->posFloats != 3)      ctx->dbgRejPosFloats++;
+            else if (dc->blendEnable)    ctx->dbgRejBlend++;
+            else if (dc->colorWriteMask == 0) ctx->dbgRejColorWrite++;
+            else                         ctx->dbgRejAccepted++;
+            // Track captured FVFs by tallying unique fvf bits low 12-bit.
+            if (dc->posFloats == 3) {
+                ctx->dbgFvfMask |= ((uint64_t)1 << (dc->fvf & 0x3F));
+            }
+        }
+        if (s_shadowEnv
+            && dc->posFloats == 3
+            && (s_keepBlended || !dc->blendEnable)
+            && dc->colorWriteMask != 0
+            && dc->vertexBuffer
+            && (dc->indexCount > 0 || dc->vertexCount > 0))
+        {
+            MetalContext::CapturedDraw cap;
+            cap.vb               = [(__bridge id<MTLBuffer>)dc->vertexBuffer retain];
+            cap.ib               = dc->indexBuffer ? [(__bridge id<MTLBuffer>)dc->indexBuffer retain] : nil;
+            cap.stride           = dc->stride;
+            cap.indexOffsetBytes = dc->indexOffsetBytes;
+            cap.indexCount       = dc->indexCount;
+            cap.vertexStart      = dc->vertexStart;
+            cap.vertexCount      = dc->vertexCount;
+            cap.baseVertex       = dc->baseVertex;
+            cap.fvf              = dc->fvf;
+            cap.primType         = (int)dc->primType;
+            cap.cullMode         = dc->cullMode;
+            cap.posOffset        = dc->posOffset;
+            cap.posFloats        = dc->posFloats;
+            cap.normalOffset     = dc->normalOffset;
+            cap.diffuseOffset    = dc->diffuseOffset;
+            cap.tex0Offset       = dc->tex0Offset;
+            cap.tex1Offset       = dc->tex1Offset;
+            cap.texCoordIndex    = dc->texCoordIndex;
+            std::memcpy(cap.world, dc->world, sizeof(float) * 16);
+            ctx->shadowCaptures.push_back(cap);
+
+            // Tally view+lights by majority vote (see ViewBucket comment).
+            int found = -1;
+            for (size_t i = 0; i < ctx->viewBuckets.size(); ++i) {
+                if (std::memcmp(ctx->viewBuckets[i].view, dc->view, sizeof(float) * 16) == 0) {
+                    found = (int)i;
+                    break;
+                }
+            }
+            if (found >= 0) {
+                ctx->viewBuckets[found].count++;
+            } else {
+                MetalContext::ViewBucket b;
+                std::memcpy(b.view,   dc->view,   sizeof(float) * 16);
+                std::memcpy(b.lights, dc->lights, sizeof(MetalLight) * 8);
+                b.numLights = dc->numLights;
+                b.count     = 1;
+                ctx->viewBuckets.push_back(b);
+            }
+            ctx->haveCaptureSnapshot = true;   // signals "have something to replay"
         }
     }
 }
