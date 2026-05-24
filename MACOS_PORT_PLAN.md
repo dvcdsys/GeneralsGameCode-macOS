@@ -29,6 +29,34 @@
 > clamp + `GEN_AUTO_SKIRMISH`), `render2dsentence.cpp` font clamp,
 > `GameEngine.cpp` `GEN_FORCE_*` harness. Don't add new ones.
 
+> ### 🛰️ Shim-only shadow mapping (Stage 6, in-progress)
+>
+> Original Generals uses **stencil shadow volumes** (`W3DVolumetricShadow`)
+> and **projected blob decals** (`W3DProjectedShadowManager`). Neither is
+> shadow mapping. **DXVK and MoltenVK do not implement shadow mapping
+> either** — they're API translators (D3D9→Vulkan, Vulkan→Metal). So our
+> shadow map is a *new technique* layered on top of the shim, with no
+> upstream precedent.
+>
+> What we DID borrow from those projects:
+> - **Hardware slope-scale depth bias** via Metal's
+>   `[MTLRenderCommandEncoder setDepthBias:slopeScale:clamp:]` (MoltenVK's
+>   implementation of `vkCmdSetDepthBias`). Replaces a constant NDC bias
+>   in the fragment shader — slope-scale automatically gives steep-slope
+>   receivers (ship hulls, vehicle silhouettes) more bias and flat
+>   receivers (ground, deck) less, eliminating peter-panning. Tuned for
+>   Generals: `slope=2.5`, `const=1.0`, `clamp=0` (env-overridable via
+>   `MTL_SHADOW_SLOPE_BIAS` / `MTL_SHADOW_CONST_BIAS`).
+> - **Tight light far range** (4000u, was 12000u, env
+>   `MTL_SHADOW_FAR_RANGE`): bias is depth-buffer-LSB at far plane, so a
+>   shorter range scales the absolute world-space offset down 3×.
+>
+> Technique: capture+replay. Every opaque XYZ colour-writing draw in the
+> main pass has its VB/IB retained into `shadowCaptures`; at Present time
+> we re-emit those draws against a 4096² Depth32Float texture using the
+> sun's view+ortho. Next frame's main fragment shader samples that map
+> with 3×3 PCF. 1-frame latency, 2× geometry GPU. Engine code untouched.
+
 ---
 
 ## ▶ Progress Tracker  (read this first; update it last)

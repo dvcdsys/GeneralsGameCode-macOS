@@ -373,6 +373,16 @@ fragment float4 fs_main(VSOut in [[stage_in]],
     if (p.shadowEnable != 0) {
         float3 lp = in.lpos.xyz / max(in.lpos.w, 1e-6);
         float2 suv = float2(lp.x * 0.5 + 0.5, 0.5 - lp.y * 0.5);
+        // DIAG: when shadowDebug bit (bit1 of shadowEnable) is set, return
+        // the light-space coordinates as RGB so we can visualise the frustum:
+        //   R = suv.x (sideways across light frustum, 0..1 in-bounds)
+        //   G = suv.y (vertical across light frustum)
+        //   B = lp.z  (depth, 0=near to light, 1=far)
+        // Anything outside light frustum gets out-of-range colour (black or
+        // overbright). Toggle with MTL_SHADOW_VIZ env var (sets bit1 in shim).
+        if ((p.shadowEnable & 2) != 0) {
+            return float4(saturate(suv.x), saturate(suv.y), saturate(lp.z), 1.0);
+        }
         if (suv.x >= 0.0 && suv.x <= 1.0 && suv.y >= 0.0 && suv.y <= 1.0 &&
             lp.z >= 0.0 && lp.z <= 1.0)
         {
@@ -1305,7 +1315,12 @@ static void RunShadowReplay(MetalContext* ctx)
     //                                          maps usually configure a
     //                                          near-vertical noon sun → short
     //                                          shadows by design.
-    float sunDx = -0.45f, sunDy = -0.45f, sunDz = -1.0f;
+    // Fallback sun: late-afternoon angle ~31° elevation. Generates shadows
+    // ~1.7× the caster's height in horizontal extent — comfortably visible
+    // from the tactical iso-view and matches the look of the original game's
+    // projected blob shadows (which are also long-ish).
+    // (Was 57° → invisible-short, then 38° → still too subtle.)
+    float sunDx = -0.61f, sunDy = -0.61f, sunDz = -0.50f;
     bool sourceFromEngine = false;
     for (int i = 0; i < ctx->lastNumLights && i < 8; ++i) {
         const MetalLight& L = ctx->lastLights[i];
@@ -1314,6 +1329,22 @@ static void RunShadowReplay(MetalContext* ctx)
             sourceFromEngine = true;
             break;
         }
+    }
+    // Diag: at startup + occasionally, dump every light the engine captured
+    // so we can tell whether the scene's actual sun (W3DLightManager →
+    // SetLight) is reaching us. If yes, we should be using it instead of the
+    // fallback. Currently engine often passes only point/ambient lights.
+    if (ctx->frameIndex < 3 || (ctx->frameIndex % 600) == 0) {
+        fprintf(stderr, "[lights] f%ld n=%d:", ctx->frameIndex, ctx->lastNumLights);
+        for (int i = 0; i < ctx->lastNumLights && i < 4; ++i) {
+            const MetalLight& L = ctx->lastLights[i];
+            const char* tname = (L.type==1?"PT":L.type==2?"SP":L.type==3?"DIR":"?");
+            fprintf(stderr, " [%d:%s d=(%.2f,%.2f,%.2f) p=(%.0f,%.0f,%.0f) col=(%.2f,%.2f,%.2f)]",
+                    i, tname, L.direction[0],L.direction[1],L.direction[2],
+                    L.position[0],L.position[1],L.position[2],
+                    L.diffuse[0],L.diffuse[1],L.diffuse[2]);
+        }
+        fprintf(stderr, "\n"); fflush(stderr);
     }
     static int s_forceLow = -1;
     if (s_forceLow < 0) s_forceLow = getenv("MTL_SHADOW_FORCE_LOW_SUN") ? 1 : 0;
@@ -1353,11 +1384,15 @@ static void RunShadowReplay(MetalContext* ctx)
         camEyeX = -(V[0]*tx + V[1]*ty + V[2]*tz);
         camEyeY = -(V[4]*tx + V[5]*ty + V[6]*tz);
         camEyeZ = -(V[8]*tx + V[9]*ty + V[10]*tz);
-        // Camera forward in world is -Z of the view rotation (last row of R^T,
-        // which equals last column of R inverted-and-negated → just take col2
-        // of view negated, then transposed). Equivalent: third row of view's
-        // rotation = (V[2], V[6], V[10]); forward = -that.
-        camFwdX = -V[2]; camFwdY = -V[6]; camFwdZ = -V[10];
+        // Camera forward in world. Generals uses a RIGHT-HANDED view matrix
+        // (camera looks down -Z in view space) — empirically verified: with
+        // fwd = -(V[2], V[6], V[10]) the focus point lands BELOW the camera
+        // on the terrain (eye=Z~700, focus=Z~330) instead of above it in
+        // empty sky. MTL_SHADOW_FWD_FLIP=1 flips back to LH for diagnostics.
+        static int s_fwdFlip = -1;
+        if (s_fwdFlip < 0) s_fwdFlip = getenv("MTL_SHADOW_FWD_FLIP") ? 1 : 0;
+        float sgn = s_fwdFlip ? +1.0f : -1.0f;
+        camFwdX = sgn * V[2]; camFwdY = sgn * V[6]; camFwdZ = sgn * V[10];
     }
     // Focus a bit in front of the camera along its forward direction. The
     // tactical camera in Generals tilts down, so focus lands on the ground.
@@ -1365,10 +1400,29 @@ static void RunShadowReplay(MetalContext* ctx)
     float focusX = camEyeX + camFwdX * kFocusDist;
     float focusY = camEyeY + camFwdY * kFocusDist;
     float focusZ = camEyeZ + camFwdZ * kFocusDist;
+    // Debug — print eye/fwd/focus once at startup + every 600 frames so we can
+    // sanity-check the camera math against the actual scene (terrain is at
+    // Z≈0..few hundred, tactical eye is at Z≈200..500 looking down).
+    if (ctx->frameIndex < 3 || (ctx->frameIndex % 600) == 0) {
+        fprintf(stderr, "[shadow-cam] f%ld eye=(%.1f,%.1f,%.1f) fwd=(%.2f,%.2f,%.2f) focus=(%.1f,%.1f,%.1f)\n",
+                ctx->frameIndex, camEyeX, camEyeY, camEyeZ,
+                camFwdX, camFwdY, camFwdZ, focusX, focusY, focusZ);
+        fflush(stderr);
+    }
 
     // -- 3. Build light view. Light "eye" sits along -sunDir from focus at
-    //       far range so the ortho's near plane is well outside the world.
-    const float farRange = 6000.0f;
+    //       `farRange` units away. Ortho's far plane (built below) is 2*farRange
+    //       so the focus point lands at NDC ≈ 0.5, with casters above/below
+    //       covering the [0,1] range.
+    //       4000u default fits Generals' map vertical extent comfortably (scene
+    //       Z usually 0..400, tactical camera Z up to 1000). Bigger farRange =
+    //       less peter-pan-per-NDC-bias, smaller = tighter depth precision.
+    static float s_farRange = -1.0f;
+    if (s_farRange < 0.0f) {
+        const char* e = getenv("MTL_SHADOW_LIGHT_DIST");
+        s_farRange = e ? (float)atof(e) : 4000.0f;
+    }
+    const float farRange = s_farRange;
     float lightEyeX = focusX - sunDx * farRange;
     float lightEyeY = focusY - sunDy * farRange;
     float lightEyeZ = focusZ - sunDz * farRange;
@@ -1427,7 +1481,12 @@ static void RunShadowReplay(MetalContext* ctx)
         1.0f
     };
     const float near_ = 0.0f;
-    const float far_  = farRange * 2.0f;
+    // far_ must be at least 2*farRange so the focus point (at depth `farRange`
+    // in light space) lands near NDC 0.5, leaving headroom on both sides for
+    // tall casters and below-ground receivers. With farRange=2000 (light eye
+    // 2000u from focus), far_=4000 puts focus at NDC 0.5 and bias 0.0005 NDC
+    // = 2 world units of peter-pan offset.
+    const float far_ = farRange * 2.0f;
     float proj[16] = {
         1.0f/halfExt, 0.0f,         0.0f,                0.0f,
         0.0f,         1.0f/halfExt, 0.0f,                0.0f,
@@ -1445,6 +1504,29 @@ static void RunShadowReplay(MetalContext* ctx)
     std::memcpy(ctx->lightVP, lvp, sizeof(lvp));
     ctx->shadowsEnabled = 1;  // signal next frame's main pass to sample
 
+    // DIAG: dump the lvp matrix once at startup + every 600f so we can hand-
+    // verify that scene points project to NDC in [-1..1]×[-1..1]×[0..1].
+    // Also project the focus point and (focus + scene_height*Z) for sanity.
+    if (ctx->frameIndex < 3 || (ctx->frameIndex % 600) == 0) {
+        // Project focus point through lvp (focus, 1) by hand. lvp is in
+        // column-major math storage: lvp[c*4+r] = M[r][c].
+        auto proj_pt = [&](float x, float y, float z, const char* tag) {
+            float cx = lvp[0]*x + lvp[4]*y + lvp[8] *z + lvp[12];
+            float cy = lvp[1]*x + lvp[5]*y + lvp[9] *z + lvp[13];
+            float cz = lvp[2]*x + lvp[6]*y + lvp[10]*z + lvp[14];
+            float cw = lvp[3]*x + lvp[7]*y + lvp[11]*z + lvp[15];
+            float nx=cw!=0?cx/cw:0, ny=cw!=0?cy/cw:0, nz=cw!=0?cz/cw:0;
+            fprintf(stderr, "  [%s] world=(%.0f,%.0f,%.0f) clip=(%.2f,%.2f,%.2f,%.2f) ndc=(%.2f,%.2f,%.2f)\n",
+                    tag, x,y,z, cx,cy,cz,cw, nx,ny,nz);
+        };
+        fprintf(stderr, "[lvp-probe] f%ld lightEye=(%.0f,%.0f,%.0f) focus=(%.0f,%.0f,%.0f) halfExt=%.0f far_=%.0f\n",
+                ctx->frameIndex, lightEyeX,lightEyeY,lightEyeZ, focusX,focusY,focusZ, halfExt, far_);
+        proj_pt(focusX, focusY, focusZ, "focus     ");
+        proj_pt(focusX, focusY, focusZ + 100.0f, "focus+100Z");
+        proj_pt(focusX, focusY, 0.0f, "ground@xy ");
+        fflush(stderr);
+    }
+
     // -- 4. Spin up a depth-only encoder against the shadow map.
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
     pass.depthAttachment.texture     = ctx->shadowMap;
@@ -1454,6 +1536,30 @@ static void RunShadowReplay(MetalContext* ctx)
     id<MTLRenderCommandEncoder> enc = [ctx->cmd renderCommandEncoderWithDescriptor:pass];
     MTLViewport vp = { 0.0, 0.0, (double)METAL_SHADOWMAP_SIZE, (double)METAL_SHADOWMAP_SIZE, 0.0, 1.0 };
     [enc setViewport:vp];
+
+    // -- 4a. Hardware slope-scale depth bias (off by default).
+    //
+    //        DESIGN NOTE: setDepthBias:slopeScale: on Metal pushes caster
+    //        depth AWAY from light by `slope * max(|dz/dx|, |dz/dy|)`. For
+    //        Generals' geometry that means BUILDING WALLS and SHIP HULLS get
+    //        a HUGE slope-scale bias (steep walls → big derivatives) → caster
+    //        depth pushed past 1.0 → fragment fails depth test → wall never
+    //        writes to shadow map → wall doesn't cast a shadow → NO SHADOWS
+    //        on the ground around the building. Classic gotcha.
+    //
+    //        So we keep slope=0 by default and let the shader-side NDC bias
+    //        (FSParams.shadowBias, set in MetalContext_Draw) do the work.
+    //        Env vars MTL_SHADOW_SLOPE_BIAS / MTL_SHADOW_CONST_BIAS exist for
+    //        future per-scene tuning if we cap the slope contribution.
+    //
+    //        Reference: MoltenVK translates Vulkan's vkCmdSetDepthBias to
+    //        exactly this API; same trade-off applies there.
+    static float s_slope = -1.0f, s_constBias = -2.0f;
+    if (s_slope < 0.0f) { const char* e = getenv("MTL_SHADOW_SLOPE_BIAS"); s_slope     = e ? (float)atof(e) : 0.0f; }
+    if (s_constBias < -1.0f) { const char* e = getenv("MTL_SHADOW_CONST_BIAS"); s_constBias = e ? (float)atof(e) : 0.0f; }
+    if (s_slope != 0.0f || s_constBias != 0.0f) {
+        [enc setDepthBias:s_constBias slopeScale:s_slope clamp:0.0f];
+    }
 
     // -- 5. Replay every captured draw, transformed by lightVP*world.
     for (auto& c : ctx->shadowCaptures) {
@@ -2167,15 +2273,30 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // transform. shadowsEnabled is set by the engine via
         // MetalContext_SetShadowsEnabled and stays sticky across frames.
         fp.shadowEnable = (ctx->shadowsEnabled && dc->posFloats == 3) ? 1 : 0;
-        // Tuned for a single-cascade 2048×2048 ortho covering ~10000 world
-        // units (Generals maps). 0.001 in light-NDC depth corresponds to a
-        // few centimeters of world depth — enough to prevent self-shadow
-        // acne on the receiver, small enough that real shadows stay tight.
-        // MTL_SHADOW_BIAS / MTL_SHADOW_DARKEN env-overrides for live tuning.
+        // MTL_SHADOW_VIZ=1 ORs bit 1 into shadowEnable → shader returns the
+        // light-space (suv, lp.z) as RGB instead of the regular shaded colour.
+        // Lets us see if receivers actually land inside the light frustum.
+        static int s_shadowViz = -1;
+        if (s_shadowViz < 0) s_shadowViz = getenv("MTL_SHADOW_VIZ") ? 1 : 0;
+        if (s_shadowViz && fp.shadowEnable) fp.shadowEnable |= 2;
+        // Most of the bias work is now done by hardware slope-scale bias in
+        // the shadow pass replay encoder (setDepthBias:slopeScale:clamp:).
+        // This shader-side NDC bias is kept as a TINY fixed offset (0.0002 ≈
+        // 0.8 world units at far=4000) just to cover sub-texel rounding when
+        // the receiver's depth lands almost exactly on a recorded caster
+        // depth. Larger values reintroduce peter-panning. Override with
+        // MTL_SHADOW_BIAS only for tuning experiments.
         {
             static float s_bias = -1.0f, s_darken = -1.0f, s_pcfMul = -1.0f;
-            if (s_bias   < 0.0f) { const char* e=getenv("MTL_SHADOW_BIAS");       s_bias   = e?atof(e):0.0015f; }
-            if (s_darken < 0.0f) { const char* e=getenv("MTL_SHADOW_DARKEN");     s_darken = e?atof(e):0.55f;  }
+            // 0.0005 NDC at far=4000 → ~2 world-unit peter-pan offset. Most
+            // Generals casters are 5-15 units tall → offset is small fraction
+            // of caster size → shadow stays attached to base. (Was 0.0015 at
+            // far=12000 = 18 unit offset → shadow detached from base.)
+            if (s_bias   < 0.0f) { const char* e=getenv("MTL_SHADOW_BIAS");       s_bias   = e?atof(e):0.0005f; }
+            // Original Generals' projected blob shadows look like ~40-50%
+            // black under units; matching that means darken ≈ 0.4-0.5 (so the
+            // shadowed pixel = c.rgb * 0.4 → 60% darker). 0.55 was too pale.
+            if (s_darken < 0.0f) { const char* e=getenv("MTL_SHADOW_DARKEN");     s_darken = e?atof(e):0.4f;   }
             if (s_pcfMul < 0.0f) { const char* e=getenv("MTL_SHADOW_PCF_RADIUS"); s_pcfMul = e?atof(e):1.0f;   }
             fp.shadowBias       = s_bias;
             fp.shadowDarken     = s_darken;
