@@ -1,111 +1,166 @@
-[![GitHub Release](https://img.shields.io/github/v/release/TheSuperHackers/GeneralsGameCode?include_prereleases&sort=date&display_name=tag&style=flat&label=Release)](https://github.com/TheSuperHackers/GeneralsGameCode/releases)
-![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/3)
-![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/1)
-![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/4)
-![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/5)
-![GitHub milestone details](https://img.shields.io/github/milestones/progress-percent/TheSuperHackers/GeneralsGameCode/6)
+# GeneralsGameCode-macOS
 
-[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/bug?style=flat&label=Bug%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ABug)
-[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/enhancement?style=flat&label=Enhancement%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3AEnhancement)
-[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/major?style=flat&label=Major%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3AMajor)
-[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/critical?style=flat&label=Critical%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ACritical)
-[![GitHub issues by-label](https://img.shields.io/github/issues/TheSuperHackers/GeneralsGameCode/blocker?style=flat&label=Blocker%20Issues&labelColor=%23c4c4c4&color=%23424242)](https://github.com/TheSuperHackers/GeneralsGameCode/issues?q=label%3ABlocker)
+**Native Metal port of Command & Conquer: Generals Zero Hour for Apple Silicon.**
 
-# Welcome to the Generals Game Code Project
+This is a personal, experimental fork. It does **not** use Wine, DXVK,
+MoltenVK, CrossOver, or any other translation layer — the engine compiles
+as a native macOS binary that talks to Apple's Metal API through a custom
+in-tree D3D8 → Metal shim.
 
-GeneralsGameCode is a community-driven project aimed at fixing and improving the classic RTS game, *Command &
-Conquer: Generals* and its expansion *Zero Hour*. This repository contains the source code for both games, with a
-primary focus on *Zero Hour*.
+> This project is unrelated to any mods or remakes with similar names.
+> It does not change gameplay, balance, AI, scripts, or game data.
+> It only changes the **platform layer** so the existing game runs on macOS.
 
-Additionally, there is a complementary project repository for fixing and improving game data and assets such as
-INI scripts, GUI, AI, maps, models, textures, audio, localization. You can find it
-[here](https://github.com/TheSuperHackers/GeneralsGamePatch/) and contribute to it as well.
+## Status
 
-## Project Overview
+In active development. The game boots, loads, and runs a stable 1v1
+skirmish on Apple Silicon (verified on M3 Max). Rendering correctness
+covers the LOW graphics preset; Medium / High introduce additional
+features (volumetric shadows, reflective water, heat distortion, MSAA)
+that are still being ported.
 
-The game was originally developed using Visual Studio 6 and C++98. We've updated the code to be compatible with Visual
-Studio 2022 and C++20.
+For the full session-by-session technical history — every bug, root
+cause, and fix — see [`MACOS_PORT_PLAN.md`](MACOS_PORT_PLAN.md).
 
-The initial goal of this project is to fix critical bugs and implement improvements while maintaining compatibility with
-the original *Generals* version 1.08 and *Zero Hour* version 1.04. Once we can break retail compatibility, more fixes
-and features will be possible to implement.
+## Relation to other community projects
 
-## Current Focus and Future Plans
+This fork is **complementary, not competing**. There are at least three
+parallel community efforts to keep Generals alive, each making different
+tradeoffs:
 
-Here's an overview of our current focus and future plans
+| Project | Approach | Platform target |
+|---|---|---|
+| [**TheSuperHackers/GeneralsGameCode**](https://github.com/TheSuperHackers/GeneralsGameCode) | Upstream — stability, bug fixes, retail compatibility, gradual modernization | Windows (primary); cross-platform aspirations |
+| [**fbraz3/GeneralsX**](https://github.com/fbraz3/GeneralsX) | DXVK (D3D8→Vulkan) + SDL3 + OpenAL + FFmpeg | Linux + macOS via single cross-platform codebase |
+| [**Fighter19/CnC_Generals_Zero_Hour**](https://github.com/Fighter19/CnC_Generals_Zero_Hour) | Original Linux port that pioneered DXVK / SDL3 / OpenAL groundwork | Linux-focused reference |
+| **This fork (`GeneralsGameCode-macOS`)** | Native D3D8→Metal shim, Cocoa input, **no Vulkan / no translation layer** | macOS ARM64 only |
 
-- **Modernizing the Codebase**: Transitioning to modern C++ standards and refactoring old code.
-- **Critical Bug Fixes**: Fixing game-breaking issues (e.g., fullscreen crash).
-- **Minor Bug Fixes**: Addressing minor bugs (e.g., UI issues, graphical glitches).
-- **Cross-Platform Support**: Adding support for more platforms (e.g., Linux, macOS).
-- **Engine Improvements**: Enhancing the game engine to improve performance and stability.
-- **Client-Side Features**: Enhancing the game's client with features such as an improved replay viewer and UI updates.
-- **Multiplayer Improvements**: Implementing a new game server and an upgraded matchmaking lobby.
-- **Tooling Improvements**: Developing new or improving existing tools for modding and game development.
-- **Community-Driven Improvements**: Once the community grows, we plan to incorporate more features, updates, and
-  changes based on player feedback.
+The goal here is to explore how lean a macOS-native port can be when
+the engine talks directly to Metal — no translation tax, no Vulkan
+intermediate, no Wine. It's an experiment in minimum-overhead porting,
+not a replacement for either upstream or the Linux+macOS cross-platform
+work that GeneralsX is doing.
 
-## Running the Game
+If your priority is **stability + Windows + community contributions** →
+use TheSuperHackers. If your priority is **Linux + macOS through a
+proven Vulkan stack** → use GeneralsX. This fork is for the curious /
+the experimenter who wants to see Metal driven directly.
 
-To run *Generals* or *Zero Hour* using this project, you need to have the original *Command & Conquer: Generals and Zero Hour* game
-installed. The easiest way to get it is through *Command & Conquer The Ultimate Collection*
-on [Steam](https://store.steampowered.com/bundle/39394). Once the game is ready, download the latest version of the
-project from [GitHub Releases](https://github.com/TheSuperHackers/GeneralsGameCode/releases), extract the necessary 
-files, and follow the instructions in the [Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki).
+## Architecture
 
-
-## Joining the Community
-
-You can chat and discuss the development of the project on our [Discord channel](https://www.community-outpost.com/discord) to get the latest updates,
-report bugs, and contribute to the project!
-
-## Building the Game Yourself
-
-We provide support for building the project on Windows and Linux. For detailed build instructions, check the
-[Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki/build_guides), which includes guides for VS6, VS2022,
-Docker, CLion, and links to forks supporting additional versions.
-
-### Quick Start
-
-**Windows (Visual Studio 2022)**
-```bash
-cmake --preset win32
-cmake --build build/win32 --config Release
+```
++--------------------------------------------------+
+|  Original Generals / Zero Hour C++ engine        |
+|  (unmodified game logic, AI, scripts, INI)       |
++--------------------------------------------------+
+|  WW3D2 + Win32 API surface (unchanged interface) |
++--------------------------------------------------+
+|  osdep_compat/  — Win32 -> POSIX/Cocoa shim      |  <-- new
+|  cmake/dx8_stub/ — D3D8 -> Metal shim            |  <-- new
+|  Cocoa input + AppKit window backend             |  <-- new
++--------------------------------------------------+
+|  macOS / Metal / Cocoa                           |
++--------------------------------------------------+
 ```
 
-**Linux (via Docker)**
+Engine code is kept as close to upstream as practical. macOS-specific
+tweaks live inside `#if defined(__APPLE__)` guards so the upstream
+Windows MSVC build keeps compiling.
+
+## Build
+
 ```bash
-./scripts/docker-build.sh              # Build using Docker
-./scripts/docker-install.sh --detect # Install to your game
+# Configure (Ninja Multi-Config, apple-arm64 preset)
+cmake --preset apple-arm64
+
+# Build Release
+cmake --build build/apple-arm64 --config Release --target generalszh
 ```
 
-### Dependency management
+Output: `build/apple-arm64/GeneralsMD/Release/generalszh`
 
-The repository uses a vcpkg manifest (`vcpkg.json`) paired with a lockfile (`vcpkg-lock.json`). When you add or upgrade
-dependencies, run `vcpkg install --x-manifest-root . --triplet <triplet>` with `VCPKG_FEATURE_FLAGS=versions` so the
-lockfile picks up the new versions and include the updated lockfile in your change. GitHub Actions consumes these ports
-through `VCPKG_BINARY_SOURCES=clear;files,<workspace>/vcpkg-bincache,readwrite` (paired with an `actions/cache` entry for
-that folder), so the first CI build warms the cache and subsequent builds pull prebuilt binaries instead of
-re-compiling everything.
+## Run
 
-### Profiling
+The binary needs the original Generals: Zero Hour data files. **You must
+own a legitimate copy** — those proprietary EA assets are NOT and will
+NOT be in this repository. Place the executable next to your install:
 
-Tracy profiling is supported in the CMake preset `win32-profile`.
-Use `tracy-profiler.exe` from [Tracy v0.13.1](https://github.com/wolfpld/tracy/releases/tag/v0.13.1).
-If you get an error when using Tracy, try removing `dbghelp.dll` from the game binary directory.
+```bash
+ABIN=$(pwd)/build/apple-arm64/GeneralsMD/Release/generalszh
+cd "/path/to/Command and Conquer Generals Zero Hour"
+"$ABIN"
+```
 
-## Contributing
+### Debug entry points
 
-We welcome contributions to the project! If you’re interested in contributing, you need to have knowledge of C++. Join
-the developer chat on Discord for more information on how to get started. Please make sure to read our
-[Contributing Guidelines](CONTRIBUTING.md) before submitting a pull request. You can also check out 
-the [Wiki](https://github.com/TheSuperHackers/GeneralsGameCode/wiki) for more detailed documentation.
+| Env var | Effect |
+|---|---|
+| `GEN_AUTO_SKIRMISH=1` | Boot straight into a 1v1 skirmish (skip menus) |
+| `GEN_MODEL_VIEWER=1 GEN_MODEL=<name>` | Isolated W3D model viewer (e.g. `AIRngr_SKN`) |
+| `GEN_MODEL_ANIM=<htree>.<anim>` | Drive an animation in the viewer |
+| `GEN_QUICK_MENU=1` | Skip intro, land on main menu fast |
+| `GEN_GFX_PRESET=low\|medium\|high\|veryhigh` | Force a static-LOD preset |
+| `GEN_FORCE_SHADOW_VOL=0/1` etc. | Override individual graphics flags one at a time |
+| `MTL_DUMP=1` | Capture per-frame PNGs to `/tmp/gen_frame_*.png` |
+| `MTL_DEBUG=1` | Per-frame draw-call stats to stderr |
+| `MTL_TEXONLY=1` | Fragment shader returns raw texture sample (skip combiner+lighting) |
 
+See [`MACOS_PORT_PLAN.md`](MACOS_PORT_PLAN.md) for the full env-var
+inventory and what each was added to bisect.
 
-## License & Legal Disclaimer
+## Contributions
 
-EA has not endorsed and does not support this product. All trademarks are the property of their respective owners.
+This is an **experimental personal fork**. Pull requests are not
+currently being accepted — the direction is intentionally exploratory
+and I'm driving it myself.
 
-This project is licensed under the [GPL-3.0 License](https://www.gnu.org/licenses/gpl-3.0.html), which allows you to
-freely modify and distribute the source code under the terms of this license. Please see [LICENSE.md](LICENSE.md) 
-for details.
+**Bug reports for the macOS path are welcome** as
+[GitHub Issues](https://github.com/dvcdsys/GeneralsGameCode-macOS/issues).
+Please include:
+- macOS version + chip (M1 / M2 / M3 / M4)
+- Reproducer (steps + which env vars set)
+- Screenshot or short capture
+
+For anything that affects the **shared engine code** (not macOS-specific),
+please file upstream at
+[TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode/issues)
+instead — those fixes benefit everyone.
+
+## Upstream sync
+
+This fork tracks
+[TheSuperHackers/GeneralsGameCode](https://github.com/TheSuperHackers/GeneralsGameCode)
+as the `upstream` remote.
+
+```bash
+git fetch upstream
+git merge upstream/main   # or rebase, depending on workflow
+```
+
+macOS-specific changes are concentrated in:
+- `cmake/dx8_stub/*` — the D3D8→Metal shim
+- `Dependencies/Utility/osdep_compat/*` — Win32 compat headers
+- `Core/.../Win32Device/.../CocoaKeyboard.{h,cpp}` — Cocoa input
+- Sparse `#if defined(__APPLE__)` blocks in engine sources
+
+so merge conflicts with upstream should be rare and surgical.
+
+## License & legal
+
+Inherited from upstream: **GPL-3.0-or-later**, with the EA additional
+terms. See [`LICENSE.md`](LICENSE.md) for the full text.
+
+EA has not endorsed and does not support this product. All trademarks
+are the property of their respective owners.
+
+## Credits
+
+- **Westwood Studios** for the original *Command & Conquer: Generals*
+- **EA** for releasing the engine source under GPL-3
+- **[TheSuperHackers](https://github.com/TheSuperHackers/GeneralsGameCode)** for the modernized C++ baseline this fork builds on
+- **[fbraz3 (GeneralsX)](https://github.com/fbraz3/GeneralsX)** for the parallel Linux+macOS effort — their cross-platform packaging and docs structure inspired some of this README
+
+---
+
+For upstream's project description (community Discord, multi-platform
+roadmap, contribution flow, etc.) see [`README_UPSTREAM.md`](README_UPSTREAM.md).

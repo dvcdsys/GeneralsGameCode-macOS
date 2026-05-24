@@ -74,3 +74,9 @@ build.ninja
 ## Python
 __pycache__/
 *.pyc
+
+## Build / run artefacts (logs, vcpkg cache, etc.)
+*.log
+/logs/
+/vcpkg_installed/
+.flatpak-builder/
