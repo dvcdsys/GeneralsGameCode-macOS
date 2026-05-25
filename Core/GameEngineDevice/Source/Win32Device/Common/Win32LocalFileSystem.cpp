@@ -34,6 +34,80 @@
 #include "Win32Device/Common/Win32LocalFile.h"
 #include <io.h>
 
+#if defined(__APPLE__)
+#include <filesystem>
+#include <algorithm>
+#include <string>
+#include <cstring>
+
+// TheSuperHackers @port macOS 2026-05-25
+// On macOS we still instantiate Win32LocalFileSystem (Win32GameEngine is the
+// only GameEngine subclass), but POSIX fopen rejects Windows-style backslash
+// paths. Some hardcoded engine paths (notably data\\Scripts\\SkirmishScripts.scb)
+// arrive here verbatim and silently fail to open — leaving the AI player
+// without team templates and triggering an immediate "AI defeated".
+//
+// Normalise the same way StdLocalFileSystem already does: backslash to slash,
+// then if the literal path does not exist, walk it component-by-component
+// matching case-insensitively. Returns an empty path on failure.
+static std::filesystem::path apple_fixWindowsPath(const char* filename, Int access)
+{
+    std::string fixedFilename(filename);
+    std::replace(fixedFilename.begin(), fixedFilename.end(), '\\', '/');
+    std::filesystem::path path(std::move(fixedFilename));
+
+    std::error_code ec;
+    if (std::filesystem::exists(path, ec))
+        return path;
+
+    // For writes, accept as long as the parent directory exists (file will be created).
+    if ((access & File::WRITE) && std::filesystem::exists(path.parent_path(), ec))
+        return path;
+
+    // Walk the path; for each component, prefer literal match, otherwise
+    // fall back to case-insensitive directory lookup.
+    std::filesystem::path pathFixed;
+    std::filesystem::path pathCurrent;
+    for (const auto& p : path)
+    {
+        if (pathCurrent.empty())
+        {
+            pathFixed /= p;
+            pathCurrent /= p;
+            continue;
+        }
+
+        std::filesystem::path pathFixedPart;
+        if (std::filesystem::exists(pathCurrent / p, ec))
+            pathFixedPart = p;
+        else if (std::filesystem::exists(pathFixed / p, ec))
+            pathFixedPart = p;
+        else
+        {
+            for (auto& entry : std::filesystem::directory_iterator(pathFixed, ec))
+            {
+                if (::strcasecmp(entry.path().filename().string().c_str(), p.string().c_str()) == 0)
+                {
+                    pathFixedPart = entry.path().filename();
+                    break;
+                }
+            }
+        }
+
+        if (pathFixedPart.empty())
+        {
+            if (!(access & File::WRITE))
+                return std::filesystem::path();
+            pathFixed = p;
+        }
+
+        pathFixed /= pathFixedPart;
+        pathCurrent /= p;
+    }
+    return pathFixed;
+}
+#endif
+
 Win32LocalFileSystem::Win32LocalFileSystem() : LocalFileSystem()
 {
 }
@@ -71,7 +145,18 @@ File * Win32LocalFileSystem::openFile(const Char *filename, Int access, size_t b
 	// TheSuperHackers @fix Mauller 21/04/2025 Create new file handle when necessary to prevent memory leak
 	Win32LocalFile *file = newInstance( Win32LocalFile );
 
-	if (file->open(filename, access, bufferSize) == FALSE) {
+#if defined(__APPLE__)
+	std::filesystem::path normalized = apple_fixWindowsPath(filename, access);
+	if (normalized.empty()) {
+		deleteInstance(file);
+		return nullptr;
+	}
+	const char* openName = normalized.c_str();
+#else
+	const char* openName = filename;
+#endif
+
+	if (file->open(openName, access, bufferSize) == FALSE) {
 		deleteInstance(file);
 		file = nullptr;
 	} else {
@@ -116,10 +201,21 @@ void Win32LocalFileSystem::reset()
 Bool Win32LocalFileSystem::doesFileExist(const Char *filename) const
 {
 	//USE_PERF_TIMER(Win32LocalFileSystem_doesFileExist)
+#if defined(__APPLE__)
+	// Same Windows-path normalisation as openFile, so callers that probe
+	// existence with backslash paths (e.g. via TheFileSystem) get a truthful
+	// answer instead of false-negative.
+	std::filesystem::path normalized = apple_fixWindowsPath(filename, 0);
+	if (normalized.empty())
+		return FALSE;
+	std::error_code ec;
+	return std::filesystem::exists(normalized, ec) ? TRUE : FALSE;
+#else
 	if (_access(filename, 0) == 0) {
 		return TRUE;
 	}
 	return FALSE;
+#endif
 }
 
 void Win32LocalFileSystem::getFileListInDirectory(const AsciiString& currentDirectory, const AsciiString& originalDirectory, const AsciiString& searchName, FilenameList & filenameList, Bool searchSubdirectories) const
