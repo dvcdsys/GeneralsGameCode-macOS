@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // uint32_t — LP64 sweep
+
 #ifndef _SYSTIMER_H
 
 #include "always.h"
@@ -91,15 +93,10 @@ class SysTimeClass
 
 	private:
 
-		/*
-		** Time we were first called.
-		*/
-		unsigned long StartTime;
-
-		/*
-		** Time to add after timer wraps.
-		*/
-		unsigned long WrapAdd;
+		// LP64 fix: was `unsigned long` (4 on Win32, 8 on macOS) — force 32-bit so
+		// wrap-detection arithmetic matches retail behaviour.
+		uint32_t StartTime;
+		uint32_t WrapAdd;
 
 };
 

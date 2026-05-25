@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // uint32_t — required after LP64 sweep
+
 #ifndef _WIN32
 // macOS / Linux: the Miles stub mss.h does not pull in the Win32 type
 // vocabulary, but this header declares a HANDLE-typed member function.
@@ -120,13 +122,15 @@ class SoundBufferClass : public RefCountClass
 		//	Protected member data
 		//////////////////////////////////////////////////////////////////////
 		unsigned char *		m_Buffer;
-		unsigned long			m_Length;
+		// TheSuperHackers @port macos-port: LP64 — was `unsigned long` (4 bytes on
+		// Win32, 8 on macOS LP64). Force 32-bit to keep audio struct layout stable.
+		uint32_t				m_Length;
 		char *					m_Filename;
-		unsigned long			m_Duration;
-		unsigned long			m_Rate;
-		unsigned long			m_Bits;
-		unsigned long			m_Channels;
-		unsigned long			m_Type;
+		uint32_t				m_Duration;
+		uint32_t				m_Rate;
+		uint32_t				m_Bits;
+		uint32_t				m_Channels;
+		uint32_t				m_Type;
 };
 
 

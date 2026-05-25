@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // uint32_t — LP64 sweep
+
 #pragma warning (push, 3)
 #include "mss.h"
 #pragma warning (pop)
@@ -329,7 +331,7 @@ class AudibleSoundClass : public SoundSceneObjClass
 		//	Protected member data
 		//////////////////////////////////////////////////////////////////////
 		SoundHandleClass *	m_SoundHandle;
-		unsigned long			m_Timestamp;
+		uint32_t				m_Timestamp;  // LP64 fix: was `unsigned long`
 		SOUND_STATE				m_State;
 		SOUND_TYPE				m_Type;
 
@@ -345,8 +347,8 @@ class AudibleSoundClass : public SoundSceneObjClass
 		int						m_LoopsLeft;
 
 		// Offset and length information (in milliseconds)
-		unsigned long			m_Length;
-		unsigned long			m_CurrentPosition;
+		uint32_t				m_Length;            // LP64 fix
+		uint32_t				m_CurrentPosition;   // LP64 fix
 		float						m_StartOffset;
 		float						m_PitchFactor;
 

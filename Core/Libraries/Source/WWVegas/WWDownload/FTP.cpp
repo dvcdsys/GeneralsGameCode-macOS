@@ -261,7 +261,12 @@ DWORD WINAPI gethostbynameA( void * szName )
 int Cftp::AsyncGetHostByName(char * szName, struct sockaddr_in &address )
 {
 	static int            stat = 0;
-	static unsigned long  threadid;
+	// TheSuperHackers @fix macOS-port-LP64-sweep: was `unsigned long` (8 bytes
+	// on macOS LP64) but the CreateThread API takes `DWORD*` which is now
+	// `uint32_t*` (4 bytes) per the typedef sweep — Win32 ABI requires DWORD
+	// to be 32-bit unsigned. Use DWORD here to match the API exactly. No-op
+	// on Windows where `unsigned long` and DWORD happened to coincide at 4 bytes.
+	static DWORD          threadid;
 
 	if( stat == 0 )
 	{

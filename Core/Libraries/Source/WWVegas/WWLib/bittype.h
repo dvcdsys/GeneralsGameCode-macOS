@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <stdint.h>   // uint32_t for the LP64-safe DWORD/ULONG aliases below
+
 typedef unsigned char	uint8;
 typedef unsigned short	uint16;
 #if defined(__APPLE__)
@@ -68,14 +70,32 @@ typedef signed int      sint;
 typedef float				float32;
 typedef double				float64;
 
+#if defined(__APPLE__)
+// TheSuperHackers @fix macOS-port-LP64-sweep: Win32 ABI defines DWORD/ULONG
+// as **32-bit** unsigned (MSDN: DWORD is "A 32-bit unsigned integer"). On
+// macOS LP64 `unsigned long` is 64 bits, so the historical typedef silently
+// doubled the size of every DWORD/ULONG struct member — corrupting on-disk
+// binary layouts (W3D meshes, DDS surfaces, TGA footer, SCB save state) and
+// stride math (`sizeof(DWORD)` in offsets). We already fixed several of
+// these one-by-one (uint32 above, SHADOW_DECAL_VERTEX::diffuse, CRC.h,
+// ddsfile.h::Surface, TGA2Footer, DataChunk::WideChar). This sweep fixes
+// the *root cause* once: alias DWORD/ULONG to `uint32_t` (4 bytes on both
+// Win32 and macOS), so any future struct using DWORD as a member just
+// works. `WORD` was already 16-bit-correct; `LONG` is fixed in
+// osdep_compat/windows.h. No-op for the Windows build (DWORD already 4
+// bytes there via `unsigned long`).
+typedef uint32_t        DWORD;
+typedef uint32_t        ULONG;
+#else
 typedef unsigned long   DWORD;
+typedef unsigned long   ULONG;
+#endif
 typedef unsigned short	WORD;
 typedef unsigned char   BYTE;
 typedef int             BOOL;
 typedef unsigned short	USHORT;
 typedef const char *		LPCSTR;
 typedef unsigned int    UINT;
-typedef unsigned long   ULONG;
 
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #ifndef _WCHAR_T_DEFINED

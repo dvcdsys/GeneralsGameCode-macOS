@@ -463,8 +463,10 @@ Int PingThreadClass::doPing(UnsignedInt IP, Int timeout)
     */
    lpfnIcmpCreateFile = (void * (__stdcall *)())GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCreateFile");
    lpfnIcmpCloseHandle = (int (__stdcall *)(void *))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpCloseHandle");
-   lpfnIcmpSendEcho = (unsigned long (__stdcall *)(void *, unsigned long, void *, unsigned short,
-                       void *, void *, unsigned long, unsigned long))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpSendEcho" );
+   // LP64 sweep: IcmpSendEcho returns DWORD and takes DWORD timeouts/sizes.
+   // `unsigned long` on macOS is 8 bytes — cast must match the typedef target.
+   lpfnIcmpSendEcho = (DWORD (__stdcall *)(void *, DWORD, void *, unsigned short,
+                       void *, void *, DWORD, DWORD))GetProcAddress( (HINSTANCE)hICMP_DLL, "IcmpSendEcho" );
 
    if ((!lpfnIcmpCreateFile) ||
          (!lpfnIcmpCloseHandle) ||

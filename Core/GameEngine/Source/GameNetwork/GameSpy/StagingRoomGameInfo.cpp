@@ -208,9 +208,12 @@ Bool GetLocalChatConnectionAddress(AsciiString serverName, UnsignedShort serverP
 	/*
 	** Get the function pointers into the .dll
 	*/
-	SnmpExtensionInitPtr = (int (__stdcall *)(unsigned long,void ** ,AsnObjectIdentifier *)) GetProcAddress(mib_ii_dll, "SnmpExtensionInit");
+	// LP64 sweep: SNMP API uses DWORD for timestamps/sizes; `unsigned long`
+	// is 8 bytes on macOS LP64 so the cast must match the typedef-pointer's
+	// new uint32_t-shaped DWORD. Use DWORD explicitly.
+	SnmpExtensionInitPtr = (int (__stdcall *)(DWORD,void ** ,AsnObjectIdentifier *)) GetProcAddress(mib_ii_dll, "SnmpExtensionInit");
 	SnmpExtensionQueryPtr = (int (__stdcall *)(unsigned char,SnmpVarBindList *,long *,long *)) GetProcAddress(mib_ii_dll, "SnmpExtensionQuery");
-	SnmpUtilMemAllocPtr = (void *(__stdcall *)(unsigned long)) GetProcAddress(snmpapi_dll, "SnmpUtilMemAlloc");
+	SnmpUtilMemAllocPtr = (void *(__stdcall *)(DWORD)) GetProcAddress(snmpapi_dll, "SnmpUtilMemAlloc");
 	SnmpUtilMemFreePtr = (void (__stdcall *)(void *)) GetProcAddress(snmpapi_dll, "SnmpUtilMemFree");
 	if (SnmpExtensionInitPtr == nullptr || SnmpExtensionQueryPtr == nullptr || SnmpUtilMemAllocPtr == nullptr || SnmpUtilMemFreePtr == nullptr) {
 		DEBUG_LOG(("Failed to get proc addresses for linked functions"));

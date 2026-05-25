@@ -73,7 +73,7 @@ ThumbnailClass::ThumbnailClass(
 	unsigned original_mip_level_count,
 	WW3DFormat original_format,
 	bool allocated,
-	unsigned long date_time)
+	uint32_t date_time)   // LP64 fix: matches header signature
 	:
 	Manager(manager),
 	Name(name),

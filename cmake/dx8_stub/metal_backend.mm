@@ -30,16 +30,36 @@ unsigned long       g_prevModFlags = 0;
 NSView*             g_inputView = nil;   // active content view, for coord conversion
 
 // Convert an NSEvent window location to content-view pixels, top-left origin.
-inline void EventPoint(NSEvent* e, int* outX, int* outY)
+// Returns false if the point is outside the view's bounds — caller should
+// DROP the mouse event in that case. This matters for screen-edge scroll
+// (LookAtXlat.cpp:349-360): the engine treats `m_currentPos.x >= width - 3`
+// as "scroll right". With `setAcceptsMouseMovedEvents:YES` Cocoa keeps
+// firing mouseMoved events while the foreground app's window is on screen
+// but the cursor is outside the window — `locationInWindow` then carries
+// out-of-bounds coords (e.g. x=1300 in a 1280-wide window) which the
+// engine sees as "always at the screen edge" → permanent edge scroll
+// following whichever screen corner the cursor wandered into. Previously
+// we clamped low-side (x<0 → 0) but not high-side, so the right/bottom
+// over-shoot leaked through.
+inline bool EventPoint(NSEvent* e, int* outX, int* outY)
 {
     *outX = 0; *outY = 0;
-    if (!g_inputView) return;
+    if (!g_inputView) return false;
     NSPoint p = [g_inputView convertPoint:e.locationInWindow fromView:nil];
+    CGFloat w = g_inputView.bounds.size.width;
     CGFloat h = g_inputView.bounds.size.height;
+    // Reject coords clearly outside the view (with a 1-point tolerance so
+    // an event with p.x == bounds.width still counts as the last interior
+    // column rather than being dropped).
+    if (p.x < 0.0 || p.x > w || p.y < 0.0 || p.y > h) return false;
     int x = (int)p.x;
     int y = (int)(h - p.y);          // flip: Cocoa is bottom-left, engine top-left
-    if (x < 0) x = 0; if (y < 0) y = 0;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x > (int)w - 1) x = (int)w - 1;
+    if (y > (int)h - 1) y = (int)h - 1;
     *outX = x; *outY = y;
+    return true;
 }
 } // namespace
 
@@ -68,7 +88,11 @@ static NSString* const kShaderSource = @R"METAL(
 using namespace metal;
 
 struct VSIn {
-    float3 pos    [[attribute(0)]];
+    // float4 so XYZRHW pre-transformed vertices (D3DFVF_XYZRHW, posFloats==4)
+    // can read the RHW component. When the vertex buffer attribute is
+    // declared MTLVertexFormatFloat3 (untransformed XYZ, posFloats==3),
+    // Metal pads the missing w to 1.0 on read — verified on Apple Silicon.
+    float4 pos    [[attribute(0)]];
     float3 normal [[attribute(1)]];
     float4 color  [[attribute(2)]];   // uchar4 normalized -> (B,G,R,A)
     float2 uv     [[attribute(3)]];
@@ -135,27 +159,62 @@ struct Uniforms {
     int      _pad1;
     int      _pad2;
     int      _pad3;
+    // Viewport pixel dimensions, used by the XYZRHW path to convert pre-
+    // transformed screen-space coords → NDC. The full int block above is
+    // exactly 16 ints (64 B), so this float2 starts at offset 384 and the
+    // float4-aligned lights[] that follows is shifted accordingly. CPU side
+    // must mirror this exact layout (see UniformsCPU).
+    float2   viewportSize;
+    float2   _padVP;
     GpuLight lights[8];
 };
 
 vertex VSOut vs_main(VSIn in [[stage_in]], constant Uniforms& u [[buffer(1)]]) {
     VSOut o;
+    // XYZRHW pre-transformed path. The engine writes pixel-space coords
+    // (pos.xy in viewport pixels, pos.z in [0..1], pos.w = RHW = 1/w).
+    // D3D8 drivers detect D3DFVF_XYZRHW and bypass world/view/projection;
+    // we have to do the same here or the renderStencilShadows full-screen
+    // quad (W3DVolumetricShadow.cpp:3340) lands somewhere off-screen and
+    // the shadow darkening never appears. Formula matches DXVK's
+    // d3d9_fixed_function.cpp pre-transform path: `NDC = pos * invExtent
+    // + invOffset`, then perspective divide. Metal NDC is Y-up, D3D
+    // screen is Y-down, hence the -2/H + 1 in the Y term.
+    if (u.posFloats == 4) {
+        float w   = (in.pos.w != 0.0) ? in.pos.w : 1.0;
+        float invW = 1.0 / w;
+        // Apply RHW perspective divide on XYZ (engine typically writes
+        // RHW=1 for 2D quads → no-op, but be correct for tools that
+        // bake real RHW).
+        float3 sxyz = in.pos.xyz * invW;
+        float4 ndc;
+        ndc.x = sxyz.x * (2.0 / u.viewportSize.x) - 1.0;
+        ndc.y = 1.0 - sxyz.y * (2.0 / u.viewportSize.y);
+        ndc.z = sxyz.z;
+        ndc.w = 1.0;
+        o.pos   = ndc;
+        o.color = (u.hasDiffuse != 0) ? in.color.bgra : float4(1.0);
+        o.uv    = in.uv;
+        o.lpos  = float4(0.0);
+        return o;
+    }
+
     // Shadow pass: clip-space position IS the light-space transform, so the
     // depth attachment is filled with light-space z. Color attachment is
     // disabled in that pipeline, so o.color/uv are irrelevant — but we still
     // assign them (Metal vs must populate the [[position]] varying).
     if (u.shadowPass != 0) {
-        o.pos   = u.lightVP * u.world * float4(in.pos, 1.0);
+        o.pos   = u.lightVP * u.world * float4(in.pos.xyz, 1.0);
         o.color = float4(1.0);
         o.uv    = float2(0.0);
         o.lpos  = float4(0.0);
         return o;
     }
-    o.pos = u.mvp * float4(in.pos, 1.0);
+    o.pos = u.mvp * float4(in.pos.xyz, 1.0);
     // Main pass: pre-compute light-space position for the fs shadow lookup.
     // Only meaningful when u.shadowEnable!=0 (we still compute to keep the
     // varying interface stable so Metal doesn't optimise it away mid-frame).
-    o.lpos = u.lightVP * u.world * float4(in.pos, 1.0);
+    o.lpos = u.lightVP * u.world * float4(in.pos.xyz, 1.0);
 
     // ---- UV: pass-through OR D3D fixed-function texcoord generation ----
     // The shroud overlay pass sets D3DTSS_TEXCOORDINDEX = TCI_CAMERASPACEPOSITION
@@ -181,7 +240,7 @@ vertex VSOut vs_main(VSIn in [[stage_in]], constant Uniforms& u [[buffer(1)]]) {
                   && (u.texXformCount >= 2)
                   && (u.posFloats == 3); /* XYZ untransformed; XYZRHW=4 skips TCI */
     if (tciActive) {
-        float4 wpos   = u.world * float4(in.pos, 1.0);
+        float4 wpos   = u.world * float4(in.pos.xyz, 1.0);
         float4 cspos  = u.view  * wpos;
         float4 transf = u.texXform * cspos;
         o.uv = transf.xy;
@@ -208,7 +267,7 @@ vertex VSOut vs_main(VSIn in [[stage_in]], constant Uniforms& u [[buffer(1)]]) {
     float3 col = me.rgb + ma.rgb * u.globalAmbient.rgb;
     if (u.hasNormal != 0) {
         float3 N = normalize((u.world * float4(in.normal, 0.0)).xyz);
-        float3 worldPos = (u.world * float4(in.pos, 1.0)).xyz;
+        float3 worldPos = (u.world * float4(in.pos.xyz, 1.0)).xyz;
         int n = min(u.numLights, 8);
         for (int i = 0; i < n; ++i) {
             GpuLight L = u.lights[i];
@@ -430,6 +489,11 @@ struct UniformsCPU {
     // float4-aligned MSL `lights[]` lands on the same offset on CPU. See note
     // on the MSL Uniforms struct above.
     int   _pad0, _pad1, _pad2, _pad3;
+    // Viewport pixel dimensions, mirrored from MSL Uniforms.viewportSize.
+    // Drives the XYZRHW screen→NDC formula in vs_main. Filled per draw from
+    // ctx->width / ctx->height.
+    float viewportSize[2];
+    float _padVP[2];
     GpuLightCPU lights[8];
 };
 } // namespace
@@ -437,6 +501,12 @@ struct UniformsCPU {
 // ---------------------------------------------------------------------------
 // Window plumbing
 // ---------------------------------------------------------------------------
+// Forward decl so the view's keyDown:/keyUp:/flagsChanged: can push to the
+// shared input queues defined above.
+namespace { struct KeyEv; }
+extern "C" void MetalView_PushKeyEvent(int keyCode, int down);
+extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode);
+
 @interface MetalView : NSView
 @end
 @implementation MetalView
@@ -444,6 +514,30 @@ struct UniformsCPU {
 - (BOOL)wantsUpdateLayer { return YES; }
 - (CALayer*)makeBackingLayer { return [CAMetalLayer layer]; }
 - (BOOL)acceptsFirstResponder { return YES; }
+
+// Key events: NSEventMaskAny + nextEventMatchingMask does NOT reliably surface
+// keyDown/keyUp NSEvents to our drain — they go straight to the responder
+// chain and AppKit consumes them at NSWindow (specifically ESC, which AppKit
+// treats as -cancelOperation:). Verified empirically: with MTL_INPUT_LOG=1
+// over an interactive session, only NSEventTypeFlagsChanged events appeared
+// via DrainEvents; every keyDown/keyUp was lost. Capture them here at the
+// view's NSResponder layer instead — first responder is already set to this
+// view in MetalContext_Create, and acceptsFirstResponder returns YES above.
+// NOTE: do NOT call [super keyDown:] / [super keyUp:] — the default impl
+// forwards up the chain to NSWindow, which beeps on unhandled ESC.
+- (void)keyDown:(NSEvent*)e {
+    if (!e.isARepeat) MetalView_PushKeyEvent((int)e.keyCode, 1);
+}
+- (void)keyUp:(NSEvent*)e {
+    MetalView_PushKeyEvent((int)e.keyCode, 0);
+}
+- (void)flagsChanged:(NSEvent*)e {
+    MetalView_PushFlagsChanged((unsigned long)e.modifierFlags, (int)e.keyCode);
+}
+// AppKit's default cancelOperation: handler swallows ESC at the window level
+// and triggers system beep. We need ESC to reach the game (open in-game menu),
+// so override to no-op — the keyDown: above has already enqueued the event.
+- (void)cancelOperation:(id)sender { (void)sender; /* eaten on purpose */ }
 @end
 
 // CPU mirror of the MSL FSParams. Must match the MSL declaration above exactly
@@ -488,13 +582,27 @@ struct MetalContext {
     id<MTLTexture>       whiteTex;
     std::unordered_map<uint64_t, id<MTLRenderPipelineState>> pipelines;
     // Sampler cache keyed on (addressU << 0) | (addressV << 4).
-    std::unordered_map<uint16_t, id<MTLSamplerState>> samplers;
+    // Key promoted uint16→uint32 to fit anisotropy + border-color buckets
+    // added per DXMT pattern (see GetSampler).
+    std::unordered_map<uint32_t, id<MTLSamplerState>> samplers;
 
     // Depth buffer (Stage 4) + depth-stencil state cache (keyed by z state).
     id<MTLTexture>       depthTex;
     int                  depthW;
     int                  depthH;
     std::unordered_map<uint32_t, id<MTLDepthStencilState>> depthStates;
+
+    // Stage 7: MSAA. On Apple Silicon (TBDR) both the MSAA color and MSAA depth
+    // attachments are MTLStorageModeMemoryless — they live entirely in tile
+    // memory, are resolved into ctx->drawable.texture at storeAction time and
+    // never roundtrip to system RAM. Cost on M-series ~0% perf, ~0 bytes
+    // off-tile. msaaSamples is captured from MTL_MSAA at Create time
+    // (default 4; values 1/2/4/8). Shadow pipelines + shadowMap stay
+    // sampleCount=1 — the shadow map is depth-only sampled by the main fs.
+    id<MTLTexture>       msaaColor;
+    int                  msaaW;
+    int                  msaaH;
+    int                  msaaSamples;
 
     // Stage 6: shadow mapping. shadowMap is a private depth-only texture
     // (2048×2048 Depth32Float). The shim watches every 3D opaque Draw() during
@@ -589,50 +697,115 @@ static void EnsureAppInitialized()
     [NSApp activateIgnoringOtherApps:YES];
 }
 
+// Optional input-flow diagnostic (env MTL_INPUT_LOG=1): logs every captured
+// NSEvent + the converted (x,y) the engine will see. Helps diagnose:
+//  - cursor coord offset (visual cursor at one place, engine click at another)
+//  - missed keys (e.g. ESC not opening in-game menu)
+//  - mouse-outside-window edge-scroll churn
+// One stderr line per event, capped after the first 200 so the log isn't
+// unreadable. Reset cap on each MetalContext_Create.
+static int  g_inputLog = -1;
+static int  g_inputLogCount = 0;
+static const int kInputLogMax = 200;
+static inline int InputLogOn(void) {
+    if (g_inputLog < 0) { const char* e = getenv("MTL_INPUT_LOG"); g_inputLog = (e && atoi(e) != 0) ? 1 : 0; }
+    return g_inputLog;
+}
+
 static void CaptureInputEvent(NSEvent* event)
 {
+    if (InputLogOn() && g_inputLogCount < kInputLogMax) {
+        // Inside-window flag + raw locationInWindow for diagnosing coord-offset bugs.
+        NSPoint raw = event.locationInWindow;
+        const char* tag = "";
+        switch (event.type) {
+            case NSEventTypeMouseMoved:        tag = "MOVE";   break;
+            case NSEventTypeLeftMouseDown:     tag = "LDOWN";  break;
+            case NSEventTypeLeftMouseUp:       tag = "LUP";    break;
+            case NSEventTypeRightMouseDown:    tag = "RDOWN";  break;
+            case NSEventTypeRightMouseUp:      tag = "RUP";    break;
+            case NSEventTypeLeftMouseDragged:  tag = "LDRAG";  break;
+            case NSEventTypeRightMouseDragged: tag = "RDRAG";  break;
+            case NSEventTypeScrollWheel:       tag = "WHEEL";  break;
+            case NSEventTypeKeyDown:           tag = "KDOWN";  break;
+            case NSEventTypeKeyUp:             tag = "KUP";    break;
+            case NSEventTypeFlagsChanged:      tag = "FLAGS";  break;
+            default: break;
+        }
+        if (tag[0]) {
+            if (event.type == NSEventTypeKeyDown || event.type == NSEventTypeKeyUp ||
+                event.type == NSEventTypeFlagsChanged) {
+                fprintf(stderr, "[mtl-in] %s keyCode=0x%02X mod=0x%lX repeat=%d\n",
+                        tag, (unsigned)event.keyCode,
+                        (unsigned long)event.modifierFlags,
+                        (event.type == NSEventTypeKeyDown ? (int)event.isARepeat : 0));
+            } else {
+                CGFloat vw = g_inputView ? g_inputView.bounds.size.width  : 0;
+                CGFloat vh = g_inputView ? g_inputView.bounds.size.height : 0;
+                bool inside = g_inputView && raw.x >= 0 && raw.x <= vw &&
+                                            raw.y >= 0 && raw.y <= vh;
+                fprintf(stderr, "[mtl-in] %s rawWin=(%.1f,%.1f) view=%.0fx%.0f inside=%d\n",
+                        tag, raw.x, raw.y, vw, vh, inside ? 1 : 0);
+            }
+            ++g_inputLogCount;
+            if (g_inputLogCount == kInputLogMax)
+                fprintf(stderr, "[mtl-in] (log capped at %d events)\n", kInputLogMax);
+        }
+    }
     switch (event.type) {
         case NSEventTypeMouseMoved:
         case NSEventTypeLeftMouseDragged:
         case NSEventTypeRightMouseDragged:
         case NSEventTypeOtherMouseDragged: {
             MouseEv m; m.type = METAL_MOUSE_MOVE; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            // Drop motion events that arrive while the cursor is outside the
+            // window — see EventPoint() comment. Without this, the engine's
+            // screen-edge scroll latches on whichever direction the cursor
+            // wandered off-window.
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeLeftMouseDown: {
             MouseEv m; m.type = (event.clickCount >= 2) ? METAL_MOUSE_LDBL : METAL_MOUSE_LDOWN;
-            m.delta = 0; EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            m.delta = 0;
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeLeftMouseUp: {
             MouseEv m; m.type = METAL_MOUSE_LUP; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeRightMouseDown: {
             MouseEv m; m.type = METAL_MOUSE_RDOWN; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeRightMouseUp: {
             MouseEv m; m.type = METAL_MOUSE_RUP; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeOtherMouseDown: {
             MouseEv m; m.type = METAL_MOUSE_MDOWN; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeOtherMouseUp: {
             MouseEv m; m.type = METAL_MOUSE_MUP; m.delta = 0;
-            EventPoint(event, &m.x, &m.y); g_mouseQ.push_back(m);
+            if (!EventPoint(event, &m.x, &m.y)) break;
+            g_mouseQ.push_back(m);
             break;
         }
         case NSEventTypeScrollWheel: {
             MouseEv m; m.type = METAL_MOUSE_WHEEL;
-            EventPoint(event, &m.x, &m.y);
+            if (!EventPoint(event, &m.x, &m.y)) break;
             // One detent ~= 120 (WHEEL_DELTA). scrollingDeltaY is points; sign matters.
             double dy = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : event.deltaY;
             m.delta = (int)(dy * 120.0);
@@ -640,34 +813,54 @@ static void CaptureInputEvent(NSEvent* event)
             g_mouseQ.push_back(m);
             break;
         }
-        case NSEventTypeKeyDown: {
-            if (!event.isARepeat) { KeyEv k; k.macKeyCode = event.keyCode; k.down = 1; g_keyQ.push_back(k); }
+        // Key events (KeyDown/KeyUp/FlagsChanged) are now captured at the
+        // MetalView responder layer — see the view's keyDown:/keyUp:/
+        // flagsChanged: above. They DO appear here too occasionally
+        // (e.g. arrow keys with Function modifier flag come through
+        // nextEventMatchingMask in some configurations), but the view
+        // path always fires. Drop them here to avoid double-enqueue.
+        case NSEventTypeKeyDown:
+        case NSEventTypeKeyUp:
+        case NSEventTypeFlagsChanged:
             break;
-        }
-        case NSEventTypeKeyUp: {
-            KeyEv k; k.macKeyCode = event.keyCode; k.down = 0; g_keyQ.push_back(k);
-            break;
-        }
-        case NSEventTypeFlagsChanged: {
-            unsigned long f = (unsigned long)event.modifierFlags;
-            g_capsOn = (f & NSEventModifierFlagCapsLock) != 0;
-            // Emit down/up for the modifier whose bit changed (best-effort).
-            unsigned long changed = f ^ g_prevModFlags;
-            struct { unsigned long mask; } mods[] = {
-                { NSEventModifierFlagShift }, { NSEventModifierFlagControl },
-                { NSEventModifierFlagOption }, { NSEventModifierFlagCommand },
-            };
-            for (auto& md : mods) {
-                if (changed & md.mask) {
-                    KeyEv k; k.macKeyCode = event.keyCode; k.down = (f & md.mask) ? 1 : 0;
-                    g_keyQ.push_back(k);
-                }
-            }
-            g_prevModFlags = f;
-            break;
-        }
         default: break;
     }
+}
+
+// View-responder→shared-queue bridge for KeyDown/KeyUp/FlagsChanged. Plain C
+// linkage so the @implementation block can call into the C++ deque without
+// pulling Cocoa includes into the rest of the TU.
+extern "C" void MetalView_PushKeyEvent(int keyCode, int down)
+{
+    if (InputLogOn() && g_inputLogCount < kInputLogMax) {
+        fprintf(stderr, "[mtl-in] %s keyCode=0x%02X (via NSView responder)\n",
+                down ? "KDOWN" : "KUP", (unsigned)keyCode);
+        ++g_inputLogCount;
+    }
+    KeyEv k; k.macKeyCode = keyCode; k.down = down;
+    g_keyQ.push_back(k);
+}
+
+extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode)
+{
+    if (InputLogOn() && g_inputLogCount < kInputLogMax) {
+        fprintf(stderr, "[mtl-in] FLAGS keyCode=0x%02X mod=0x%lX (via NSView responder)\n",
+                (unsigned)keyCode, modFlags);
+        ++g_inputLogCount;
+    }
+    g_capsOn = (modFlags & NSEventModifierFlagCapsLock) != 0;
+    unsigned long changed = modFlags ^ g_prevModFlags;
+    struct { unsigned long mask; } mods[] = {
+        { NSEventModifierFlagShift }, { NSEventModifierFlagControl },
+        { NSEventModifierFlagOption }, { NSEventModifierFlagCommand },
+    };
+    for (auto& md : mods) {
+        if (changed & md.mask) {
+            KeyEv k; k.macKeyCode = keyCode; k.down = (modFlags & md.mask) ? 1 : 0;
+            g_keyQ.push_back(k);
+        }
+    }
+    g_prevModFlags = modFlags;
 }
 
 static void DrainEvents()
@@ -788,6 +981,11 @@ static id<MTLRenderPipelineState> GetPipeline(MetalContext* ctx, const MetalDraw
     pd.vertexFunction   = ctx->vsFn;
     pd.fragmentFunction = ctx->fsFn;
     pd.vertexDescriptor = vd;
+    // Stage 7: MSAA — pipeline must match the render-pass attachment sample
+    // count. ctx->msaaSamples is captured from MTL_MSAA once at Create time,
+    // so every main-pass pipeline shares the same count and the FVF/blend
+    // cache key stays valid (no extra dimension needed).
+    pd.rasterSampleCount = (NSUInteger)(ctx->msaaSamples > 0 ? ctx->msaaSamples : 1);
     // The depth attachment also carries an 8-bit stencil so the FF stencil
     // emulation (occlusion X-ray, shadow volumes) sees a real stencil buffer.
     pd.depthAttachmentPixelFormat   = MTLPixelFormatDepth32Float_Stencil8;
@@ -887,10 +1085,70 @@ static id<MTLDepthStencilState> GetDepthState(MetalContext* ctx, const MetalDraw
     if (k.sEn) {
         k.sFunc     = (uint8_t)(dc->stencilFunc ? (dc->stencilFunc & 0x0F) : 8);
         k.sFail     = (uint8_t)(dc->stencilFail  ? dc->stencilFail  : 1);
+        // Default stencilZFail to KEEP (=1) when engine sent 0 (unset) so
+        // the Z-Pass→Z-Fail detector below recognises the engine's pattern
+        // (engine explicitly sets KEEP=1 for both fail slots when emitting
+        // its Z-Pass volumes; the !=0 guard guarantees we don't accidentally
+        // treat an unset state as "engine Z-Pass").
         k.sZFail    = (uint8_t)(dc->stencilZFail ? dc->stencilZFail : 1);
         k.sPass     = (uint8_t)(dc->stencilPass  ? dc->stencilPass  : 1);
         k.sReadMask  = (uint32_t)dc->stencilMask;
         k.sWriteMask = (uint32_t)dc->stencilWriteMask;
+
+        // ---- Optional Z-Pass → Z-Fail (Carmack's Reverse) rewrite --------
+        // OFF BY DEFAULT. Opt in with MTL_SHADOW_ZFAIL=1.
+        //
+        // Initially we landed this as a "fix" for what looked like wide
+        // shadow streaks on the shellmap. The engine-side stencil
+        // visualisation (MTL_STENCIL_VIZ=1 + viz palette pass in
+        // W3DVolumetricShadowManager::renderStencilShadows) showed the
+        // opposite was true:
+        //
+        //   Z-Pass (engine native):  stencil = 1-2 localised under casters,
+        //                            i.e. *correct* shadow distribution.
+        //   Z-Fail (our rewrite):    stencil >= 8 (white in the heatmap)
+        //                            across huge swaths of terrain and
+        //                            water — massive over-increment.
+        //
+        // Root cause of the over-increment: Generals' W3D shadow-volume
+        // meshes are open extrusions (silhouette + extruded silhouette +
+        // side walls; no real front/back caps), and Z-Fail counts back-face
+        // depth-fails as INCR. With an open mesh the back-side polygons
+        // sweep huge regions which routinely Z-fail against terrain → the
+        // INCR runs away. Z-Pass is correct for this engine because the
+        // mesh is *designed* for the depth-pass-counting algorithm.
+        //
+        // We keep the rewrite under an env opt-in for two reasons:
+        //   1. Curiosity — a future caller may build closed-cap volumes
+        //      and want Z-Fail's camera-inside-volume robustness.
+        //   2. Documentation — preserves the why-it-doesn't-work trail.
+        //
+        // Translation rules when ON:
+        //   Engine pass 1: cull=CW, sZFail=KEEP, sPass=INCR/SAT
+        //   Z-Fail   →    cull=CW, sZFail=DECR/SAT, sPass=KEEP
+        //   Engine pass 2: cull=CCW, sZFail=KEEP, sPass=DECR/SAT
+        //   Z-Fail   →    cull=CCW, sZFail=INCR/SAT, sPass=KEEP
+        static int s_useZFail = -1;
+        if (s_useZFail < 0) {
+            const char* envZF = getenv("MTL_SHADOW_ZFAIL");
+            s_useZFail = (envZF && atoi(envZF) != 0) ? 1 : 0;
+        }
+        if (s_useZFail
+            && k.sFail == 1  /*KEEP*/
+            && k.sZFail == 1 /*KEEP*/
+            && (k.sPass == 4 /*INCRSAT*/ || k.sPass == 5 /*DECRSAT*/ ||
+                k.sPass == 7 /*INCR*/    || k.sPass == 8 /*DECR*/))
+        {
+            uint8_t flipped = k.sPass;
+            switch (k.sPass) {
+                case 4: flipped = 5; break;  // INCRSAT → DECRSAT
+                case 5: flipped = 4; break;  // DECRSAT → INCRSAT
+                case 7: flipped = 8; break;  // INCR    → DECR
+                case 8: flipped = 7; break;  // DECR    → INCR
+            }
+            k.sZFail = flipped;
+            k.sPass  = 1; /*KEEP*/
+        }
     }
 
     uint64_t hashKey = MakeDSHash(k);
@@ -921,21 +1179,66 @@ static id<MTLDepthStencilState> GetDepthState(MetalContext* ctx, const MetalDraw
 
 // Create (or recreate on resize) the combined depth-stencil texture matching
 // the drawable. Depth32Float_Stencil8: 32-bit depth + 8-bit stencil in a single
-// attachment (Apple Silicon supports this natively as a private-storage texture).
+// attachment (Apple Silicon supports this natively).
+// When MSAA is on (ctx->msaaSamples > 1) the depth texture becomes a
+// textureType2DMultisample with matching sampleCount, and storage flips to
+// Memoryless — depth never leaves tile memory on TBDR (resolve action is
+// DontCare for the main pass).
 static void EnsureDepthTexture(MetalContext* ctx)
 {
     if (ctx->depthTex && ctx->depthW == ctx->width && ctx->depthH == ctx->height) return;
     if (ctx->depthTex) { [ctx->depthTex release]; ctx->depthTex = nil; }
-    MTLTextureDescriptor* dd =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatDepth32Float_Stencil8
-                                                           width:(ctx->width  > 0 ? ctx->width  : 1)
-                                                          height:(ctx->height > 0 ? ctx->height : 1)
-                                                       mipmapped:NO];
-    dd.usage       = MTLTextureUsageRenderTarget;
-    dd.storageMode = MTLStorageModePrivate;
+    const int s = ctx->msaaSamples > 0 ? ctx->msaaSamples : 1;
+    MTLTextureDescriptor* dd = [[MTLTextureDescriptor alloc] init];
+    dd.pixelFormat   = MTLPixelFormatDepth32Float_Stencil8;
+    dd.width         = (NSUInteger)(ctx->width  > 0 ? ctx->width  : 1);
+    dd.height        = (NSUInteger)(ctx->height > 0 ? ctx->height : 1);
+    dd.mipmapLevelCount = 1;
+    dd.usage         = MTLTextureUsageRenderTarget;
+    if (s > 1) {
+        dd.textureType = MTLTextureType2DMultisample;
+        dd.sampleCount = (NSUInteger)s;
+        // Memoryless storage on Apple Silicon — tile-resident depth, ~0 bytes
+        // off-tile, ~0 perf cost. depth storeAction is DontCare so we never
+        // need a resolve target.
+        dd.storageMode = MTLStorageModeMemoryless;
+    } else {
+        dd.textureType = MTLTextureType2D;
+        dd.sampleCount = 1;
+        dd.storageMode = MTLStorageModePrivate;
+    }
     ctx->depthTex = [[ctx->device newTextureWithDescriptor:dd] retain];
+    [dd release];
     ctx->depthW = ctx->width;
     ctx->depthH = ctx->height;
+}
+
+// Stage 7: MSAA color attachment. Memoryless multisampled BGRA8 — lives in
+// tile memory only, resolves into ctx->drawable.texture via the main pass'
+// storeAction=MultisampleResolve. Skipped (and torn down) when MSAA disabled
+// (msaaSamples <= 1) — the main pass attaches the drawable directly.
+static void EnsureMSAAColor(MetalContext* ctx)
+{
+    const int s = ctx->msaaSamples > 0 ? ctx->msaaSamples : 1;
+    if (s <= 1) {
+        if (ctx->msaaColor) { [ctx->msaaColor release]; ctx->msaaColor = nil; }
+        return;
+    }
+    if (ctx->msaaColor && ctx->msaaW == ctx->width && ctx->msaaH == ctx->height) return;
+    if (ctx->msaaColor) { [ctx->msaaColor release]; ctx->msaaColor = nil; }
+    MTLTextureDescriptor* cd = [[MTLTextureDescriptor alloc] init];
+    cd.pixelFormat   = MTLPixelFormatBGRA8Unorm;
+    cd.width         = (NSUInteger)(ctx->width  > 0 ? ctx->width  : 1);
+    cd.height        = (NSUInteger)(ctx->height > 0 ? ctx->height : 1);
+    cd.mipmapLevelCount = 1;
+    cd.textureType   = MTLTextureType2DMultisample;
+    cd.sampleCount   = (NSUInteger)s;
+    cd.usage         = MTLTextureUsageRenderTarget;
+    cd.storageMode   = MTLStorageModeMemoryless;
+    ctx->msaaColor = [[ctx->device newTextureWithDescriptor:cd] retain];
+    [cd release];
+    ctx->msaaW = ctx->width;
+    ctx->msaaH = ctx->height;
 }
 
 // Stage 6: shadow mapping. Lazy-allocate the shadow map texture, depth-stencil
@@ -1014,6 +1317,11 @@ static id<MTLRenderPipelineState> GetShadowPipeline(MetalContext* ctx, const Met
     pd.fragmentFunction           = ctx->shadowFsFn;
     pd.vertexDescriptor           = vd;
     pd.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
+    // Stage 7: shadow pass renders into the plain Depth32Float 4096² shadowMap
+    // (non-MSAA, sampled by the main fragment shader). Pipeline sampleCount
+    // MUST stay 1 regardless of ctx->msaaSamples or Metal will reject the
+    // render pass at encoder creation time.
+    pd.rasterSampleCount          = 1;
     // No color attachment — depth-only render.
 
     NSError* err = nil;
@@ -1040,11 +1348,22 @@ static bool EnsureEncoder(MetalContext* ctx)
     if (!ctx->cmd) ctx->cmd = [[ctx->queue commandBuffer] retain];
 
     EnsureDepthTexture(ctx);
+    EnsureMSAAColor(ctx);
 
     MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-    pass.colorAttachments[0].texture     = ctx->drawable.texture;
-    pass.colorAttachments[0].loadAction  = MTLLoadActionClear;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    if (ctx->msaaSamples > 1 && ctx->msaaColor) {
+        // MSAA path: render into memoryless multisampled tile target, resolve
+        // into the drawable at storeAction time. resolveTexture *must* be the
+        // non-MSAA drawable (sampleCount=1), formats must match (BGRA8Unorm).
+        pass.colorAttachments[0].texture        = ctx->msaaColor;
+        pass.colorAttachments[0].resolveTexture = ctx->drawable.texture;
+        pass.colorAttachments[0].loadAction     = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction    = MTLStoreActionMultisampleResolve;
+    } else {
+        pass.colorAttachments[0].texture        = ctx->drawable.texture;
+        pass.colorAttachments[0].loadAction     = MTLLoadActionClear;
+        pass.colorAttachments[0].storeAction    = MTLStoreActionStore;
+    }
     pass.colorAttachments[0].clearColor  = ctx->clearColor;
     if (getenv("MTL_TESTCLEAR")) pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.6, 1.0);
     pass.depthAttachment.texture     = ctx->depthTex;
@@ -1084,6 +1403,43 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->height = height;
         ctx->clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
         ctx->dbg = -1;
+        // Stage 7: MSAA. Boot default = 1 (off) so the "clean baseline" the
+        // user explicitly asked for is honoured on first launch (preset Low
+        // / Medium / High → no shadows, no MSAA). Picking "Metal Optimised"
+        // in Options → Graphics → Detail flips the engine's m_useShadowVolumes,
+        // which calls MetalShim_SetShadowsEnabled(1); that function also
+        // raises ctx->msaaSamples to 4 and rebuilds the pipeline cache.
+        // MTL_MSAA env var (if set) overrides — useful for A/B testing.
+        ctx->msaaSamples = 1;
+        if (const char* m = getenv("MTL_MSAA")) {
+            int v = atoi(m);
+            if (v == 0 || v == 1) ctx->msaaSamples = 1;
+            else if (v == 2)      ctx->msaaSamples = 2;
+            else if (v == 4)      ctx->msaaSamples = 4;
+            else if (v == 8)      ctx->msaaSamples = 8;
+            else                  ctx->msaaSamples = 1;
+        }
+        // Verify the device actually supports the requested sample count for
+        // BGRA8Unorm (M-series supports 1/2/4/8; the API still returns NO
+        // for unsupported counts e.g. on older hardware).
+        if (ctx->msaaSamples > 1 &&
+            ![device supportsTextureSampleCount:(NSUInteger)ctx->msaaSamples]) {
+            fprintf(stderr, "[metal] MSAA x%d not supported, falling back to off\n",
+                    ctx->msaaSamples);
+            ctx->msaaSamples = 1;
+        }
+        ctx->msaaColor = nil;
+        ctx->msaaW = 0;
+        ctx->msaaH = 0;
+
+        // Startup banner. The msaa here is the boot default — set by
+        // MTL_MSAA env override or 1 (clean baseline). The "Metal Optimised"
+        // preset (Options → Graphics → Detail) hands off to
+        // MetalShim_ApplyMacOptimised, which currently does nothing — the
+        // preset list grows as Stage-N features pass QA (see metal_backend.mm).
+        fprintf(stderr,
+                "[metal] boot: msaa=%dx (override: MTL_MSAA=0/1/2/4/8).\n",
+                ctx->msaaSamples);
         // Stage 6 shadow defaults: identity lightVP (harmless when shadowsEnabled=0),
         // shadowsEnabled stays 0 until the engine flips it via MetalContext_SetShadowsEnabled.
         std::memset(ctx->lightVP, 0, sizeof(ctx->lightVP));
@@ -1151,6 +1507,7 @@ extern "C" void MetalContext_Destroy(MetalContext* ctx)
         ctx->pipelines.clear();
         ctx->depthStates.clear();
         if (ctx->depthTex) { [ctx->depthTex release]; ctx->depthTex = nil; }
+        if (ctx->msaaColor) { [ctx->msaaColor release]; ctx->msaaColor = nil; }
         ctx->sampler  = nil;
         ctx->whiteTex = nil;
         ctx->vsFn = nil; ctx->fsFn = nil;
@@ -1182,6 +1539,44 @@ extern "C" void MetalContext_SetShadowsEnabled(MetalContext* ctx, int enabled)
 {
     if (!ctx) return;
     ctx->shadowsEnabled = enabled ? 1 : 0;
+}
+
+// Internal helper: flush all main-pass MTLRenderPipelineState (they bake
+// rasterSampleCount at creation) and drop the MSAA color + depth textures
+// so the next EnsureEncoder reallocates them at the new sample count. Used
+// by MetalContext_SetMSAA to make the change effective on the next frame.
+// Shadow pipelines (separate cache, always sampleCount=1) are untouched.
+static void RebuildPipelinesForMSAA(MetalContext* ctx)
+{
+    for (auto& kv : ctx->pipelines) { if (kv.second) [kv.second release]; }
+    ctx->pipelines.clear();
+    if (ctx->msaaColor) { [ctx->msaaColor release]; ctx->msaaColor = nil; }
+    ctx->msaaW = 0; ctx->msaaH = 0;
+    if (ctx->depthTex) { [ctx->depthTex release]; ctx->depthTex = nil; }
+    ctx->depthW = 0; ctx->depthH = 0;
+}
+
+// Runtime MSAA toggle. MSAA bakes into MTLRenderPipelineState at creation
+// (rasterSampleCount), so changing it means a full pipeline-cache rebuild +
+// texture realloc — done lazily on the next Draw via RebuildPipelinesForMSAA.
+// A 1-frame user-visible hitch is fine here; this is only invoked from the
+// Options menu hookup. MTL_MSAA env override (set once at Create) wins.
+extern "C" void MetalContext_SetMSAA(MetalContext* ctx, int samples)
+{
+    if (!ctx) return;
+    if (getenv("MTL_MSAA")) return;  // env override locked in at Create
+    int s = samples;
+    if (s != 1 && s != 2 && s != 4 && s != 8) s = 1;
+    if (s > 1 && ![ctx->device supportsTextureSampleCount:(NSUInteger)s]) {
+        fprintf(stderr, "[metal] MSAA x%d unsupported, leaving at %dx\n",
+                s, ctx->msaaSamples);
+        return;
+    }
+    if (s == ctx->msaaSamples) return;
+    fprintf(stderr, "[metal] MSAA %dx → %dx (rebuilding pipelines)\n",
+            ctx->msaaSamples, s);
+    ctx->msaaSamples = s;
+    RebuildPipelinesForMSAA(ctx);
 }
 
 extern "C" void MetalContext_BeginShadowPass(MetalContext* ctx, const float lvp[16])
@@ -1228,8 +1623,41 @@ extern "C" void MetalContext_EndShadowPass(MetalContext* ctx)
 // the engine can talk to the shadow API without plumbing the context through.
 MetalContext* g_activeMetalCtx = nullptr;
 extern "C" void MetalShim_SetShadowsEnabled(int enabled) { if (g_activeMetalCtx) MetalContext_SetShadowsEnabled(g_activeMetalCtx, enabled); }
+extern "C" void MetalShim_SetMSAA(int samples)            { if (g_activeMetalCtx) MetalContext_SetMSAA(g_activeMetalCtx, samples); }
 extern "C" void MetalShim_BeginShadowPass(const float lvp[16]) { if (g_activeMetalCtx) MetalContext_BeginShadowPass(g_activeMetalCtx, lvp); }
 extern "C" void MetalShim_EndShadowPass(void) { if (g_activeMetalCtx) MetalContext_EndShadowPass(g_activeMetalCtx); }
+
+// =============================================================================
+// "Metal Optimised" preset — one-stop hook.
+//
+// Called by the engine (GameLOD.cpp applyStaticLODLevel) whenever the user
+// switches the Options → Graphics → Detail dropdown into / out of the
+// "Metal Optimised" slot. This is the SINGLE place where the macOS port's
+// QA-passed graphical features are enabled together.
+//
+// Roadmap: features land here one at a time as they pass QA. Today the list
+// is intentionally empty — Metal Optimised behaves identically to Low. When
+// a feature is fully polished (matches the original game's visual intent
+// across shellmap + skirmish + edge cases) it gets a line below.
+//
+// Suggested order (uncomment + verify visually as each ships):
+//   MetalShim_SetShadowsEnabled(on);  // Stage 6 — shadow mapping
+//   MetalShim_SetMSAA(on ? 4 : 1);    // Stage 7 — 4x MSAA
+//   // Stage 1 multitexturing (cloud map + light map)
+//   // Stage 3 anisotropic / trilinear sampling
+//   // Stage 4 render-to-texture infrastructure → water reflection
+//   // Stage 5 pixel shader emulation
+//
+// Don't add a feature here until its standalone toggle has been verified
+// in real gameplay — the whole point of this preset is that the user can
+// trust everything inside it to "just work".
+// =============================================================================
+extern "C" void MetalShim_ApplyMacOptimised(int on)
+{
+    (void)on;
+    // Intentionally empty. Add polished features above this line, then
+    // uncomment / add their toggle calls here.
+}
 
 extern "C" void MetalContext_PumpEvents(MetalContext* /*ctx*/) { DrainEvents(); }
 
@@ -1259,11 +1687,17 @@ extern "C" void MetalContext_Resize(MetalContext* ctx, int width, int height)
 // ---------------------------------------------------------------------------
 static void RunShadowReplay(MetalContext* ctx)
 {
-    static int s_envEnabled = -1;
-    if (s_envEnabled < 0) s_envEnabled = getenv("MTL_SHADOW") ? 1 : 0;
+    // Gating: runtime ctx->shadowsEnabled (flipped by the engine through
+    // MetalShim_SetShadowsEnabled when the user picks "Metal Optimised" in
+    // Options → Graphics → Detail) is the source of truth. The MTL_SHADOW
+    // env var stays as a diagnostic override — set MTL_SHADOW=1 to force
+    // shadows on regardless of preset (useful when launching directly into
+    // a saved skirmish), MTL_SHADOW=0 to force off for A/B comparisons.
+    int enabled = ctx->shadowsEnabled;
+    if (const char* e = getenv("MTL_SHADOW")) enabled = atoi(e) ? 1 : 0;
 
     // Disabled or empty capture list → just clean up and signal "no shadows".
-    if (!s_envEnabled || ctx->shadowCaptures.empty() || !ctx->cmd || !ctx->haveCaptureSnapshot) {
+    if (!enabled || ctx->shadowCaptures.empty() || !ctx->cmd || !ctx->haveCaptureSnapshot) {
         for (auto& c : ctx->shadowCaptures) {
             if (c.vb) [c.vb release];
             if (c.ib) [c.ib release];
@@ -1271,7 +1705,11 @@ static void RunShadowReplay(MetalContext* ctx)
         ctx->shadowCaptures.clear();
         ctx->viewBuckets.clear();
         ctx->haveCaptureSnapshot = false;
-        if (!s_envEnabled) ctx->shadowsEnabled = 0;
+        // Note: do NOT clear ctx->shadowsEnabled here — that flag is the
+        // engine's request ("I want shadows"), independent of whether this
+        // particular frame had enough geometry captured to produce them.
+        // Clearing it on an empty-capture frame would deadlock the main
+        // fragment shader's sampling path on the next frame.
         return;
     }
 
@@ -1502,7 +1940,12 @@ static void RunShadowReplay(MetalContext* ctx)
         lvp[c*4+r] = s;
     }
     std::memcpy(ctx->lightVP, lvp, sizeof(lvp));
-    ctx->shadowsEnabled = 1;  // signal next frame's main pass to sample
+    // NOTE: do NOT force ctx->shadowsEnabled=1 here. That flag is the
+    // engine's request ("Metal Optimised" preset selected). If we self-set
+    // it on first replay, the user could never turn shadows off again —
+    // the engine call MetalShim_SetShadowsEnabled(0) would be silently
+    // overwritten on the very next frame. Engine owns the flag; the shim
+    // only reads it.
 
     // DIAG: dump the lvp matrix once at startup + every 600f so we can hand-
     // verify that scene points project to NDC in [-1..1]×[-1..1]×[0..1].
@@ -1809,14 +2252,20 @@ static inline int MetalDebug_InTrapWater_Get(void) {
     return MetalDebug_InTrapezoidWater ? MetalDebug_InTrapezoidWater() : 0;
 }
 
+
 // Map D3D address mode (D3DTADDRESS_*) to Metal sampler address mode. D3D8:
 // 1=WRAP, 2=MIRROR, 3=CLAMP, 4=BORDER, 5=MIRRORONCE. 0 (unset) → WRAP (default).
+// Note: BORDER returns ClampToBorderColor (real border-color path); callers
+// must also set sd.borderColor from D3DTSS_BORDERCOLOR. This matches DXMT's
+// d3d11_state_object.cpp (BORDER → ClampToBorderColor, border_color picked
+// from preset). Previously we returned ClampToZero which works only when
+// the engine wanted transparent black.
 static inline MTLSamplerAddressMode MapAddressMode(int d3dAddr)
 {
     switch (d3dAddr) {
         case 3 /*CLAMP*/:        return MTLSamplerAddressModeClampToEdge;
         case 2 /*MIRROR*/:       return MTLSamplerAddressModeMirrorRepeat;
-        case 4 /*BORDER*/:       return MTLSamplerAddressModeClampToZero;
+        case 4 /*BORDER*/:       return MTLSamplerAddressModeClampToBorderColor;
         case 5 /*MIRRORONCE*/:   return MTLSamplerAddressModeMirrorClampToEdge;
         case 1 /*WRAP*/:
         default:                 return MTLSamplerAddressModeRepeat;
@@ -1834,16 +2283,54 @@ static inline MTLSamplerMinMagFilter MapFilter(int d3dFilter, int legacy)
     return legacy ? MTLSamplerMinMagFilterLinear : MTLSamplerMinMagFilterNearest;
 }
 
-// Cached per-draw sampler keyed on (addressU, addressV, magFilter, minFilter, mipFilter).
-// The legacy default was bilinear, no-mip, WRAP — we keep that for zero-init state.
+// Pick a Metal sampler border color from a packed D3D ARGB. Metal supports
+// only three presets (TransparentBlack / OpaqueBlack / OpaqueWhite). Mirrors
+// DXMT's d3d11_state_object.cpp:758-777 snapping logic — anything outside
+// those three preset RGBA values falls back to TransparentBlack (the most
+// common D3D BORDER intent: "anywhere off-texture, sample transparent").
+static inline MTLSamplerBorderColor PickBorderColor(unsigned argb)
+{
+    uint8_t a = (argb >> 24) & 0xFF;
+    uint8_t r = (argb >> 16) & 0xFF;
+    uint8_t g = (argb >>  8) & 0xFF;
+    uint8_t b = (argb      ) & 0xFF;
+    if (r == 0xFF && g == 0xFF && b == 0xFF && a == 0xFF) return MTLSamplerBorderColorOpaqueWhite;
+    if (r == 0    && g == 0    && b == 0    && a == 0xFF) return MTLSamplerBorderColorOpaqueBlack;
+    return MTLSamplerBorderColorTransparentBlack;  // default for (0,0,0,0) and anything else
+}
+
+// Cached per-draw sampler keyed on (addressU/V, magFilter, minFilter, mipFilter,
+// aniso-bucket, border-color-bucket). Promoted uint16→uint32 to fit the
+// anisotropy + border-color dimensions added per DXMT's d3d11_state_object.cpp
+// pattern. The legacy default (bilinear, no-mip, WRAP, no-aniso, transparent
+// border) lands on key=0 and a single cached descriptor — no regression for
+// engines that never set the new states.
 static id<MTLSamplerState> GetSampler(MetalContext* ctx, const MetalDrawCall* dc)
 {
-    // 4 bits per address mode, 2 bits per filter (0..3 fits D3D values).
-    uint16_t key = (uint16_t)((dc->addressU & 0xF)
+    // Anisotropy bucket: log2(1/2/4/8/16) → 3 bits. 0 (engine unset) → bucket 0.
+    int aniso = dc->maxAnisotropy;
+    int anisoBucket = 0;
+    if (aniso >= 16)     anisoBucket = 4;
+    else if (aniso >= 8) anisoBucket = 3;
+    else if (aniso >= 4) anisoBucket = 2;
+    else if (aniso >= 2) anisoBucket = 1;
+    // Border-color bucket: only relevant if either address is BORDER.
+    int borderBucket = 0;
+    if (dc->addressU == 4 /*BORDER*/ || dc->addressV == 4 /*BORDER*/) {
+        switch (PickBorderColor(dc->borderColor)) {
+            case MTLSamplerBorderColorTransparentBlack: borderBucket = 0; break;
+            case MTLSamplerBorderColorOpaqueBlack:      borderBucket = 1; break;
+            case MTLSamplerBorderColorOpaqueWhite:      borderBucket = 2; break;
+        }
+    }
+    // 4 bits per address mode, 2 bits per filter, 3 bits for aniso, 2 for border.
+    uint32_t key = (uint32_t)((dc->addressU & 0xF)
                             | ((dc->addressV   & 0xF) << 4)
                             | ((dc->magFilter  & 0x3) << 8)
                             | ((dc->minFilter  & 0x3) << 10)
-                            | ((dc->mipFilter  & 0x3) << 12));
+                            | ((dc->mipFilter  & 0x3) << 12)
+                            | ((anisoBucket    & 0x7) << 14)
+                            | ((borderBucket   & 0x3) << 17));
     auto it = ctx->samplers.find(key);
     if (it != ctx->samplers.end()) return it->second;
 
@@ -1856,6 +2343,22 @@ static id<MTLSamplerState> GetSampler(MetalContext* ctx, const MetalDrawCall* dc
                                            : MTLSamplerMipFilterNotMipmapped;
     sd.sAddressMode = MapAddressMode(dc->addressU);
     sd.tAddressMode = MapAddressMode(dc->addressV);
+    // Anisotropy. Per DXMT pattern, only enable when the engine asked for
+    // ANISOTROPIC explicitly on min OR mag filter — otherwise leave at 1 so
+    // POINT/LINEAR draws don't pay the aniso fetch cost.
+    bool wantsAniso = (dc->minFilter == 3 /*ANISOTROPIC*/) ||
+                      (dc->magFilter == 3 /*ANISOTROPIC*/);
+    if (wantsAniso && aniso > 1) {
+        int clamped = aniso < 1 ? 1 : (aniso > 16 ? 16 : aniso);
+        sd.maxAnisotropy = (NSUInteger)clamped;
+    } else {
+        sd.maxAnisotropy = 1;
+    }
+    // Border color only consulted by Metal when an address mode is
+    // ClampToBorderColor. Apple Silicon supports this from macOS 12.
+    if (dc->addressU == 4 /*BORDER*/ || dc->addressV == 4 /*BORDER*/) {
+        sd.borderColor = PickBorderColor(dc->borderColor);
+    }
     id<MTLSamplerState> smp = [ctx->device newSamplerStateWithDescriptor:sd];
     ctx->samplers[key] = smp;
     [sd release];
@@ -2107,11 +2610,152 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
     @autoreleasepool {
         if (!EnsureEncoder(ctx)) return;
 
+        // Debug: MTL_SHADOW_VOL_VIZ=1 forces colour writes ON for stencil
+        // volume INCR/DECR/DECRSAT/INCRSAT draws so the volume mesh itself is
+        // visible in the framebuffer. Lets us see WHERE the volume extrudes
+        // (and its winding) without relying on the darken pass actually
+        // working. Mutates the const dc only for the writes-on bit so the
+        // pipeline cache picks the writeOn=1 variant.
+        { static int s_volViz = -1;
+          if (s_volViz < 0) s_volViz = getenv("MTL_SHADOW_VOL_VIZ") ? 1 : 0;
+          if (s_volViz && dc->stencilEnable && dc->colorWriteMask == 0 &&
+              (dc->stencilPass == 4 || dc->stencilPass == 5 ||
+               dc->stencilPass == 7 || dc->stencilPass == 8)) {
+              const_cast<MetalDrawCall*>(dc)->colorWriteMask = 7;
+          } }
+
         id<MTLRenderPipelineState> ps = GetPipeline(ctx, dc);
         if (!ps) return;
 
         id<MTLBuffer>  vb  = (__bridge id<MTLBuffer>)dc->vertexBuffer;
         id<MTLTexture> tex = dc->texture ? (__bridge id<MTLTexture>)dc->texture : ctx->whiteTex;
+
+        // ---- DECAL DIAGNOSTIC (gated, harmless when off) ------------------
+        // MTL_DECAL_LOG=1 : print FVF=0x142 (XYZ|DIFFUSE|TEX1 = W3D shadow
+        // decal) draw state for the first few draws of each frame: texture
+        // pointer, dimensions, blend, TSS combiner, sample-vertex UVs.
+        // MTL_DECAL_WHITETEX=1 : substitute the bound texture with whiteTex
+        // for FVF=0x142 draws. If the rendered decal goes GREY instead of
+        // black, the texture content is the bug (not blending / not UVs).
+        //
+        // NB: this catches tree billboards too (same FVF). For
+        // shadow-decal-only filtering, restore the engine-side
+        // MetalDebug_DecalPass_Begin/End marker (per Debug-first rule).
+        { static int s_dlog = -1; if (s_dlog < 0) s_dlog = getenv("MTL_DECAL_LOG") ? 1 : 0;
+          static int s_dwt  = -1; if (s_dwt  < 0) s_dwt  = getenv("MTL_DECAL_WHITETEX") ? 1 : 0;
+          if (dc->fvf == 0x142) {
+              if (s_dwt) tex = ctx->whiteTex;
+              if (s_dlog) {
+                  static long s_lastF = -1; static int s_perF = 0;
+                  if (ctx->frameIndex != s_lastF) { s_lastF = ctx->frameIndex; s_perF = 0; }
+                  if (s_perF++ < 6) {
+                      id<MTLTexture> realT = dc->texture ? (__bridge id<MTLTexture>)dc->texture : nil;
+                      const unsigned char* base = (const unsigned char*)vb.contents;
+                      // SHADOW_DECAL_VERTEX layout: x y z (12) | DWORD diffuse (4) | u v (8) = 24
+                      const float* v0 = (const float*)(base + (size_t)dc->baseVertex*dc->stride);
+                      const uint32_t* d0 = (const uint32_t*)(base + (size_t)dc->baseVertex*dc->stride + dc->diffuseOffset);
+                      const float* uv0 = (const float*)(base + (size_t)dc->baseVertex*dc->stride + dc->tex0Offset);
+                      fprintf(stderr,
+                          "[decal f%ld #%d] tex=%p sz=%lux%lu fmt=%lu blend=%d,%d,%d "
+                          "zEn=%d zW=%d alphaT=%d cull=%d colorOp=%d arg1=%d arg2=%d alphaOp=%d "
+                          "stride=%u posOff=%d diffOff=%d uvOff=%d nVtx=%u idxCount=%u "
+                          "v0=(%.1f,%.1f,%.1f) diff0=0x%08x uv0=(%.3f,%.3f)\n",
+                          ctx->frameIndex, s_perF,
+                          realT, realT ? (unsigned long)realT.width : 0,
+                          realT ? (unsigned long)realT.height : 0,
+                          realT ? (unsigned long)realT.pixelFormat : 0,
+                          dc->blendEnable, dc->srcBlend, dc->destBlend,
+                          dc->zEnable, dc->zWriteEnable, dc->alphaTestEnable, dc->cullMode,
+                          dc->colorOp, dc->colorArg1, dc->colorArg2, dc->alphaOp,
+                          dc->stride, dc->posOffset, dc->diffuseOffset, dc->tex0Offset,
+                          dc->vertexCount, dc->indexCount,
+                          v0[0], v0[1], v0[2], *d0, uv0[0], uv0[1]);
+                      // Read back texture content — Apple Silicon GPUs are
+                      // shared-memory, so a Shared/Managed texture's
+                      // getBytes works. For BC-compressed textures, blit
+                      // them to a temporary BGRA8 staging texture so we
+                      // get fully decoded RGBA we can dump and analyse.
+                      if (realT && s_perF <= 2) {
+                          NSUInteger w = realT.width, h = realT.height;
+                          MTLPixelFormat pf = realT.pixelFormat;
+                          @try {
+                              if (pf >= 130 && pf <= 135) {
+                                  // Read raw compressed bytes
+                                  size_t blocksX = (w + 3) / 4;
+                                  size_t blocksY = (h + 3) / 4;
+                                  size_t blockSize = (pf == 130 || pf == 131) ? 8 : 16;  // BC1=8B, BC2/3=16B
+                                  size_t rowB = blocksX * blockSize;
+                                  std::vector<uint8_t> raw(blocksX * blocksY * blockSize);
+                                  [realT getBytes:raw.data() bytesPerRow:rowB fromRegion:MTLRegionMake2D(0,0,w,h) mipmapLevel:0];
+                                  // Decode to BGRA8 — only BC3 (DXT5) here, simplified.
+                                  std::vector<uint8_t> rgba8(w * h * 4);
+                                  auto u16 = [](const uint8_t* p) -> uint16_t { return (uint16_t)p[0] | ((uint16_t)p[1] << 8); };
+                                  auto rgb565to8 = [](uint16_t c, uint8_t* out) {
+                                      out[2] = (uint8_t)(((c >> 11) & 31) * 255 / 31);
+                                      out[1] = (uint8_t)(((c >> 5)  & 63) * 255 / 63);
+                                      out[0] = (uint8_t)((c & 31) * 255 / 31);
+                                  };
+                                  for (size_t by = 0; by < blocksY; ++by) {
+                                      for (size_t bx = 0; bx < blocksX; ++bx) {
+                                          const uint8_t* blk = raw.data() + (by * blocksX + bx) * blockSize;
+                                          // alpha block first (8 bytes)
+                                          uint8_t a[8];
+                                          a[0] = blk[0]; a[1] = blk[1];
+                                          if (a[0] > a[1]) {
+                                              for (int i = 1; i < 7; ++i) a[i+1] = (uint8_t)(((7-i)*a[0] + i*a[1]) / 7);
+                                          } else {
+                                              for (int i = 1; i < 5; ++i) a[i+1] = (uint8_t)(((5-i)*a[0] + i*a[1]) / 5);
+                                              a[6] = 0; a[7] = 255;
+                                          }
+                                          uint64_t aIdx = 0;
+                                          for (int i = 0; i < 6; ++i) aIdx |= ((uint64_t)blk[2+i]) << (i*8);
+                                          // color block (8 bytes)
+                                          const uint8_t* cb_ = blk + 8;
+                                          uint16_t c0 = u16(cb_), c1 = u16(cb_+2);
+                                          uint8_t col[4][4];
+                                          rgb565to8(c0, col[0]); rgb565to8(c1, col[1]);
+                                          for (int ch = 0; ch < 3; ++ch) {
+                                              col[2][ch] = (uint8_t)((2*col[0][ch] + col[1][ch]) / 3);
+                                              col[3][ch] = (uint8_t)((col[0][ch] + 2*col[1][ch]) / 3);
+                                          }
+                                          uint32_t cIdx = (uint32_t)cb_[4] | ((uint32_t)cb_[5] << 8) | ((uint32_t)cb_[6] << 16) | ((uint32_t)cb_[7] << 24);
+                                          for (int py = 0; py < 4; ++py) for (int px = 0; px < 4; ++px) {
+                                              size_t xx = bx*4 + px, yy = by*4 + py;
+                                              if (xx >= w || yy >= h) continue;
+                                              int aSlot = (int)((aIdx >> (3*(py*4+px))) & 7);
+                                              int cSlot = (int)((cIdx >> (2*(py*4+px))) & 3);
+                                              uint8_t* dst = rgba8.data() + (yy*w + xx)*4;
+                                              dst[0] = col[cSlot][0]; // B
+                                              dst[1] = col[cSlot][1]; // G
+                                              dst[2] = col[cSlot][2]; // R
+                                              dst[3] = a[aSlot];
+                                          }
+                                      }
+                                  }
+                                  // Dump as raw RGBA bytes
+                                  char fname[256]; snprintf(fname, sizeof(fname), "/tmp/decal_tex_%p_%lux%lu.rgba", realT, (unsigned long)w, (unsigned long)h);
+                                  FILE* f = fopen(fname, "wb"); if (f) { fwrite(rgba8.data(), 1, rgba8.size(), f); fclose(f); }
+                                  // Stats: min/max alpha + mean RGB
+                                  int amin = 255, amax = 0, asum = 0; int rsum=0, gsum=0, bsum=0;
+                                  size_t N = w * h;
+                                  for (size_t i = 0; i < N; ++i) {
+                                      bsum += rgba8[i*4+0]; gsum += rgba8[i*4+1]; rsum += rgba8[i*4+2];
+                                      int aa = rgba8[i*4+3];
+                                      asum += aa; if (aa<amin) amin=aa; if (aa>amax) amax=aa;
+                                  }
+                                  fprintf(stderr, "  tex(BC3 %lux%lu) decoded: alpha min=%d max=%d mean=%d  rgb_mean=(%d,%d,%d)  dump=%s\n",
+                                          (unsigned long)w, (unsigned long)h, amin, amax, (int)(asum/N),
+                                          (int)(rsum/N), (int)(gsum/N), (int)(bsum/N), fname);
+                              }
+                          } @catch (NSException* e) {
+                              fprintf(stderr, "  tex readback failed: %s\n", e.reason.UTF8String);
+                          }
+                      }
+                      fflush(stderr);
+                  }
+              }
+          } }
+        // -------------------------------------------------------------------
 
         [ctx->enc setRenderPipelineState:ps];
         [ctx->enc setVertexBuffer:vb offset:0 atIndex:0];
@@ -2132,6 +2776,10 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // light-transform — bypass sampling there.
         u.shadowEnable  = (ctx->shadowsEnabled && dc->posFloats == 3) ? 1 : 0;
         u._pad0 = u._pad1 = u._pad2 = u._pad3 = 0;
+        // Viewport pixel size for the XYZRHW screen→NDC formula in vs_main.
+        u.viewportSize[0] = (float)(ctx->width  > 0 ? ctx->width  : 1);
+        u.viewportSize[1] = (float)(ctx->height > 0 ? ctx->height : 1);
+        u._padVP[0] = u._padVP[1] = 0.0f;
         std::memcpy(u.matDiffuse,    dc->matDiffuse,    sizeof(float) * 4);
         std::memcpy(u.matAmbient,    dc->matAmbient,    sizeof(float) * 4);
         std::memcpy(u.matEmissive,   dc->matEmissive,   sizeof(float) * 4);
@@ -2237,9 +2885,63 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // (zEnable==0) and use cull none. The same descriptor carries stencil
         // state (Stage 5) when dc->stencilEnable; setStencilReferenceValue:
         // applies D3DRS_STENCILREF for the EQUAL/LESS/etc tests this draw uses.
+        // The ref MUST be masked to 8 bits — engine writes 0x80808080 (a
+        // 32-bit value where only the low byte is meaningful for our 8-bit
+        // Depth32Float_Stencil8 attachment); Metal's setStencilReferenceValue:
+        // takes the raw uint and would compare the full 32-bit value against
+        // the 8-bit stencil sample, producing always-false on shadow-quad
+        // passes that set ref=0x80808080. Same goes for read/write masks —
+        // already handled by GetDepthState via MTLStencilDescriptor.readMask /
+        // writeMask which Metal documents as honouring only the low 8 bits.
         [ctx->enc setDepthStencilState:GetDepthState(ctx, dc)];
         if (dc->stencilEnable)
-            [ctx->enc setStencilReferenceValue:(uint32_t)dc->stencilRef];
+            [ctx->enc setStencilReferenceValue:((uint32_t)dc->stencilRef & 0xFFu)];
+
+        // Diagnostic: MTL_STENCIL_LOG=1 prints per-stencil-draw state so we
+        // can see what the engine pumps through (especially on shellmap where
+        // stencil shadow volumes break visually). Throttled — first 200
+        // stencil draws per frame.
+        { static int s_slog = -1;
+          if (s_slog < 0) s_slog = getenv("MTL_STENCIL_LOG") ? 1 : 0;
+          if (s_slog && dc->stencilEnable) {
+              static long s_lastFrame = -1;
+              static int  s_perFrame = 0;
+              if (ctx->frameIndex != s_lastFrame) { s_lastFrame = ctx->frameIndex; s_perFrame = 0; }
+              // Cap is high (100k) so the DECR pass + darkening quad aren't
+              // hidden behind the INCR fill on busy shellmap frames where
+              // the volume INCR pass alone can be tens of thousands of
+              // draws. MTL_STENCIL_LOG is opt-in and only used for
+              // diagnostics, so file-size cost is acceptable.
+              if (s_perFrame++ < 100000) {
+                  fprintf(stderr, "[stencil] f%ld d%d sEn=1 sFunc=%d sFail=%d sZFail=%d sPass=%d sRef=0x%x sMask=0x%x sWMask=0x%x cull=%d cw=%d posF=%d blend=%d\n",
+                          ctx->frameIndex, s_perFrame,
+                          dc->stencilFunc, dc->stencilFail, dc->stencilZFail, dc->stencilPass,
+                          (unsigned)dc->stencilRef, (unsigned)dc->stencilMask, (unsigned)dc->stencilWriteMask,
+                          dc->cullMode, dc->colorWriteMask, dc->posFloats, dc->blendEnable);
+              }
+          } }
+
+        // SHADOW-LEAK detector (always on for diagnostic, cheap): a stencil
+        // INCR/DECR/DECRSAT/INCRSAT pass with colorWriteMask != 0 is almost
+        // certainly a shadow volume that's leaking colour — engine should
+        // have set D3DRS_COLORWRITEENABLE=0 around the fill. Counts per
+        // frame, log periodically.
+        { static long s_lastF = -1;
+          static int  s_leakCnt = 0;
+          if (ctx->frameIndex != s_lastF) {
+              if (s_leakCnt > 0 && s_lastF >= 0) {
+                  fprintf(stderr, "[shadow-leak] f%ld: %d stencil-write draws kept colour writes ON (likely shadow volume leak)\n",
+                          s_lastF, s_leakCnt);
+                  fflush(stderr);
+              }
+              s_lastF = ctx->frameIndex; s_leakCnt = 0;
+          }
+          if (dc->stencilEnable && dc->colorWriteMask != 0 &&
+              (dc->stencilPass == 4 /*INCRSAT*/ || dc->stencilPass == 5 /*DECRSAT*/ ||
+               dc->stencilPass == 7 /*INCR*/   || dc->stencilPass == 8 /*DECR*/)) {
+              s_leakCnt++;
+          }
+        }
         [ctx->enc setFrontFacingWinding:MTLWindingClockwise];   // D3D front face = CW
         MTLCullMode cull = MTLCullModeNone;
         if (dc->cullMode == 2 /*D3DCULL_CW*/)  cull = MTLCullModeFront;
@@ -2411,8 +3113,13 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // MTL_SHADOW_DBG=1 prints per-frame filter rejection stats so we can
         // diagnose "shadow disappears when X happens" bugs (e.g. unit
         // selection toggling render state in a way that flips a filter).
-        static int s_shadowEnv = -1;
-        if (s_shadowEnv < 0) s_shadowEnv = getenv("MTL_SHADOW") ? 1 : 0;
+        // Capture gate must match the replay gate (RunShadowReplay): both
+        // are driven by the engine's MetalShim_SetShadowsEnabled flag,
+        // overridable by MTL_SHADOW for diagnostics. Reads ctx field directly
+        // each frame (no static cache) so a runtime toggle from the Options
+        // menu takes effect on the *next* frame, not on process restart.
+        int s_shadowEnv = ctx->shadowsEnabled;
+        if (const char* e = getenv("MTL_SHADOW")) s_shadowEnv = atoi(e) ? 1 : 0;
         static int s_shadowDbg = -1;
         if (s_shadowDbg < 0) s_shadowDbg = getenv("MTL_SHADOW_DBG") ? 1 : 0;
         static int s_keepBlended = -1;

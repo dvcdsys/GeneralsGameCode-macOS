@@ -1172,6 +1172,14 @@ private:
         dc.magFilter = (int)m_tss[0][D3DTSS_MAGFILTER];
         dc.minFilter = (int)m_tss[0][D3DTSS_MINFILTER];
         dc.mipFilter = (int)m_tss[0][D3DTSS_MIPFILTER];
+        // Stage-0 anisotropy & border color. The engine's TextureFilterClass
+        // applies MAXANISOTROPY per-stage based on the graphics-options slider
+        // (texturefilter.cpp:_Set_Max_Anisotropy). BORDERCOLOR is rarely set but
+        // is the only way D3DTADDRESS_BORDER produces a meaningful colour.
+        // Plumb both through to the Metal sampler (which DXMT also threads through
+        // unmodified from D3D11_SAMPLER_DESC).
+        dc.maxAnisotropy = (int)m_tss[0][D3DTSS_MAXANISOTROPY];
+        dc.borderColor   = (unsigned)m_tss[0][D3DTSS_BORDERCOLOR];
         // Stage-0 FF combiner (D3DTSS_COLOROP / ALPHAOP). The engine sets these
         // per-shader (terrain pass-1 → modulate; water → ADD on alpha). Default
         // when unset: COLOROP=MODULATE, ALPHAOP=MODULATE, ARG1=TEXTURE, ARG2=DIFFUSE.
@@ -1288,7 +1296,13 @@ HRESULT MetalDevice8::GetDeviceCaps(D3DCAPS8* pCaps)
     pCaps->Caps2                 = 0;
     pCaps->PresentationIntervals = D3DPRESENT_INTERVAL_IMMEDIATE | D3DPRESENT_INTERVAL_ONE;
     pCaps->DevCaps               = D3DDEVCAPS_HWTRANSFORMANDLIGHT | D3DDEVCAPS_HWRASTERIZATION;
-    pCaps->PrimitiveMiscCaps     = D3DPMISCCAPS_CULLNONE | D3DPMISCCAPS_CULLCW | D3DPMISCCAPS_CULLCCW;
+    // D3DPMISCCAPS_COLORWRITEENABLE: required by W3DVolumetricShadow's stencil-fill
+    // pass (line 3483 — gates the "happy path" that disables colour writes via
+    // D3DRS_COLORWRITEENABLE=0, vs an alpha-blend fake that doesn't reliably
+    // suppress the volume geometry on every backend). Shim already honours
+    // colorWriteMask=0 by mapping to MTLColorWriteMaskNone in GetPipeline.
+    pCaps->PrimitiveMiscCaps     = D3DPMISCCAPS_CULLNONE | D3DPMISCCAPS_CULLCW | D3DPMISCCAPS_CULLCCW
+                                 | D3DPMISCCAPS_COLORWRITEENABLE;
     pCaps->RasterCaps            = D3DPRASTERCAPS_ZTEST | D3DPRASTERCAPS_FOGVERTEX | D3DPRASTERCAPS_FOGTABLE;
     pCaps->ZCmpCaps              = 0xFF;
     pCaps->SrcBlendCaps          = 0x1FFF;

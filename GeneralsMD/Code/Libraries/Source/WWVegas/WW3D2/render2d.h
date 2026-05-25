@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // LP64 sweep
+
 #include "always.h"
 //#include "simplevec.h"
 #include "Vector.h"
@@ -150,8 +152,8 @@ public:
 	void	Force_Alpha( float alpha );
 	void	Force_Color( int color );
 
-	// Color access
-	DynamicVectorClass<unsigned long> &	Get_Color_Array ()	{ return Colors; }
+	// Color access (LP64 fix: was DynamicVectorClass<unsigned long>&)
+	DynamicVectorClass<uint32_t> &	Get_Color_Array ()	{ return Colors; }
 
 	// statics to access the Screen Resolution in Pixels
 	static void	Set_Screen_Resolution( const RectClass & screen );
@@ -169,8 +171,9 @@ protected:
 	Vector2										PreAllocatedVertices[60];
 	DynamicVectorClass<Vector2>				UVCoordinates;
 	Vector2										PreAllocatedUVCoordinates[60];
-	DynamicVectorClass<unsigned long>		Colors;
-	unsigned long								PreAllocatedColors[60];
+	// LP64 fix: colors are 0xAARRGGBB 32-bit pixel values, retail layout demands 4 bytes.
+	DynamicVectorClass<uint32_t>			Colors;
+	uint32_t									PreAllocatedColors[60];
 	bool											IsHidden;
 	bool											IsGrayScale;
 	float											ZValue;

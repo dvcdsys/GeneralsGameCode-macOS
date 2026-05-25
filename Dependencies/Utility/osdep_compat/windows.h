@@ -99,20 +99,21 @@
 // Fundamental integer / boolean types.
 // ---------------------------------------------------------------------------
 // NOTE: BYTE/WORD/DWORD/BOOL/UINT/USHORT/ULONG/LPCSTR are also typedef'd
-// (ungated) in Core/.../WWLib/bittype.h. The definitions here keep the *same
-// underlying type* as those, since C++ permits repeated identical typedefs but
-// rejects conflicting ones. DWORD/ULONG follow the engine's historical
-// `unsigned long` convention (64-bit on LP64 macOS — a latent width issue for
-// serialization, tracked for a later phase, but not a compile blocker).
+// in Core/.../WWLib/bittype.h. The definitions here MUST keep the *same
+// underlying type* as those — C++ permits repeated identical typedefs but
+// rejects conflicting ones. We now follow Win32 ABI: DWORD/ULONG are 32-bit
+// unsigned (uint32_t), matching the bittype.h sweep. The "latent width
+// issue for serialization" noted in the earlier comment is exactly what
+// the sweep fixes — see bittype.h for the full rationale.
 typedef int                 BOOL;
 typedef unsigned char       BOOLEAN;
 typedef unsigned char       BYTE;
 typedef unsigned short      WORD;
-typedef unsigned long       DWORD;
+typedef uint32_t            DWORD;
 typedef uint64_t            DWORDLONG;
 typedef uint64_t            QWORD;
 typedef int32_t             LONG;
-typedef unsigned long       ULONG;
+typedef uint32_t            ULONG;
 typedef int64_t             LONGLONG;
 typedef uint64_t            ULONGLONG;
 typedef int16_t             SHORT;

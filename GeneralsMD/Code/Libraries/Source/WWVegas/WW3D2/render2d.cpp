@@ -327,7 +327,7 @@ void	Render2DClass::Internal_Add_Quad_UVs( const RectClass & uv )
 
 void	Render2DClass::Internal_Add_Quad_Colors( unsigned long color )
 {
-	unsigned long* colors;
+	uint32_t* colors;  // LP64 fix: Colors vector is now uint32_t
 
 	colors=Colors.Uninitialized_Add();
 	*colors=color;
@@ -341,7 +341,7 @@ void	Render2DClass::Internal_Add_Quad_Colors( unsigned long color )
 
 void	Render2DClass::Internal_Add_Quad_VColors( unsigned long color1, unsigned long color2 )
 {
-	unsigned long* colors;
+	uint32_t* colors;  // LP64 fix: Colors vector is now uint32_t
 
 	colors=Colors.Uninitialized_Add();
 	*colors=color1;
@@ -356,7 +356,7 @@ void	Render2DClass::Internal_Add_Quad_VColors( unsigned long color1, unsigned lo
 
 void	Render2DClass::Internal_Add_Quad_HColors( unsigned long color1, unsigned long color2 )
 {
-	unsigned long* colors;
+	uint32_t* colors;  // LP64 fix: Colors vector is now uint32_t
 
 	colors=Colors.Uninitialized_Add();
 	*colors=color1;

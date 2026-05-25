@@ -91,7 +91,23 @@ extern int SHADOW_INDEX_SIZE;
 struct SHADOW_DECAL_VERTEX	//vertex structure passed to D3D
 {
 		float x,y,z;
+#if defined(__APPLE__)
+		// TheSuperHackers @fix macOS-port LP64: `DWORD` is `unsigned long` in
+		// bittype.h / osdep_compat/windows.h, which is 8 bytes on macOS LP64
+		// (vs the 4-byte Win32 DWORD assumed by D3DFVF_DIFFUSE). Sizeof this
+		// struct inflated 24 → 32 → stride mismatch → every decal vertex
+		// past the first read its diffuse field from random padding, mostly
+		// 0 → FF combiner MODULATE(texture, diffuse=0) = pure BLACK → 2D
+		// shadow decals rendered as opaque BLACK rectangles. Force 32-bit
+		// here. `uint32_t` is 4 bytes on both macOS LP64 AND Win32, so it
+		// is a no-op on the Windows build. Same playbook class as
+		// bittype.h's __APPLE__ `uint32` fix, ddsfile.h `void* -> unsigned`,
+		// TGA2Footer 32-bit fields. Discovered via MTL_DECAL_LOG + engine
+		// pass marker (per "Debug-first iteration rule" in MACOS_PORT_PLAN).
+		uint32_t diffuse;
+#else
 		DWORD diffuse;
+#endif
 		float u,v;
 };
 

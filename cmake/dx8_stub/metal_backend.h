@@ -143,6 +143,20 @@ typedef struct MetalDrawCall {
     int      magFilter;
     int      minFilter;
     int      mipFilter;
+    // Stage-0 D3DTSS_MAXANISOTROPY (1..16). Engine's TextureFilterClass::_Set_Max_Anisotropy
+    // writes this per-stage when "Anisotropic Filtering" is enabled in the
+    // graphics options (texturefilter.cpp:301). Previously we silently downgraded
+    // ANISOTROPIC → linear; this carries the engine value through to
+    // MTLSamplerDescriptor.maxAnisotropy. Clamped to [1,16] in the backend.
+    // Reference: DXMT src/d3d11/d3d11_state_object.cpp:730-735 (same clamp).
+    // 0 (unset by engine) → 1 (no anisotropy), matching Metal's default.
+    int      maxAnisotropy;
+    // Stage-0 D3DTSS_BORDERCOLOR (ARGB packed). Only consulted when addressU or
+    // addressV is D3DTADDRESS_BORDER (4); otherwise ignored. Metal can only
+    // pick from 3 presets (TransparentBlack/OpaqueBlack/OpaqueWhite), so the
+    // backend snaps the engine's RGBA to the nearest preset. Reference:
+    // DXMT src/d3d11/d3d11_state_object.cpp:758-777.
+    unsigned borderColor;
     // Stage-0 FF colour/alpha combiner (D3DTSS_COLOROP / D3DTSS_ALPHAOP +
     // arg1/arg2). Modelled after DXVK's d3d9_fixed_function pixel-shader
     // synthesiser: separate paths for COLOR (.rgb) and ALPHA (.a) so a stage can,
@@ -230,6 +244,11 @@ void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc);
 // shadow-map binding + lightVP are ignored even if a shadow pass ran.
 void MetalContext_SetShadowsEnabled(MetalContext* ctx, int enabled);
 
+// Set MSAA sample count (1/2/4/8). Triggers a pipeline-cache rebuild +
+// MSAA/depth texture realloc on the next Draw. Suppressed when MTL_MSAA
+// env var is set (env override locks in at MetalContext_Create time).
+void MetalContext_SetMSAA(MetalContext* ctx, int samples);
+
 // Begin a depth-only render pass into the shadow map. `lvp` is the light's
 // view*projection matrix (column-major, same convention as `MetalDrawCall::mvp`).
 void MetalContext_BeginShadowPass(MetalContext* ctx, const float lvp[16]);
@@ -241,8 +260,16 @@ void MetalContext_EndShadowPass(MetalContext* ctx);
 // Engine-side convenience wrappers that use the active (single) MetalContext
 // without needing the caller to plumb it. Set by MetalContext_Create.
 void MetalShim_SetShadowsEnabled(int enabled);
+void MetalShim_SetMSAA(int samples);
 void MetalShim_BeginShadowPass(const float lvp[16]);
 void MetalShim_EndShadowPass(void);
+
+// One-stop "Metal Optimised" preset toggle. Enables/disables the set of
+// QA-passed macOS-shim graphical features as a group — see the long
+// comment above the definition in metal_backend.mm for the current list.
+// Called by GameLOD.cpp applyStaticLODLevel when the user picks the
+// "Metal Optimised" entry in Options → Graphics → Detail.
+void MetalShim_ApplyMacOptimised(int on);
 
 // ---------------------------------------------------------------------------
 // Input (Stage 3). The single game window feeds global mouse/key queues from

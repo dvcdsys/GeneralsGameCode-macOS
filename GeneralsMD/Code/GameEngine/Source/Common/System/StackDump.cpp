@@ -281,7 +281,7 @@ void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* l
     psymbol->SizeOfStruct = sizeof(symbol_buffer);
     psymbol->MaxNameLength = 512;
 
-	if (DbgHelpLoader::symGetSymFromAddr(process, (DWORD) pointer, &displacement, psymbol))
+	if (DbgHelpLoader::symGetSymFromAddr(process, (DWORD)(uintptr_t) pointer, &displacement, psymbol))
 	{
 		if (name)
 		{
@@ -295,7 +295,7 @@ void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* l
 		memset(&line,0,sizeof(line));
 		line.SizeOfStruct = sizeof(line);
 
-		if (DbgHelpLoader::symGetLineFromAddr(process, (DWORD) pointer, &displacement, &line))
+		if (DbgHelpLoader::symGetLineFromAddr(process, (DWORD)(uintptr_t) pointer, &displacement, &line))
 		{
 			if (filename)
 			{

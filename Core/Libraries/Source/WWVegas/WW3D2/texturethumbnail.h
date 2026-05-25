@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <cstdint>     // uint32_t — LP64 sweep
+
 #include "always.h"
 #include "wwstring.h"
 #include "hashtemplate.h"
@@ -44,7 +46,7 @@ class ThumbnailClass
 	unsigned OriginalTextureHeight;
 	unsigned OriginalTextureMipLevelCount;
 	WW3DFormat OriginalTextureFormat;
-	unsigned long DateTime;
+	uint32_t DateTime;   // LP64 fix: was `unsigned long`, used as 32-bit timestamp
 	bool Allocated;	// if true, destructor will free the memory
 	ThumbnailManagerClass* Manager;
 
@@ -59,7 +61,7 @@ class ThumbnailClass
 		unsigned original_mip_level_count,
 		WW3DFormat original_format,
 		bool allocated,
-		unsigned long date_time);
+		uint32_t date_time);   // LP64 fix
 	ThumbnailClass(
 		ThumbnailManagerClass* manager,
 		const StringClass& filename);
@@ -74,7 +76,7 @@ public:
 	unsigned Get_Original_Texture_Height() const { return OriginalTextureHeight; }
 	unsigned Get_Original_Texture_Mip_Level_Count() const { return OriginalTextureMipLevelCount; }
 	WW3DFormat Get_Original_Texture_Format() const { return OriginalTextureFormat; }
-	unsigned long Get_Date_Time() const { return DateTime; }
+	uint32_t Get_Date_Time() const { return DateTime; }   // LP64 fix
 	const StringClass& Get_Name() const { return Name; }
 
 };
@@ -93,7 +95,7 @@ class ThumbnailManagerClass : public DLNodeClass<ThumbnailManagerClass>
 	HashTemplateClass<StringClass,ThumbnailClass*> ThumbnailHash;
 	unsigned char* ThumbnailMemory;
 	bool Changed;
-	unsigned long DateTime;
+	uint32_t DateTime;   // LP64 fix: was `unsigned long`, used as 32-bit timestamp
 
 	ThumbnailManagerClass(const char* thumbnail_filename);
 	~ThumbnailManagerClass();

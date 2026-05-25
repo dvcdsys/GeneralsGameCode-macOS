@@ -35,8 +35,9 @@ Bool  getStringFromRegistry(HKEY root, AsciiString path, AsciiString key, AsciiS
 {
 	HKEY handle;
 	unsigned char buffer[256];
-	unsigned long size = 256;
-	unsigned long type;
+	// LP64 sweep: RegQueryValueEx takes LPDWORD = uint32_t* now.
+	DWORD size = 256;
+	DWORD type;
 	int returnValue;
 
 	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)
@@ -58,8 +59,8 @@ Bool getUnsignedIntFromRegistry(HKEY root, AsciiString path, AsciiString key, Un
 {
 	HKEY handle;
 	unsigned char buffer[4];
-	unsigned long size = 4;
-	unsigned long type;
+	DWORD size = 4;
+	DWORD type;
 	int returnValue;
 
 	if ((returnValue = RegOpenKeyEx( root, path.str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)

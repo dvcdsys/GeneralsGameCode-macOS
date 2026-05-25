@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // LP64 sweep
+
 #include "always.h"
 #include "vector3.h"
 #include "layer.h"
@@ -469,16 +471,15 @@ struct RenderStatistics
 		double	PixelsDrawn;
 		double	PixelsRejected;
 
-		// Surface cache statistics
-		long		Hits;
-		long		Misses;
-		long		Insertions;
-		long		Removals;
-		long		MemUsed;
-		long		MaxMemory;
+		// LP64 fix.
+		int32_t		Hits;
+		int32_t		Misses;
+		int32_t		Insertions;
+		int32_t		Removals;
+		int32_t		MemUsed;
+		int32_t		MaxMemory;
 
-      // User stats (can be used to see how often a function is called, etc.)
-      long     UserStat0;
-      long     UserStat1;
-      long     UserStat2;
+		int32_t		UserStat0;
+		int32_t		UserStat1;
+		int32_t		UserStat2;
 };

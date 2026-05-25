@@ -2052,7 +2052,10 @@ void DX8Wrapper::Draw(
 
 #ifdef MESH_RENDER_SNAPSHOT_ENABLED
 	if (WW3D::Is_Snapshot_Activated()) {
-		unsigned long passes=0;
+		// TheSuperHackers @fix macOS-port-LP64-sweep: D3D8 ValidateDevice
+		// signature is `(DWORD*)`. DWORD is now uint32_t (Win32 ABI) so
+		// `unsigned long` (8 bytes on macOS) no longer aliases. Use DWORD.
+		DWORD passes=0;
 		SNAPSHOT_SAY(("ValidateDevice:"));
 		HRESULT res=D3DDevice->ValidateDevice(&passes);
 		switch (res) {

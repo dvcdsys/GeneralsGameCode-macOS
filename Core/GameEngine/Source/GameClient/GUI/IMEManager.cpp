@@ -1349,7 +1349,8 @@ void IMEManager::updateCandidateList( Int candidateFlags  )
 		if ( candidateFlags & candidate )
 		{
 			Bool unicode = TRUE;
-			unsigned long listCount = 0;
+			// LP64 sweep: ImmGetCandidateListCount* takes LPDWORD = uint32_t* now.
+			DWORD listCount = 0;
 
 			Int size = ImmGetCandidateListCountW( m_context, &listCount );
 

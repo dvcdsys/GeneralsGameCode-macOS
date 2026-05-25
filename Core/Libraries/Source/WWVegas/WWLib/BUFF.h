@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // int32_t — LP64 sweep
+
 /*
 **	The "bool" integral type was defined by the C++ committee in
 **	November of '94. Until the compiler supports this, use the following
@@ -77,7 +79,8 @@ class Buffer {
 		/*
 		**	The size of the buffer memory.
 		*/
-		long Size;
+		// LP64 fix: was `long` (4 on Win32, 8 on macOS).
+		int32_t Size;
 
 		/*
 		**	Was the buffer allocated by this class? If so, then this class

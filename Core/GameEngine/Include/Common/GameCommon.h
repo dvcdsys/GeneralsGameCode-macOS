@@ -287,19 +287,30 @@ typedef UnsignedInt VeterancyLevelFlags;
 const VeterancyLevelFlags VETERANCY_LEVEL_FLAGS_ALL = 0xffffffff;
 const VeterancyLevelFlags VETERANCY_LEVEL_FLAGS_NONE = 0x00000000;
 
+// TheSuperHackers @port macos-port-phase1 2026-05-25
+// LP64 fix for the (dt - 1) shift hack. The original `1UL << (dt - 1)` relies on
+// 32-bit `unsigned long` shift wrapping mod 32 — so LEVEL_REGULAR (dt=0) reads
+// bit 31 by accident on Win32. On macOS LP64, `unsigned long` is 64-bit; the
+// shift wraps mod 64, the bit lands past the 32-bit `flags` and AND returns 0,
+// causing every `isDieApplicable` veterancy check to fail and units never to die.
+// We mask the shift count to 0..31 explicitly and force a 32-bit `1U`, which
+// produces the same bit layout Win32 used by accident, deterministically.
 inline Bool getVeterancyLevelFlag(VeterancyLevelFlags flags, VeterancyLevel dt)
 {
-	return (flags & (1UL << (dt - 1))) != 0;
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags & (1U << bit)) != 0;
 }
 
 inline VeterancyLevelFlags setVeterancyLevelFlag(VeterancyLevelFlags flags, VeterancyLevel dt)
 {
-	return (flags | (1UL << (dt - 1)));
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags | (1U << bit));
 }
 
 inline VeterancyLevelFlags clearVeterancyLevelFlag(VeterancyLevelFlags flags, VeterancyLevel dt)
 {
-	return (flags & ~(1UL << (dt - 1)));
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags & ~(1U << bit));
 }
 
 // ----------------------------------------------------------------------------------------------

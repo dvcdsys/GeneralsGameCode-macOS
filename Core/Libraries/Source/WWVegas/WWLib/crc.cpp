@@ -62,7 +62,9 @@ void CRCEngine::operator() (char datum)
 {
 	StagingBuffer.Buffer[Index++] = datum;
 
-	if (Index == sizeof(long))  {
+	// TheSuperHackers @fix macOS-port-LP64: was `sizeof(long)` (8 on LP64).
+	// CRC must run on 4-byte words to match Win32. See CRC.h note.
+	if (Index == sizeof(uint32_t))  {
 		CRC = Value();
 		StagingBuffer.Composite = 0;
 		Index = 0;
@@ -107,14 +109,24 @@ long CRCEngine::operator() (void const * buffer, int length)
 		}
 
 		/*
-		**	Perform the fast 'bulk' processing by reading long word sized
+		**	Perform the fast 'bulk' processing by reading 32-bit word sized
 		**	data blocks.
+		**
+		**	TheSuperHackers @fix macOS-port-LP64: was reading via
+		**	`long const * longptr` and dividing by `sizeof(long)`. On macOS
+		**	LP64 `long` is 8 bytes → we were consuming 8 bytes per iteration
+		**	(double Win32) and `*longptr++` produced a 64-bit value that
+		**	`_lrotl(CRC, 1) + *longptr++` then implicitly truncated/widened
+		**	through `uint32_t _lrotl(...)`. The output CRC therefore did NOT
+		**	match Win32 for any non-trivial input. Use `uint32_t` explicitly
+		**	on both platforms (4 bytes everywhere) so the same input always
+		**	yields the same CRC.
 		*/
-		long const * longptr = (long const *)dataptr;
-		int longcount = bytes_left / sizeof(long);		// Whole 'long' elements remaining.
+		uint32_t const * longptr = (uint32_t const *)dataptr;
+		int longcount = bytes_left / (int)sizeof(uint32_t);		// Whole 32-bit elements remaining.
 		while (longcount--) {
 			CRC = _lrotl(CRC, 1) + *longptr++;
-			bytes_left -= sizeof(long);
+			bytes_left -= (int)sizeof(uint32_t);
 		}
 
 		/*

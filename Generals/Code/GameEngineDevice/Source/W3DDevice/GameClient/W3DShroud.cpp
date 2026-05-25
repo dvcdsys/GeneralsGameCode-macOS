@@ -259,7 +259,11 @@ W3DShroudLevel W3DShroud::getShroudLevel(Int x, Int y)
 {
 	DEBUG_ASSERTCRASH( m_pSrcTexture != nullptr, ("Reading empty shroud"));
 
-	if (x < m_numCellsX && y < m_numCellsY)
+	// TheSuperHackers @fix macOS-port: missing low-side bounds check on signed
+	// Int cell coords. See the matching fix in GeneralsMD/.../W3DShroud.cpp for
+	// the full rationale (sign-promoted y*m_srcTexturePitch crashes only on
+	// macOS 64-bit pointers; Win32 silently reads garbage via 32-bit wrap).
+	if (x >= 0 && y >= 0 && x < m_numCellsX && y < m_numCellsY)
 	{
 		UnsignedShort pixel=*(UnsignedShort *)((Byte *)m_srcTextureData + x*2 + y*m_srcTexturePitch);
 
@@ -283,7 +287,8 @@ void W3DShroud::setShroudLevel(Int x, Int y, W3DShroudLevel level, Bool textureO
 	if (!m_pSrcTexture)
 		return;
 
-	if (x < m_numCellsX && y < m_numCellsY)
+	// See getShroudLevel above for the bounds-check rationale (macOS-port).
+	if (x >= 0 && y >= 0 && x < m_numCellsX && y < m_numCellsY)
 	{
 		if (level < TheGlobalData->m_shroudAlpha)
 			level = TheGlobalData->m_shroudAlpha;

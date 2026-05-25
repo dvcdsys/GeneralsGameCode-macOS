@@ -21,10 +21,13 @@
 
 #pragma once
 
+#include <cstdint>     // LP64 sweep
+
 struct BorderColor
 {
 	const char *m_colorName;
-	unsigned long m_borderColor;
+	// LP64 fix: was `unsigned long`. Color is a 0xAARRGGBB 32-bit literal.
+	uint32_t m_borderColor;
 };
 
 const BorderColor BORDER_COLORS[] =

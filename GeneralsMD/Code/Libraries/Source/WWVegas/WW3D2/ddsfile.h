@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <cstdint>     // LP64 sweep
+
 #include "always.h"
 #include "ww3dformat.h"
 #include "wwstring.h"
@@ -189,7 +191,7 @@ class DDSFileClass
 	unsigned FullHeight;
 	unsigned FullDepth;
 	unsigned MipLevels;
-	unsigned long DateTime;
+	uint32_t DateTime;   // LP64 fix: was `unsigned long`
 	unsigned ReductionFactor;
 	unsigned char* DDSMemory;
 	WW3DFormat Format;

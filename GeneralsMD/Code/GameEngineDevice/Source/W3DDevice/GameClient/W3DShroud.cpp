@@ -264,7 +264,18 @@ W3DShroudLevel W3DShroud::getShroudLevel(Int x, Int y)
 {
 	DEBUG_ASSERTCRASH( m_pSrcTexture != nullptr, ("Reading empty shroud"));
 
-	if (x < m_numCellsX && y < m_numCellsY)
+	// TheSuperHackers @fix macOS-port: missing low-side bounds check. `x` and `y`
+	// are signed `Int`, so `y < m_numCellsY` is a signed comparison and
+	// accepts negative values (-1 < anything positive). The pointer-arithmetic
+	// line below then computes `y * m_srcTexturePitch` where m_srcTexturePitch
+	// is `UnsignedInt` — the multiply promotes y to unsigned, yielding a ~4GB
+	// offset. On 32-bit Win32 the pointer add wraps inside 4GB address space
+	// and accidentally lands in mapped memory (returns garbage, no crash). On
+	// macOS 64-bit pointers don't wrap → EXC_BAD_ACCESS the moment a caller
+	// (e.g. getRiverVertexDiffuse in W3DWater.cpp:183) passes a water vertex
+	// whose world-to-cell coord rounds negative. Real fix: check non-negative
+	// before the upper bound. No-op on Windows for non-negative input.
+	if (x >= 0 && y >= 0 && x < m_numCellsX && y < m_numCellsY)
 	{
 		UnsignedShort pixel=*(UnsignedShort *)((Byte *)m_srcTextureData + x*2 + y*m_srcTexturePitch);
 
@@ -288,7 +299,12 @@ void W3DShroud::setShroudLevel(Int x, Int y, W3DShroudLevel level, Bool textureO
 	if (!m_pSrcTexture)
 		return;
 
-	if (x < m_numCellsX && y < m_numCellsY)
+	// Same low-side guard as getShroudLevel above — see the long comment there
+	// for the macOS 64-bit pointer-arithmetic rationale. Writing past
+	// m_srcTextureData with a negative cell coord corrupts heap memory on
+	// macOS instead of crashing immediately, so this guard matters even more
+	// for setShroudLevel.
+	if (x >= 0 && y >= 0 && x < m_numCellsX && y < m_numCellsY)
 	{
 		if (level < TheGlobalData->m_shroudAlpha)
 			level = TheGlobalData->m_shroudAlpha;

@@ -302,10 +302,11 @@ class Targa
 #ifdef TGA_USES_WWLIB_FILE_CLASSES
 		FileClass *TGAFile;
 #else
-		long mFH;
+		// LP64 fix: 32-bit on Win32, retail expects 32-bit handle/flags layout.
+		int32_t mFH;
 #endif
-		long mAccess;
-		long mFlags;
+		int32_t mAccess;
+		int32_t mFlags;
 		char* mImage;
 		char* mPalette;
 		TGA2Extension mExtension;

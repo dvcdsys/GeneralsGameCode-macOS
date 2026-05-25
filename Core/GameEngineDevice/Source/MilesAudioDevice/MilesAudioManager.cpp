@@ -1664,7 +1664,9 @@ void MilesAudioManager::selectProvider( UnsignedInt providerNdx )
 	Bool useDolby = FALSE;
 	if( lpDirectSoundInfo )
 	{
-		DWORD speakerConfig;
+		// LP64 sweep: vendored DirectSound API expects `unsigned long*` here
+		// (its own typedef predates the DWORD sweep). Keep local matching it.
+		unsigned long speakerConfig;
 		lpDirectSoundInfo->GetSpeakerConfig( &speakerConfig );
 		switch( DSSPEAKER_CONFIG( speakerConfig ) )
 		{

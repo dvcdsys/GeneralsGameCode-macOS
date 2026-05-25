@@ -29,7 +29,7 @@
 > clamp + `GEN_AUTO_SKIRMISH`), `render2dsentence.cpp` font clamp,
 > `GameEngine.cpp` `GEN_FORCE_*` harness. Don't add new ones.
 
-> ### 🛰️ Shim-only shadow mapping (Stage 6, in-progress)
+> ### 🛰️ Shim-only shadow mapping (infrastructure ✅, not yet wired to UI)
 >
 > Original Generals uses **stencil shadow volumes** (`W3DVolumetricShadow`)
 > and **projected blob decals** (`W3DProjectedShadowManager`). Neither is
@@ -56,6 +56,669 @@
 > we re-emit those draws against a 4096² Depth32Float texture using the
 > sun's view+ortho. Next frame's main fragment shader samples that map
 > with 3×3 PCF. 1-frame latency, 2× geometry GPU. Engine code untouched.
+> Currently env-gated (`MTL_SHADOW=1`); engine UI hookup is planned as
+> part of the **Advanced Display Options sweep** below — most likely
+> hijacking the "3D Shadows" checkbox (whose original stencil-volume code
+> path is a dead end on macOS anyway).
+
+> ### 🪥 Shim-only MSAA (infrastructure ✅, not yet wired to UI)
+>
+> Original D3D8 `D3DMULTISAMPLE_*` is enumerated by
+> `WW3D::getRenderDevice()->isMultiSampleSupported()` but never wired into
+> the Metal pipeline — before this shim infrastructure landed, the colour
+> drawable and depth texture were both `sampleCount=1` so the render
+> output was crawling with stair edges (ship masts, helicopter rotors,
+> building roof slopes, cliffs).
+>
+> Implementation (shim only, `cmake/dx8_stub/metal_backend.mm`):
+> - **MSAA colour** texture: `textureType2DMultisample`, BGRA8Unorm,
+>   `MTLStorageModeMemoryless` — lives entirely in TBDR tile memory.
+>   Render pass uses `colorAttachments[0].resolveTexture =
+>   drawable.texture` with `storeAction = MultisampleResolve`, so the
+>   resolved pixels land in the CAMetalLayer drawable, and we never pay
+>   the off-tile bandwidth.
+> - **MSAA depth** texture: `Depth32Float_Stencil8`,
+>   `textureType2DMultisample` matching sampleCount, also memoryless
+>   (storeAction=DontCare — we never resolve depth; main pass is the
+>   only consumer).
+> - All main-pass `MTLRenderPipelineDescriptor` get
+>   `pd.rasterSampleCount = msaaSamples`; shadow pipelines (which render
+>   into the plain Depth32Float 4096² shadowMap) stay
+>   `rasterSampleCount = 1`. Pipeline cache key didn't need a new
+>   dimension because `msaaSamples` is captured once at
+>   `MetalContext_Create`.
+> - Env: `MTL_MSAA=0|1|2|4|8`, default **4**. Unsupported counts
+>   (e.g. 8x on M3 for BGRA8Unorm) auto-fall-back to 1 via
+>   `[device supportsTextureSampleCount:]` with a `[metal] MSAA xN not
+>   supported, falling back to off` log line.
+>
+> What we did NOT borrow / why DXVK/MoltenVK weren't useful here:
+> MoltenVK only implements multisample for Vulkan render passes that
+> already specify `rasterizationSamples`; DXVK delegates D3D9 MSAA to
+> Vulkan natively. Neither has logic to **add** MSAA to a single-sample
+> pipeline against the wishes of the source API, which is exactly what
+> the shim does (the engine still passes through D3D8's "no MSAA"
+> default). So this is a shim-only feature, gated only by env var.
+>
+> Cost on M-series TBDR: ≈0% perf, 0 bytes off-tile (tile-memory
+> resolve). Verified clean rendering at 4x across shellmap (ships,
+> palms, cliffs, helicopters) and skirmish (cliffs, trees, buildings),
+> with shadows (`MTL_SHADOW=1`) working unchanged alongside MSAA.
+> Currently env-gated (`MTL_MSAA=N`); engine UI hookup planned as part of
+> the **Advanced Display Options sweep** below (driven by the standalone
+> AA combo `m_antiAliasLevel`, not from the 10 checkboxes).
+
+---
+
+## ▶ Current focus: Advanced Display Options sweep (2026-05-24 →)
+
+The macOS port is **playable end-to-end** through Stages 0–4 (boot →
+shellmap → skirmish → playable). The next chunk of work is **not new
+features** — it's making each of the **10 checkboxes** in
+`Options → Custom → Advanced Display Options` actually behave on macOS.
+
+Today, most of those checkboxes either no-op or visibly artefact when
+ticked, because their engine code paths assume a full D3D8 pipeline
+(stencil volumes, second-stage TSS sampling, framebuffer-readback post
+effects) that the Metal shim doesn't yet emulate. The shim-only shadow
+map + MSAA infrastructure already built (docs above) are *plumbing* that
+the right checkboxes will hook into.
+
+**Engine-side rule:** the engine UI is untouched — no rename, no preset
+swap, no new option. The `Options → Detail` dropdown stays
+`Low / Medium / High / Very High / Custom` as in retail. Users test by
+**picking `Custom`** → opening Advanced Display Options → ticking the
+checkbox they want.
+
+**Methodology — one checkbox at a time:**
+
+1. Pick the next ⬜ row in the sweep table below.
+2. User ticks the checkbox in `Options → Custom → Advanced Display Options`
+   → starts a skirmish → captures frame dump / screenshot / log of the
+   artefact (or "feature simply doesn't fire").
+3. Trace from the engine-side `m_*` field through the W3D path that
+   reads it (W3DScene, W3DProjectedShadowManager, W3DWater, etc.) into
+   the D3D8 calls the shim sees.
+4. Fix at SHIM level (`cmake/dx8_stub/`). Engine touches only when
+   truly unavoidable, under `#if defined(__APPLE__)` (see SHIM-ONLY rule).
+5. Verify the checkbox now produces visually correct output across
+   shellmap + skirmish + at least one campaign mission, with **no
+   regressions** when the checkbox is OFF and no regressions on other
+   already-fixed checkboxes.
+6. Tick the row, log root cause + fix file paths in the "completed work"
+   sub-section under this header, move to the next row.
+
+**Stop conditions for "fixed":**
+- Visually matches Windows reference (or our best approximation when the
+  feature is partially broken on Windows too — e.g. heat effects on
+  some Intel cards).
+- No artefacts (z-fight, black tiles, flicker, double-shadowing).
+- Toggle is symmetric (OFF after ON returns to identical pre-toggle frame).
+- Works in shellmap *and* skirmish (catches submission-order bugs).
+
+**Test-run discipline (mandatory between every screenshot run):**
+- Always launch headless game runs as `(... & PID=$!; sleep N; kill -9 $PID; wait)`.
+- `pkill -9 -f generalszh` + verify with `pgrep -f generalszh` returns empty
+  *before* and *after* each run — leftover zombies append PNG dumps to
+  `/tmp/gen_frame_*.png` and corrupt the A/B comparison of the next run.
+- **Move** `/tmp/gen_frame_*.png` into the per-run subdir *between* runs,
+  so dumps from the previous config don't get mistaken for the current.
+- See `/tmp/test_3d_shadows.sh` for the canonical pattern.
+
+**Debug-first iteration rule (added 2026-05-25, user-mandated):**
+When a shim-only fix fails to land cleanly because we can't *see* what
+the engine is doing, **temporary engine edits ARE allowed for debugging
+purposes**, with the following contract:
+
+1. **Isolate the broken subsystem.** Don't debug inside the full
+   shellmap intro / live skirmish if a smaller harness can repro the
+   bug. Build a minimal launch mode (debug env-gated bypass of menu /
+   one-object scene / fixed camera / fixed light) that exercises ONLY
+   the broken feature. The existing `GEN_MODEL_VIEWER`, `GEN_AUTO_SKIRMISH`,
+   `MTL_SHADOW_VIZ` envs are precedent — add more in the same style.
+2. **Engine-side visualization is fair game.** Patching
+   `W3DVolumetricShadowManager` to render an RGB ramp keyed off the
+   stencil value (instead of darken pass), or dumping stencil/depth to
+   a debug texture, or printing per-object volume counts — all OK if
+   gated by an env var the user can flip off.
+3. **All engine edits MUST be reverted before declaring the fix done.**
+   Final `git diff` must show **only** `cmake/dx8_stub/` (and
+   `MACOS_PORT_PLAN.md`) modified. The shim fix itself stays. The
+   engine instrumentation goes. If the engine edit is so useful it
+   "should" stay (e.g. a permanently-useful diagnostic), surface it as
+   a separate proposal — don't sneak it in.
+4. **No "debug edit just for this PR" smuggling.** The git-diff check
+   at the end is what users see; engine edits don't belong there.
+   Verified by running `git diff --stat -- 'GeneralsMD/Code/*' 'Generals/Code/*' 'Core/GameEngine*/*'`
+   → must be empty before completion.
+5. **Why this rule:** with shim-only debugging we were guessing at
+   what the engine emits and what the GPU actually does with it. The
+   Z-Pass→Z-Fail rewrite "looked right" by diff-stat but visually
+   regressed skirmish — because we never *visualised* the stencil
+   buffer to confirm the rewrite produced sensible per-pixel counts.
+   Engine-side viz would have caught that in minutes.
+
+Workflow for a flaky shim fix:
+```
+diagnose → engine-viz hook (gated) → isolated launch script → screenshot →
+read pixels → root-cause → shim fix → screenshot confirms → revert engine →
+final git-diff check → done
+```
+
+**DXMT reference project (added 2026-05-25, user-mandated):**
+A working D3D9/10/11 → Metal translation layer is cloned and
+cix-indexed locally at `/Users/dvcdsys/Cursor/dxmt`. When you do
+not know how to implement a Metal-side feature correctly, **consult
+DXMT first** before guessing.
+
+How to query it: `cd /Users/dvcdsys/Cursor/dxmt && cix search "..."`
+(its own cix index is separate from the GeneralsGameCode index).
+Useful entry-points to read:
+- `src/dxmt/dxmt_sampler.{hpp,cpp}` — sampler-state mapping
+- `src/d3d11/d3d11_state_object.cpp` — D3D11_SAMPLER_DESC →
+  `WMTSamplerInfo`, depth-stencil descriptors, blend descriptors
+- `src/dxmt/dxmt_texture.{hpp,cpp}` — texture creation, BC/DXT
+  pixel-format mapping, MSAA/sampleCount, view caching
+- `src/dxmt/dxmt_shader_cache.{hpp,cpp}` — persistent on-disk PSO
+  binary archive (we don't need persistence yet, but the in-memory
+  hash-keyed PSO cache pattern is the same)
+- `src/d3d11/d3d11_pipeline.{hpp,cpp}` — render-pipeline-state
+  caching keyed off shader+layout+attachments
+- `src/airconv/` — DXBC → AIR / MSL shader transpiler; for our
+  FF emulation we don't transpile DXBC (Generals uses fixed
+  function, not SM2+ shaders), but the MSL emission patterns
+  are reusable
+
+What DXMT does NOT solve for us:
+- D3D8 surface (DXMT enters at D3D9 minimum) — we still need the
+  shim's D3D8 device / surface / state-block machinery
+- Fixed Function combiner emulation — DXMT assumes DXBC input;
+  Generals submits no shaders, only D3DRS_/D3DTSS_ state → we
+  must synthesise MSL FF shaders ourselves
+- Engine-level LP64 traps (struct stride / DWORD) — orthogonal
+  to anything DXMT does
+
+Rule of thumb: when a shim subsystem (sampler, depth/stencil,
+PSO cache, texture upload, MSAA) feels under-specified or you
+catch yourself guessing field semantics, **read DXMT's
+implementation of the same subsystem before writing code**.
+This is the cheap-and-fast path; trial-and-error against the
+Generals engine costs us hours of A/B captures.
+
+### Sweep table
+
+| # | UI Checkbox            | Engine field                     | Native D3D8 behaviour                                                                                          | Shim status | Strategy notes |
+|---|------------------------|----------------------------------|----------------------------------------------------------------------------------------------------------------|-------------|----------------|
+| 1 | 3D Shadows             | `m_useShadowVolumes`             | `W3DVolumetricShadow` stencil shadow volumes: extrude silhouette, ±stencil, darken pixels in shadow            | ✅ working   | Three-fix landing (caps + XYZRHW + stencil-ref mask); Z-Fail rewrite tried, reverted to opt-in. See "Sweep — completed work" below. |
+| 2 | 2D Shadows             | `m_useShadowDecals`              | `W3DProjectedShadowManager` projected blob decals (texture-projected dark disc under each unit)                | ✅ working   | LP64 fix: `SHADOW_DECAL_VERTEX::diffuse` forced to `uint32_t` under `__APPLE__` (DWORD was 8 bytes → stride 32 vs 24 → black rectangles). See "Sweep — completed work". |
+| 3 | Cloud Shadows          | `m_useCloudMap`                  | Terrain second-stage TSS sampler scrolling a cloud noise texture with a D3DTS_TEXTURE1 UV transform            | ⬜ artefacts | Multi-texture stage-1 path not plumbed in shim FF MSL. Same shape as the Stage-4 cliff-shroud TCI fix, but at TSS stage 1 instead of stage 0. |
+| 4 | Extra Ground Lighting  | `m_useLightMap`                  | Same second-stage path as #3, different sampler texture (TSNoise*)                                             | ⬜ artefacts | Shares the stage-1 plumbing with #3 — fix one, the other is essentially free. |
+| 5 | Smooth Water Borders   | `m_showSoftWaterEdge`            | Extra shoreline geometry with alpha-feather; engine calls `TheTerrainVisual->setShoreLineDetail()`             | ⬜ artefacts | Touches the water path which already needed an Apple-only skip (shroud-pass2 in Stage 4). Investigate the alpha-feather geometry submission. |
+| 6 | Behind Buildings       | `m_enableBehindBuildingMarkers`  | "See through enemy buildings": stencil-based occlusion mark + a post-occlusion shader pass                     | ⬜ artefacts | Same stencil prerequisite as #1. Partially unblocked by the Stage-4 ZENABLE stencil seed, but the actual stencil-shadow draw paths are untested. |
+| 7 | Show Props             | `m_useTrees`                     | Trees rendered at all                                                                                          | ✅ working   | — |
+| 8 | Extra Animations       | `!m_useDrawModuleLOD`            | Construction scaffolds + secondary animation modules (cranes mid-buildup)                                      | ⬛ untested  | Likely working (pure W3D anim path, same machinery as built models). Just needs verification + a screenshot. |
+| 9 | Disable Dynamic LOD    | `!m_enableDynamicLOD`            | Don't auto-degrade particle/debris density when FPS drops                                                      | ✅ working (CPU only) | — |
+| 10| Heat Effects           | `m_useHeatEffects`               | Full-screen distortion ripple (Microwave Tank, fire): offscreen RT + UV-perturb sample                         | ⬜ artefacts | Requires render-to-texture infrastructure (not yet built) + a pixel-shader equivalent. Most expensive — leave for last. |
+
+**Legend:** ✅ working · 🔶 partial · ⬜ artefacts/broken · ⬛ untested
+
+**Suggested order** (easy → hard, grouping shared infra):
+- **Cheap verifications first** (7, 8, 9) — confirm what already works.
+- **Multi-texture family** (3, 4) — fix once, two checkboxes light up.
+- **Shadow family** (1, 2) — hook up the existing shadow-mapping infra;
+  decide blob-decal coexistence.
+- **Water** (5) — independent, moderate complexity.
+- **Stencil-dependent** (6) — needs more stencil pipeline work first.
+- **Heat Effects** (10) — last; requires brand-new RT + PS infrastructure.
+
+### Sweep — completed work
+
+#### #2 — 2D Shadows — LP64 DWORD stride trap in SHADOW_DECAL_VERTEX (2026-05-25)
+
+**Symptom:** with `m_useShadowDecals=TRUE` (Options → Custom → 2D Shadows
+ticked, or `GEN_FORCE_SHADOW_DECAL=1`), every caster painted a **solid
+opaque black RECTANGLE** under its position instead of the soft brown
+blob shadow the texture asset describes. The whole quad → pure black
+multiplied terrain → very obvious artefact.
+
+**Discovery (debug-first methodology):**
+1. 4-config A/B (`nothing` / `decals_only` / `volumes_only` / `both`) on
+   shellmap proved the artefact was the **decal pass only** and not a
+   double-darken interaction with 3D shadows.
+2. Shim diagnostic `MTL_DECAL_LOG=1` (gated, harmless when off) dumped
+   per-`FVF=0x142` draw state — initially noisy because tree billboards
+   share the FVF.
+3. Per "Debug-first iteration rule": temporarily edited
+   `W3DProjectedShadowManager::flushDecals` to call weak shim hooks
+   `MetalDebug_DecalPass_Begin/End` that flipped a flag. Shim diagnostic
+   now logged ONLY actual decal-pass draws. **The engine edit and the
+   matching shim symbols are reverted at end of task** — `git diff`
+   against engine paths shows only the narrow LP64 fix.
+4. With the marker filter in place, the log showed all real decal draws
+   with `stride=32 diffOff=12 uvOff=16 diff0=0x00000000 uv0=(nan,nan)`.
+   But the engine struct is:
+   ```cpp
+   struct SHADOW_DECAL_VERTEX { float x,y,z; DWORD diffuse; float u,v; };
+   ```
+   On Win32 `sizeof = 12+4+8 = 24`. On macOS LP64 with
+   `typedef unsigned long DWORD` (per `bittype.h` / `osdep_compat/windows.h`)
+   `DWORD = 8 bytes` + struct padding → `sizeof = 32`. The shim's
+   `SetStreamSource` stride faithfully reported `sizeof(struct) = 32`,
+   the FF combiner walked vertices at +32, every diffuse field past the
+   first read padding/garbage (mostly 0) → fragment colour
+   = `texture × 0x00000000 = pure black`.
+
+**Root cause:** classical LP64 trap, same playbook as `bittype.h`
+`uint32 = unsigned int` (W3D mesh loader), `ddsfile.h` `void* → unsigned`
+(DDS texture loader), `TGA2Footer` 32-bit fields. `DWORD` *means* a
+32-bit field; `unsigned long` on macOS LP64 makes it 64-bit.
+
+**Fix (engine, narrow `__APPLE__`-only):** `W3DProjectedShadow.cpp`
+`SHADOW_DECAL_VERTEX::diffuse` → `uint32_t` under `__APPLE__`. 16 lines,
+no-op on Windows (where `uint32_t == DWORD == 4 bytes`).
+
+Why not global DWORD typedef change: tried it in
+`Dependencies/Utility/osdep_compat/windows.h` and
+`Core/.../WWLib/bittype.h`. The change broke API call sites
+(`RegQueryValueEx(..., &type, ..., &size)`, `CreateThread(..., &threadid)`,
+`ValidateDevice(&passes)`) where callers declared the OUT parameter as
+`unsigned long` to match the historical DWORD width — the fix would
+have cascaded into many engine touch-points outside SHIM scope.
+Per-struct narrow fix is the safer scoped solution; latent LP64 issues
+in other DWORD-bearing structs are queued for the same playbook when
+they surface.
+
+**Verified:**
+- `/tmp/2dshadow_decals_only/gen_frame_0900.png` — beach units now have
+  soft brown blob shadows under them; the previous solid-black
+  rectangles are gone.
+- `/tmp/2dshadow_both/gen_frame_0900.png` — 2D + 3D shadows coexist
+  cleanly (no double-darken artefact).
+- `/tmp/2dshadow_volumes_only/gen_frame_0900.png` — unchanged
+  (volumes-only path independent of this fix).
+- Per-frame pixel diff `decals_only` vs `nothing` jumps from
+  zero-meaningful (rectangles WERE on screen but solid black) to
+  0.1–0.35 mean RGB localised under units — proper blob contribution.
+- Engine `git diff --stat` shows only `W3DProjectedShadow.cpp` +16
+  lines, all under `__APPLE__`.
+
+**Status:** ✅ done — 2D Shadows checkbox now produces correct blob
+decals. Engine touch is one narrow LP64-fix block, matching the
+existing playbook for this class of macOS port issue.
+
+**Files changed:**
+- `GeneralsMD/Code/.../Shadow/W3DProjectedShadow.cpp` — `SHADOW_DECAL_VERTEX::diffuse`
+  → `uint32_t` (Apple-only).
+- `cmake/dx8_stub/metal_backend.mm` — kept the `MTL_DECAL_LOG` /
+  `MTL_DECAL_WHITETEX` diagnostic envs (off by default, useful for
+  future LP64 hunts).
+
+---
+
+#### #1 — 3D Shadows — stencil-volume geometry leak fixed (2026-05-24)
+
+**Symptom (before fix):** with `m_useShadowVolumes=TRUE` (Options → Custom →
+3D Shadows ticked, or `GEN_FORCE_SHADOW_VOL=1`), the engine's shadow-volume
+extrusion geometry leaked into the visible framebuffer as large dark
+trapezoidal patches — wherever a unit/building would have cast a stencil
+shadow, the *volume mesh itself* rendered into colour instead of being
+written to stencil only.
+
+**Root cause:** the shim's `GetDeviceCaps` (`cmake/dx8_stub/dx8_device.cpp`)
+did NOT advertise `D3DPMISCCAPS_COLORWRITEENABLE`. `W3DVolumetricShadow::renderShadows`
+(GeneralsMD line 3483) probes this cap to choose between two stencil-fill
+paths:
+- **Happy path** (cap present) → `D3DRS_COLORWRITEENABLE=0`, geometry writes
+  stencil only, no colour.
+- **Fake path** (cap absent) → emulates colour-suppression via
+  `D3DRS_ALPHABLENDENABLE=TRUE` + `SRCBLEND=ZERO` + `DESTBLEND=ONE`.
+  This *should* leave dest unchanged but didn't on the shim, presumably
+  because the no-vertex-colour shadow volume geometry interacted with
+  blend state in a way that still wrote dark pixels.
+
+Without the cap, engine took the fake path → volume geometry visible.
+
+**Fix (1 line, SHIM only):** `cmake/dx8_stub/dx8_device.cpp` —
+`pCaps->PrimitiveMiscCaps |= D3DPMISCCAPS_COLORWRITEENABLE`. The shim's
+`GetPipeline` already mapped `dc->colorWriteMask == 0` to
+`MTLColorWriteMaskNone` (since Stage 5 stencil work), so once the engine
+started actually writing `D3DRS_COLORWRITEENABLE=0`, the volume mesh
+stopped leaking. Zero engine touches.
+
+**Verified:** `/tmp/test_3d_shadows.sh` 4-config bench (baseline /
+volumes / noStencil / ourShadow) on shellmap intro. After fix: `volumes`
+frame 0900 is pixel-identical to `baseline` — no dark trapezoid
+artefacts. Before fix: `volumes` had a large dark trapezoid across the
+centre of the scene.
+
+**Follow-up fix (same session): XYZRHW pre-transformed quad rendering**
+
+The first cap fix removed the visible volume-geometry leak but the actual
+shadow darkening still wasn't appearing. Root cause #2:
+`W3DVolumetricShadowManager::renderStencilShadows` (line 3340) draws a
+full-screen quad with `D3DFVF_XYZRHW | D3DFVF_DIFFUSE` — pre-transformed
+pixel-space coords with the engine relying on the driver to detect the
+`XYZRHW` FVF flag and skip world/view/projection. Our shim's `vs_main`
+was unconditionally applying `u.mvp * pos`, so the 4 quad vertices
+(written at `(xpos+W, ypos+H, 0, 1)` etc.) got multiplied by whatever
+3D MVP was last set → quad landed somewhere off-screen → no darkening.
+
+**Fix (shim only, `cmake/dx8_stub/metal_backend.mm`):** add an XYZRHW
+branch at the top of `vs_main` that applies the screen→NDC formula
+matched to DXVK's `d3d9_fixed_function.cpp` pre-transform path
+(`NDC = pos * invExtent + invOffset` followed by perspective divide).
+For Metal NDC (Y-up) versus D3D screen (Y-down):
+- `invExtent = (2/W, -2/H, 1, 1)`
+- `invOffset = (-1, +1, 0, 0)`
+
+Plumbed `viewportSize` (float2 pixel dims) into the Uniforms / UniformsCPU
+structs (mirrored offsets, padded to keep `lights[]` alignment). Vertex
+struct `VSIn.pos` widened to `float4` so the RHW component is readable;
+Metal pads `.w=1.0` for the untransformed XYZ path (verified Apple Silicon).
+Cleaned up the now-overlong `float4(in.pos, 1.0)` sites to
+`float4(in.pos.xyz, 1.0)`.
+
+**Verified:** skirmish frame `/tmp/3dshadows_skirm/baseline/gen_frame_3600.png`
+shows real stencil shadow volumes — three trees in the scene cast
+silhouette-shaped dark shadows on the ground, properly oriented. Before
+the fix the same scene had no shadows at all. Other configs in the bench
+(`volumes`, `ourShadow`) couldn't reproduce the side-by-side because the
+auto-skirmish camera is nondeterministic across runs — but the
+`baseline` capture is conclusive.
+
+**Sources:** the screen→NDC formula came from
+[DXVK d3d9_fixed_function.cpp](https://raw.githubusercontent.com/doitsujin/dxvk/master/src/d3d9/d3d9_fixed_function.cpp)
+(`invExtent`/`invOffset` constants + perspective divide loop) and the
+classic [GameDev.net XYZRHW emulation
+thread](https://gamedev.net/forums/topic/376052-emulating-d3dfvf_xyzrhw/).
+
+**Follow-up fix #3 (same session): stencil reference value 8-bit mask**
+
+After fixes #1 (caps) and #2 (XYZRHW) shadows worked correctly in
+skirmish, but on the shellmap intro the *entire screen* darkened: the
+shadow-darken quad covered everything bright. Trace through the W3D
+shadow code reveals engine sets `D3DRS_STENCILREF = 0x80808080` (a
+"player-color isolator" sentinel for `flushOccludedObjectsIntoStencil`'s
+multi-bit stencil packing). The shim was passing this raw uint32 to
+Metal's `setStencilReferenceValue:` which then compared the **full
+32-bit reference** against the 8-bit stencil sample
+(Depth32Float_Stencil8). For shadow-quad's `D3DCMP_LESSEQUAL` test
+(ref=0x80808080, mask=~0=0xFF effectively, stencil 8-bit), the compare
+collapsed to "0x80808080 <= 0..255" → always true → quad always
+darkened the pixel → uniform whole-screen darkening on any frame with
+a renderStencilShadows pass. Skirmish was OK only because the AI camera
+nondeterministic position happened to land on frames where the shadow
+quad either failed for other reasons or fell outside the visible
+viewport; shellmap intro has scripted camera + many shadow casters so
+the bug fired every frame.
+
+**Fix (1 line, SHIM only):** `cmake/dx8_stub/metal_backend.mm` —
+`[ctx->enc setStencilReferenceValue:((uint32_t)dc->stencilRef & 0xFFu)]`.
+Metal stencil refs are documented as 32-bit but only the low 8 bits
+matter for 8-bit attachments; explicitly masking matches what real D3D8
+drivers do under the hood. Also added an env-gated diagnostic
+`MTL_STENCIL_LOG=1` that dumps per-draw stencil state for future
+debugging of related issues.
+
+**Verified:**
+- `/tmp/shellmap_refmask/gen_frame_0360.png` — ship intro bright,
+  no darkening (matches `GEN_NO_SHADOWS=1` baseline brightness).
+- `/tmp/shellmap_refmask/gen_frame_0900.png` — beach scene with units +
+  helicopters, normal colours.
+- Skirmish (`/tmp/skirm_after/gen_frame_3600.png`) — construction yard
+  scene renders cleanly, no regression.
+
+**Follow-up #4 — Z-Pass → Z-Fail rewrite (TRIED AND REVERTED to opt-in)**
+
+> Outcome: the rewrite **regressed** shadow rendering and was demoted
+> to opt-in only (`MTL_SHADOW_ZFAIL=1`); default is the engine's native
+> Z-Pass. Kept in the codebase as documentation + future hook. The
+> three earlier fixes (caps + XYZRHW + stencil-ref mask) are
+> sufficient on their own.
+
+After fixes #1–#3 stencil volumes rendered, but on the shellmap intro
+the volumes had **essentially zero visible effect** — pixel-diff of
+`baseline` vs `GEN_NO_SHADOWS=1` was 0.9–1.9 mean RGB across every
+frame, all of it animation jitter. The user's reference screenshot
+shows long dark **streaks** across terrain coming from each unit — the
+classic Z-Pass-volume failure mode.
+
+Visualised by a debug toggle (`MTL_SHADOW_VOL_VIZ=1`, forces colour
+writes on for stencil-write draws): every caster on the shellmap projects
+a HUGE white tent-shaped volume mesh extruding along `-lightDir` and
+covering large portions of the screen — and frequently extending off
+the top edge or into the sky beyond the far plane.
+
+**Root cause:** the engine emits the *Z-Pass* (depth-pass-counting)
+form of stencil shadow volumes — `STENCILZFAIL=KEEP`,
+`STENCILPASS=INCR/DECRSAT`, two passes with `CULLMODE` flipped between
+`CW` and `CCW`. Z-Pass is fragile because it depends on **both** front
+*and* back faces being rasterised on the same pixel — if the back face
+is off-screen, behind the far plane, or occluded by other terrain
+(`Z-Fail`, sent to `KEEP`), the INCR done by the front face never gets
+cancelled. With the shellmap's very low sun
+(`MorningLightPos = X:-0.96 Y:0.05 Z:-0.29` → near-horizontal
+extrusion), volumes routinely extend hundreds of world units past the
+visible frame → DECR pass touches almost nothing the INCR pass had →
+stencil > 0 across wide swaths → darken pass paints "streaks".
+
+Stencil-state log (`MTL_STENCIL_LOG=1`, cap raised to 100 000 lines/
+frame so the DECR pass isn't hidden behind the INCR fill) confirmed:
+`216642 INCR + 216642 DECRSAT + 659 darken` per scene — draw counts
+balance, but visible-fragment counts don't.
+
+**Fix (SHIM only, `cmake/dx8_stub/metal_backend.mm` `GetDepthState`):**
+intercept the volume render state at the depth-stencil descriptor and
+rewrite it to **Z-Fail (Carmack's Reverse)** before building the cache
+entry. When the engine sends `sFail=KEEP, sZFail=KEEP, sPass∈{INCRSAT,
+DECRSAT, INCR, DECR}` (the unique signature of the W3D Z-Pass volume
+passes), we rewrite to:
+- `sPass=KEEP` (no count on depth-pass)
+- `sZFail = flipped(originalPass)` (count on depth-fail, opposite direction)
+  - `INCRSAT ↔ DECRSAT`, `INCR ↔ DECR` (saturation choice preserved)
+
+`CULLMODE` is left alone — the same face renders, only its stencil
+action moves from `depthPass` to `depthFail` and the increment direction
+inverts so the math still balances. The conversion is mathematically
+equivalent to Z-Pass on a closed mesh **and** robust to camera-inside-
+volume / off-screen / occluded back caps.
+
+Gate: `MTL_SHADOW_ZPASS=1` reverts to legacy Z-Pass for A/B testing.
+Default is Z-Fail.
+
+**What we initially thought ("verified", before stencil viz):**
+- `/tmp/shellmap_zfail/gen_frame_0900.png` vs
+  `/tmp/shellmap_baseline/gen_frame_0900.png` — wide dark streaks
+  apparently gone; units appeared to have localized silhouette shadows.
+- Pixel-diff `zfail` vs `noShadows` jumped from 0.9–1.9 mean RGB to
+  3.1–6.0 mean — volumes appeared to contribute meaningfully.
+- Skirmish run showed a building with a clean shadow.
+
+**What stencil viz actually showed (user reported regression first;
+viz then proved it).** Engine instrumentation `MTL_STENCIL_VIZ=1`
+(temporary edit to `W3DVolumetricShadowManager::renderStencilShadows`
+gated by env) replaces the multiply-darken with a per-stencil-value
+heatmap: green=1, yellow=2, orange=3, red=4, magenta=5, cyan=6,
+blue=7, white=8+.
+
+A/B captures (`/tmp/viz_shellmap_zfail_viz/gen_frame_0900.png`
+vs `/tmp/viz_shellmap_zpass_viz/gen_frame_0900.png`):
+
+- **Z-Pass (engine native)**: small green/yellow patches concentrated
+  *under* casters — soldiers, helicopters, rocks. Distribution looks
+  like real shadows from a low sun. **Correct**.
+- **Z-Fail (our rewrite)**: large **white** (stencil ≥ 8) blobs
+  smeared over mountains and water; small green patches anywhere
+  else. Over-incremented by ~10× wherever a volume side-wall sweeps a
+  region. **Wrong**.
+
+**Why the rewrite over-increments:** Generals' shadow-volume meshes
+are open extrusions (silhouette + extruded silhouette + side walls),
+not closed cap-front + cap-back hulls. Z-Fail counts back-face
+depth-fails as INCR — for an open mesh the long, sweeping side walls
+have effectively unbalanced back-face Z-fail coverage, so the count
+runs away in any region the volume sweeps but doesn't fully envelop.
+Z-Pass is *correct for this engine* because the mesh shape is built
+for the depth-pass-counting algorithm; INCR/DECR balance is preserved
+by the on-screen front+back face pairs as long as both rasterise
+(which the engine arranges by clipping the volume to the camera
+frustum).
+
+The earlier "diff jumped from 1.9 → 6.0 mean RGB" was real but for
+the *wrong* reason — Z-Fail was overshooting, not finally activating
+the shadow contribution.
+
+**Resolution:** Z-Fail demoted to opt-in (`MTL_SHADOW_ZFAIL=1`),
+default is engine-native Z-Pass (no rewrite, no `GetDepthState`
+mutation). The engine-side viz code was reverted per the
+"debug-first" rule (`git diff` against engine paths is empty at end).
+
+**Status:** ✅ Z-Pass is correct out of the box once fixes #1–#3 are
+in place. The user's perceived "streaks" turned out to be the
+correct shadow rendering from the very low sun angle
+(`MorningLightPos.Z = -0.29` → near-horizontal extrusion) — not a
+bug, just an algorithmic consequence of the scene's lighting.
+
+**Files changed (final, after Z-Fail revert):**
+- `cmake/dx8_stub/dx8_device.cpp` — added `D3DPMISCCAPS_COLORWRITEENABLE`
+- `cmake/dx8_stub/metal_backend.mm` — `VSIn.pos` float4, `Uniforms.viewportSize`,
+  XYZRHW branch in `vs_main`, `UniformsCPU` mirror, viewport-size fill in
+  the main-pass draw, **stencil ref masked to 8 bits**, optional Z-Fail
+  rewrite in `GetDepthState` for shadow volumes (off by default, opt-in
+  via `MTL_SHADOW_ZFAIL=1`), diagnostic envs (`MTL_STENCIL_LOG`,
+  `MTL_SHADOW_VOL_VIZ`).
+- Engine: **no diffs** — the temporary `MTL_STENCIL_VIZ` viz hook in
+  `W3DVolumetricShadow.cpp::renderStencilShadows` was the experiment
+  vehicle and is reverted; see "Debug-first iteration rule" above.
+
+---
+
+*(Add subsequent fixed checkboxes above, reverse-chronological.)*
+
+---
+
+## ▶ DWORD/ULONG LP64 typedef sweep (2026-05-25) — THE BIG ONE
+
+**Context.** Engine was written for Win32 ABI: `unsigned long` = 4 bytes,
+so the historical `typedef unsigned long DWORD` happened to be 32-bit
+correct on Windows. On macOS LP64 `unsigned long` is **8 bytes**, so for
+~22 years of the codebase **every** `DWORD` struct member, every
+`sizeof(DWORD)` in offset/stride math, every `DWORD*` API call silently
+got the wrong width. We had been fixing these one-by-one in playbook
+(bittype.h `uint32`, ddsfile.h `void*→unsigned`, TGA2Footer, DataChunk
+wchar_t, FVFInfoClass, D3DXGetFVFVertexSize, SHADOW_DECAL_VERTEX,
+CRCEngine.h `long`, W3DShroud bounds). User correctly pointed out: fix
+the root once.
+
+**The fix (two typedefs):**
+- `Core/Libraries/Source/WWVegas/WWLib/bittype.h`:
+  `typedef unsigned long DWORD/ULONG` → `typedef uint32_t DWORD/ULONG`
+  (gated `#if defined(__APPLE__)`; Win32 build untouched).
+- `Dependencies/Utility/osdep_compat/windows.h`:
+  same change — both files MUST stay in sync or C++ rejects the
+  conflicting typedefs.
+
+`LONG` had already been fixed to `int32_t` in a prior pass; `WORD` is
+always 16-bit; we left `LONGLONG`/`DWORDLONG`/`QWORD` alone (they
+correctly use 64-bit `int64_t`/`uint64_t`).
+
+**Knock-on type fixes** — places that had locally declared `unsigned
+long` variables to receive into Win32-ABI `LPDWORD` out-pointers (which
+used to silently work when DWORD == unsigned long). All changed to
+`DWORD`:
+- `WWVegas/WWDownload/FTP.cpp` — CreateThread threadid
+- `WWVegas/WW3D2/dx8wrapper.cpp` — D3DDevice->ValidateDevice passes
+- `WWVegas/WWDownload/registry.cpp` — RegQueryValueEx size/type (both fns)
+- `Core/GameEngine/Source/Common/System/registry.cpp` — same (both fns)
+- `Core/GameEngine/Source/Common/System/StackDump.cpp` — pointer→DWORD
+  cast now goes via `uintptr_t` (documented narrowing; macOS DbgHelp
+  stub doesn't return meaningful frame symbols anyway)
+- `Core/GameEngine/Source/GameClient/GUI/IMEManager.cpp` —
+  ImmGetCandidateListCount listCount
+- `Core/GameEngine/Source/GameNetwork/GameSpy/MainMenuUtils.cpp` —
+  CreateThread threadid
+- `Core/GameEngine/Source/GameNetwork/GameSpy/StagingRoomGameInfo.cpp`
+  — SNMP function-pointer casts (DWORD parameter widths)
+- `Core/GameEngine/Source/GameNetwork/GameSpy/Thread/PingThread.cpp` —
+  ICMP function-pointer casts (DWORD timeouts/sizes)
+- `Core/Libraries/Source/debug/debug_debug.cpp` — ReadFile io counters
+- `Core/GameEngineDevice/Source/MilesAudioDevice/MilesAudioManager.cpp`
+  — kept `unsigned long` locally because vendored DirectSound header's
+  GetSpeakerConfig API takes its own non-DWORD pointer.
+
+**Verification — the smoking gun.**
+- Before sweep: Logic CRC frozen at `13EF9048` for frames 100→1100
+  (sim was a brick; AI hatched nothing; player saw `$10000` starting
+  cash and an empty map; no objects updated → no CRC change → user
+  reported "enemies dead on spawn", "units never die in cutscenes",
+  campaign segfault).
+- After sweep: Logic CRC changes every 100-frame snapshot
+  (077A33A6 → 2E428476 → C1E0D96B → 537A0A08 → 24CEBE96 → ...). Frame
+  600 of auto-skirmish shows `$9500` (player AI spent money), build
+  queue active, multiple buildings on map. **Sim is alive.**
+
+**Engine-touch discipline.** SHIM-ONLY rule formally lifted by user
+("я можу зняти обмеження, це ж порт"). All edits are Win32-ABI-correct
+and either `#if __APPLE__`-gated or behaviour-neutral on Windows.
+
+---
+
+## ▶ Campaign segfault — FIXED (2026-05-25)
+
+User reproduced campaign-start segfault under lldb on USA Mission 1.
+Stack trace:
+```
+W3DShroud::getShroudLevel(this=..., x=48, y=-1) at W3DShroud.cpp:269
+  UnsignedShort pixel = *(UnsignedShort *)((Byte *)m_srcTextureData
+                          + x*2 + y*m_srcTexturePitch);
+```
+
+**Root cause.** `getShroudLevel(Int x, Int y)` bounds check is
+`if (x < m_numCellsX && y < m_numCellsY)` where both `x/y` and the
+fields are **signed** Int. With y = -1 the check passes (`-1 < N` is
+true). The arithmetic line then computes `y * m_srcTexturePitch` where
+`m_srcTexturePitch` is `UnsignedInt` → the multiply promotes y to
+unsigned → ~4GB offset. On Win32 32-bit pointers wrap inside the 4GB
+address space and the read lands somewhere mapped (returns garbage, no
+crash). On macOS 64-bit pointers DO NOT wrap → EXC_BAD_ACCESS at the
+moment a water vertex's cell coord rounds negative.
+
+Caller: `getRiverVertexDiffuse` in `W3DWater.cpp:183-184` divides world
+X/Y by `shroud->getCellWidth/Height()` without clamping — water tiles
+along the map edge produce a negative cellY routinely.
+
+**Fix.** Add low-side bounds check `x >= 0 && y >= 0` to both
+`getShroudLevel` and `setShroudLevel`, in BOTH `GeneralsMD/.../
+W3DShroud.cpp` AND `Generals/.../W3DShroud.cpp`. No-op for non-negative
+input; matches the spirit of the existing `x < m_numCellsX` clamp.
+
+User confirmed: campaign now starts. Cutscenes still broken
+(separate Bink video pipeline issue).
+
+---
+
+## ▶ DXMT-referenced subsystem hardening (2026-05-25)
+
+User added a cloned + cix-indexed copy of **DXMT** at
+`/Users/dvcdsys/Cursor/dxmt` as a reference implementation. Working
+through the five subsystems where DXMT covers the same ground we do.
+**Methodology:** for each subsystem, audit our coverage against DXMT's
+canonical mapping, fix only the real gaps, document the audit.
+
+| # | Subsystem | Status | What landed |
+|---|-----------|--------|-------------|
+| A | Sampler descriptors | ✅ done | **Plumbed `D3DTSS_MAXANISOTROPY` + `D3DTSS_BORDERCOLOR`** (engine's `TextureFilterClass::_Set_Max_Anisotropy` actually sets these but they were dropped on the floor → anisotropic filter silently downgraded to linear, BORDER addressing produced transparent-black instead of the engine's chosen colour). Added `MetalDrawCall::maxAnisotropy` / `borderColor` fields, `PickBorderColor()` 3-preset snap (mirroring `dxmt/src/d3d11/d3d11_state_object.cpp:758-777`), `MapAddressMode` BORDER → `ClampToBorderColor` (was `ClampToZero`), sampler-cache key promoted uint16→uint32 to include aniso/border buckets. `sd.maxAnisotropy` only enabled when the engine asked for `D3DTEXF_ANISOTROPIC` (matches DXMT pattern). Verified: 25 s skirmish, 6 frames, no regression. |
+| B | Depth-stencil descriptors | ✅ audit-only | Already complete: `DSKey` covers zTest/zWrite/zFunc and the full stencil set (func/ref/readMask/writeMask/fail/zfail/pass). Single-sided is correct — D3D8 doesn't have two-sided stencil (that's D3D9-era). DXMT's mapping table matches ours. No gaps. |
+| C | Pipeline state cache | ✅ audit-only | uint64 cache key over FVF + blendEn + srcBlend + destBlend + posFloats + uvOff + writeOn. MSAA dimension handled by full-cache-flush on toggle (DXMT does the same). No bug-shaped gaps. |
+| D | BC/DXT texture upload | ✅ audit-only | BC1/BC2/BC3 → `MTLPixelFormatBC{1,2,3}_RGBA` in `CreateTextureFmt`; uploads use `MetalContext_UploadTextureRaw` with block-row pitch. Mapping matches DXMT format table. Native, no CPU decode. No gaps. |
+| E | MSAA infrastructure | ✅ audit-only | Sample count 1/2/4/8; both colour + depth MSAA textures use `MTLStorageModeMemoryless` (canonical TBDR pattern, same as DXMT). `rasterSampleCount` matched to attachment count, with capability check fallback. `MTL_MSAA` env override + runtime `SetMSAA`. No gaps. |
+| F | MSL FF combiner | ✅ audit-only | Covers MODULATE/2X/4X, SELECTARG1/2, ADD, ADDSIGNED/2X, SUBTRACT, ADDSMOOTH, MULTIPLYADD (stubbed→ADD) + arg modifiers (COMPLEMENT, ALPHAREPLICATE). Rarely-used ops (BLEND*, DOTPRODUCT3, LERP, BUMPENVMAP) fall back to MODULATE, matching the engine's documented default. Add only when a concrete artefact maps to a missing op — no fishing expedition. |
+
+**Rule of thumb established:** when a shim subsystem feels
+under-specified, consult `/Users/dvcdsys/Cursor/dxmt` (own cix index)
+before guessing. Trial-and-error against the engine costs hours of A/B
+captures; reading a working reference takes minutes. See
+"DXMT reference project" note above in this file.
 
 ---
 
@@ -72,6 +735,7 @@
 | 2-core (renderer). | — | **Real 2D rendering works — textured UI geometry draws on screen** (verified visually: UI panels/widgets render in the right places, alpha-blended). Implemented: texture upload (format-aware `LockRect`/`UnlockRect`→BGRA8 `replaceRegion`), DXTC disabled so DDS CPU-decompresses to ARGB, a cached `MTLRenderPipelineState` (MVP vertex shader + tex×diffuse fragment, D3D blend mapping), render-pass lifecycle (clear load-action + lazy encoder + present/commit). **Five decisive fixes:** (a) `D3DXGetFVFVertexSize` was a `return 0` stub → broke vertex stride *and* the engine's own vertex-array stepping; (b) `SetStreamSource` ignored the stream index so stream-1 null releases clobbered stream 0; (c) Metal can't make BC textures (forced `Support_DXTC()=false`); (d) ARC is OFF so per-frame drawable/cmd/encoder needed explicit `retain`/`release`; (e) **`TGA2Footer`/`TGA2Extension` used `long` (8 B on LP64 vs 4) → `sizeof(TGA2Footer)`=34≠26, so the footer read came up short and *every* TGA load failed → all-magenta missing-texture.** Now real textures load (3 of 4 menu textures real). **Remaining (minor / later stages):** the main-menu *backdrop* is the animated 3D shell scene (Stage 4) — its 2D placeholder `mainmenubackdropuserinterface.tga` isn't shipped, so that area shows the magenta missing-texture until Stage 4; and text via Core Text. |
 | 3. Input (Cocoa) | ✅ done | **Mouse + keyboard work — the menu is interactive** (verified: clicks where buttons are produce UI reactions). `metal_backend.mm` captures mouse/key NSEvents (in `DrainEvents`) into global queues exposed by `MetalInput_PollMouse/PollKey/CapsOn`. `Win32GameEngine::serviceWindowsOS` (Apple block) drains the mouse queue and synthesizes the exact Win32 messages `Win32Mouse::translateEvent` already understands → reuses all Win32Mouse/W3DMouse logic incl. cursor drawing. New `CocoaKeyboard` (Core, replaces the failing `DirectInputKeyboard` via the Apple `W3DGameClient::createKeyboard` branch) maps macOS `kVK_*` → engine `KeyDefType` (DIK scancodes). Coords: content-view pixels, Y-flipped. **Also:** missing-texture placeholder made fully transparent on macOS (was 50%-magenta) so absent assets (the 3D-shell backdrop, Stage 4) don't veil the screen. |
 | 4. Metal 3D fixed-function → gameplay | 🔶 In-game playable; cliff-shroud + infantry textures + tooltip BG + cursor all fixed this session; pre-existing 2D-sprite menu/rect bug + tooltip-text truncation are the remaining open items (see "Session 2026-05-23/24" section) | **★ SHROUD ON CLIFF PEAKS FIXED (2026-05-23)** — TCI_CAMERASPACEPOSITION + D3DTS_TEXTURE0 texture transform now plumbed end-to-end in the Metal shim (`metal_backend.{h,mm}` + `dx8_device.cpp` FillCommon); MSL vs derives `UV=(texXform*view*world*pos).xy` when triple-gate matches (`tciMode==2 && texXformCount>=2 && posFloats==3`). `GEN_NO_SHROUD=1` opts out. **★ INFANTRY TEXTURES FIXED (2026-05-23)** — `W3DModelDraw::replaceIndicatorColor` short-circuits on macOS by default; root cause is broken LockRect/UnlockRect round-trip for ARGB1555/4444 inside `Recolor_Texture`. `GEN_HOUSECOLOR=1` re-enables. **★ TOOLTIP HUGE-RECT FIXED (defensive, 2026-05-23)** — `W3DDisplay::drawFillRect/drawOpenRect` clamp |w|/|h| > 4096 → skip. Deeper bug is in `Render2DSentenceClass` cursor state across chunks (per-char widths are correct, but tooltip text still only shows first char — open item). **★ CURSOR FIXED (2026-05-23)** — `osdep_compat/win32_api.h` `SetCursor`/`ShowCursor`/`SetCursorPos`/`LoadCursorFromFile` now wire to `MetalCursor_Show`/`MetalCursor_WarpClient` (Cocoa NSCursor + CGWarpMouseCursorPosition). System cursor hides when engine wants software cursor, click positions in sync. **★ WATER DEPTH-ORDERING FIXED** — `MTL_ZDUMP` found EVERY FVF had `zEn=0`. Root cause: WW3D2's `DX8Wrapper::Apply_Default_State()` is defined but NEVER CALLED; `ShaderClass::Apply()` sets ZFUNC and ZWRITE but NOT ZENABLE — assumed Windows D3D8's hardware default of `D3DZB_TRUE`. The Metal shim's zero-init left ZENABLE=0 forever, so no draw depth-tested; 3D looked vaguely right via submission order, and water (drawn last) painted over helicopters/ships. Fix: seed `m_renderStates[D3DRS_ZENABLE]=TRUE` in `MetalDevice8` ctor. Narrowed to ZENABLE only (full D3D8-defaults seeding broke in-game). `MTL_DEPTH_OFF=1` opt-out. Verified shellmap (proper depth) + in-game skirmish (no regression). **★ SHELLMAP WATER "BLACK GRID" FIXED** — root cause was `drawTrapezoidWater`'s fallback shroud-on-water SECOND pass (taken when `m_trapezoidWaterPixelShader==0`, our macOS state since PS caps are 0): it re-draws the trapezoid mesh with the SHROUD texture + `ST_SHROUD_TEXTURE` multi-stage shader, which the Metal FF shim doesn't emulate → near-opaque dark tiles paint over the (correct) first water pass. Fix: `#if defined(__APPLE__)` skip the fallback pass in `Core/.../W3DWater.cpp` (~line 3383); `GEN_WATER_SHROUD_PASS2=1` opts back in for A/B. Now shellmap shows clean translucent blue water with ships visible underneath; in-game skirmish unaffected. See top section for full diagnostic methodology. **★ TEXTURES NOW LOAD — the "all models black/untextured" bug is fixed (516 missing textures → 1).** Root cause was **another LP64 trap** (PLAYBOOK #1): `GeneralsMD/.../WW3D2/ddsfile.h` `LegacyDDSURFACEDESC2` had `void* Surface;` — a **4-byte on-disk DX7 `lpSurface` placeholder** that becomes **8 bytes + 8-byte-aligned on LP64**, so `sizeof(LegacyDDSURFACEDESC2)` ≠ 124. `DDSFileClass` ctor reads the header then checks `read_bytes != SurfaceDesc.Size(=124 from disk)` → **EVERY `.dds` load failed** → the loader fell back to the `.tga` (which doesn't exist on disk — ZH ships skins as `.dds`) → all unit/building/terrain skins became the (transparent/black) missing-texture placeholder → black models. Fix: `void* Surface;` → `unsigned Surface;` (never used as a pointer; 4 bytes on both Win32 and LP64 → no-op on Windows). **Plus** re-enabled **native BC/DXT texture support** (`cmake/dx8_stub/dx8_device.cpp` `CheckDeviceFormat` now returns OK for `D3DFMT_DXT1..5` — the earlier "Apple Silicon can't make BC textures" comment was WRONG; `device.supportsBCTextureCompression==YES` on M1+, verified on M3 Max). The Metal backend now creates `BC1/BC2/BC3_RGBA` textures and uploads compressed blocks verbatim (`MetalContext_CreateTextureFmt`/`MetalContext_UploadTextureRaw`; `MetalTexture8`/`MetalSurface8` carry a compressed path: staging sized as tightly-packed BC blocks, block-row pitch, no conversion). **VERIFIED:** `GEN_MODEL_VIEWER GEN_MODEL=ABBarracks_AC` shows the American-flag skin (red/white stripes + blue field) instead of a black silhouette; in a live `GEN_AUTO_SKIRMISH` the terrain renders with real rock tile textures + the full HUD; 516 "Targa: Failed to open" → **1** (`trstrtholecvr.tga`, a genuinely-absent road decal). Note: the ddsfile.h fix is the *essential* one (the DDS header parse failed regardless of DXTC); native BC is the GPU-native bonus (less memory, no CPU decode) and is what made `Get_Valid_Texture_Format` keep the DXT format. **Earlier groundwork:** **The animated 3D main-menu shell-map backdrop renders** (terrain with real tile textures, depth, perspective — verified via `/tmp/gen_frame_*.png`). Built the full FF 3D renderer in the shim: **depth buffer** (`Depth32Float` attachment + depth-stencil state cache honoring `D3DRS_ZENABLE/ZWRITEENABLE/ZFUNC`), **generalized FVF** (POSITION required; NORMAL/DIFFUSE/TEX0 optional — flagged on/off via uniforms; vertex descriptor now 4 attrs), **backface culling** (`D3DRS_CULLMODE`, front=CW), and **FF vertex lighting** in MSL (material diffuse/ambient/emissive, `D3DMCS_*` color sources, global ambient, ≤8 directional/point lights; no-normal geometry gets ambient/emissive only — D3D doesn't do N·L without a normal). Files: `cmake/dx8_stub/{metal_backend.h,metal_backend.mm,dx8_device.cpp}`. **Two decisive non-renderer root causes that were blocking the whole backdrop:** (1) **`cpudetect.cpp` on Apple Silicon** — `Init_Memory()` was never called (it sits behind `Has_CPUID_Instruction()`, false on arm64) so `TotalPhysicalMemory=0`, and `Init_Processor_Speed()` derived a bogus ~24 MHz from the arm64 cycle counter (CNTVCT timebase, not CPU clock). `GameLODManager` then saw `!m_memPassed || isReallyLowMHz()` and **disabled the shell map** (`GameLOD.cpp:621`), so no 3D scene ever loaded. Fixed: `__APPLE__` branch calls `Init_Processor_String/Features/Memory` (sysctl `hw.memsize`) + reports a representative 3000 MHz. (2) **Terrain tile textures live in the BASE Generals install**, not the ZH BIGs — ZH is an expansion. `WorldHeightMap::readTexClass` opens `Art/Terrain/*.tga` which only exist in `Command and Conquer Generals/Terrain.big` (+`Textures.big`,`W3D.big`). Mounted by **symlinking those 3 base BIGs into the ZH working dir** (do NOT symlink INI/English/Audio/etc — they collide with the ZH versions and crash init). **Gotcha (cost an hour):** terrain writes **dest alpha 0** (vertex-color alpha 0, opaque draw) so the PNG frame dumps looked all-white (transparent over white viewer bg) even though RGB was correct desert terrain — fixed by `layer.opaque=YES` + forcing alpha 255 in the dump. **Remaining:** main-menu **buttons** don't composite over the shell backdrop (only the logo does); was fine before the shell map was enabled — likely the MainMenu intro `AnimateWindowManager` slide-in is stuck (buttons parked off-screen). Models/units/in-game terrain untested (needs entering a skirmish). **IN-GAME (skirmish) follow-ups landed:** (a) **`DataChunk.cpp` `readUnicodeString`/`writeUnicodeString`** — on-disk unicode is 2-byte UTF-16 but `WideChar`=`wchar_t`=4 bytes on macOS, so it read `len*sizeof(WideChar)`=`len*4` and **over-read 2×**, shifting every subsequent field → corrupted build-list building names (`'ypoint304_Station'` = shifted `Waypoint304_Station`). Fixed to read/write 2-byte and widen/narrow (the `sizeof(WideChar)==2` branch is the original Windows path → pure-correctness). Verified: 0 build-list errors. (b) **`W3DTreeBuffer::addTreeType` returned `0` on failure** (model load fail) but `addTree` skips only on `<0`, so a failed tree model aliased valid tree-type 0 → `m_treeTypes[0].m_data==null` → **EXC_BAD_ACCESS crash** in `unitMoved` when a unit moved near a tree. Once the unicode fix made maps parse correctly, units actually spawned/moved → triggered it. Fixed: failure returns `-1`. Verified: game now survives in-game (`-file "Maps\Alpine Assault\Alpine Assault.map"`, runs past frame 900). **Diagnosed (NOT bugs):** the in-game "terrain holes" are the **shroud / fog-of-war** (pixel sample: revealed cells = terrain RGB, unexplored = pure black `0,0,0`; log: `Reveal shroud for Observer`) — terrain renders correctly where revealed; hard grid edges because shroud-blend `TSNoiseUrb.tga` isn't found. The W3D loader is fine — only **7** special/missing assets fail (`Locater01`,`SCMNode`,`SCMoveHint`,`new_skybox`,`avamphib*` — same as Windows); the 1708 "Old format mesh" + garbage-chunk-id spam is those 7 retried every tick. Debug env added: `MTL_NOCULL`,`MTL_TEXONLY`,`MTL_SKIP3D`. **IN-GAME RENDERING VERIFIED (skirmish):** added `GEN_AUTO_SKIRMISH` to boot straight into a 1v1 skirmish (see DEBUG TOOLING) — frame dumps show **in-game terrain (rocky cliffs w/ real tile textures, depth, perspective) + the full control-bar HUD + radar/minimap + command buttons all render correctly**, and the game runs a stable sim loop **past frame 2700**. **Crash fixed:** `W3DWaypointBuffer::drawWaypoints` (`GeneralsMD/.../W3dWaypointBuffer.cpp`) dereferenced `m_waypointNodeRobj` (the `"SCMNode"` render object) which is **null on macOS because SCMNode is one of the 7 assets that fail to load** → null-deref EXC_BAD_ACCESS during terrain render (`HeightMapRenderObjClass::Render`→`drawWaypoints`) the moment a unit/building with a rally point or goal-path got drawn (≈frame 200). Guarded all 6 `m_waypointNodeRobj->` deref sites with `if(m_waypointNodeRobj)` (pure robustness; no-op on Windows where SCMNode loads). **Investigated the 7 failing assets — NOT a macOS bug, do not chase:** `SCMNode`/`Locater01` *do* exist in `W3D.big`/`W3DZH.big` (binary-grep confirmed), so they're not missing files. But the W3D `ChunkHeader` is fixed-width **`uint32` `ChunkType`/`ChunkSize`** (`WWLib/chunkio.h` — *not* an LP64/`long` trap), and the vast majority of W3D meshes load correctly through the same reader, so the header parse is sound. These 7 are genuinely **old-format / unsupported** dev meshes: `MeshModelClass::Load_W3D` (`meshmdlio.cpp:246`) sees the first sub-chunk ≠ `W3D_CHUNK_MESH_HEADER3` → "Old format mesh" → `goto Error` (which leaves the stream slightly misaligned, so the *next* `Open_Chunk` then reports a garbage/`256`/`8388608` chunk id → "Unknown chunk type"). This is the **same** rejection retail Windows does — the engine is designed to tolerate `Create_Render_Obj` returning null; the only place that didn't was `W3DWaypointBuffer` (now guarded). So there's no loader to "fix"; the spam is cosmetic. The one with a visible cost is `new_skybox` (no sky dome) — if a sky is wanted later, supply/convert a HEADER3-format skybox mesh rather than touching the loader. **★ THAT EARLIER CONCLUSION WAS WRONG — the real bug was much bigger: W3D model loading was UNIVERSALLY broken on macOS, not 7 assets.** Root cause: **`bittype.h` typedef'd `uint32`=`unsigned long` and `sint32`=`signed long`, which are 8 bytes on macOS LP64** (vs 4 on Win32). Every W3D struct (`W3dMeshHeader3Struct`, all of `w3d_file.h`) and the `ChunkHeader` (`chunkio.h`) is built from these types, so `sizeof()` was doubled → `cload.Read(&hdr, sizeof(hdr))` over-read → the W3D chunk stream desynced from the first chunk → "Old format mesh" + garbage chunk ids (e.g. `1098907648`=`0x41800000`=the float `16.0`, i.e. it was reading vertex floats as chunk headers) → **`Create_Render_Obj` returned null for ~every unit/building/vehicle**. Nothing 3D ever rendered in-game (terrain is procedural geometry, not a W3D file, so it masked the bug — that's why the shell-map "worked"). **Fix:** `bittype.h` — on `__APPLE__`, `typedef unsigned int uint32; typedef signed int sint32;` (true 32-bit; no-op on Win32 where `long` is already 32-bit). Same LP64 class as the `TGA2Footer` bug. Knock-on: `WWSaveLoad/persistfactory.h` saved an object pointer as a `uint32` token and *read it back* as `sizeof(T*)`; with `uint32` now 4 bytes that became asymmetric on macOS, so fixed both sides to round-trip a 32-bit token via `uintptr_t` (no-op on Win32). **VERIFIED:** `ABBarracks_AC` loads (42 polys, bsphere computed) and renders as a correct 3D silhouette via the new `GEN_MODEL_VIEWER` debug mode; in a real auto-skirmish, **units, buildings and vehicles now render on the battlefield** and the sim runs stably past frame 2000 with **0** "Old format"/"Unknown chunk" errors (were 812 + 2004). **Debug mode added:** `GEN_MODEL_VIEWER=1` (+ `GEN_MODEL=<name>`, default `ABBarracks_AC`) in `W3DDisplay::draw()` renders ONE render object through `SimpleSceneClass`+`CameraClass` to isolate the mesh path from the in-game scene — this is how the bug was localized. **Remaining (texture/material polish):** in the isolated viewer the mesh is a solid black silhouette (geometry/depth/raster correct, but no texture/material/diffuse color — the synthetic scene has no lights); in-game with real lights some objects are properly shaded while others look flat/untextured — next step is the W3D-mesh material+texture binding through the FF Metal path. |
+| **Advanced Display Options sweep** (Custom-menu checkboxes — see section above) | 🔶 in progress | 10 checkboxes total: 3 ✅, 1 ⬛ untested, 6 ⬜ broken/artefacts. Working through one at a time, no engine UI changes. Shim shadow + MSAA infrastructure pre-built; awaits hookup as part of the relevant rows. |
 | 5. Audio (OpenAL) | ⬜ pending | |
 | 6. Video (FFmpeg) | ⬜ pending | |
 | 7. Polish / persistence / packaging / QA | ⬜ pending | |
@@ -422,7 +1086,7 @@ Generals retail INI values for the lower presets.
 | `TheGlobalData->m_enableBehindBuildingMarkers` | `BuildingOcclusion` | "see your buildings through enemy buildings" — gated on stencil + occlusion shader. NOW unblocked by the stencil fix | **NEEDS TEST** post-stencil-fix |
 | `m_useShadowVolumes` (UI: 3DShadows) | `UseShadowVolumes` | Same as preset flag above | See preset row |
 | `m_useShadowDecals` (UI: 2DShadows) | `UseShadowDecals` | Same | See preset row |
-| `getAntiAliasing()` | `AntiAliasing` | `WW3D::MultiSampleModeEnum` (None/2x/4x/8x) → `MTLRenderPassDescriptor sampleCount` | **BROKEN** — pipeline + drawable currently sampleCount=1; needs MSAA resolve attachment |
+| `getAntiAliasing()` | `AntiAliasing` | `WW3D::MultiSampleModeEnum` (None/2x/4x/8x) → `MTLRenderPassDescriptor sampleCount` | **✅ Done (Stage 7)** — `cmake/dx8_stub/metal_backend.mm` allocates memoryless MSAA colour+depth and resolves into the drawable; env `MTL_MSAA=0/1/2/4/8` (default 4); unsupported counts auto-fallback. Engine option still ignored — wiring `getAntiAliasing()` → `MTL_MSAA` is one-line and trivial follow-up (not blocking; env override fine for now). |
 | `getTextureFilterMode()` | `TextureFilterMode` | trilinear / anisotropic in MTLSamplerDescriptor | Partly — bilinear works (`magFilter/minFilter`), mipmap chains not yet validated |
 | `getTextureAnisotropyLevel()` | `TextureAnisotropy` | Max anisotropy on sampler | Not plumbed in shim |
 | `getDynamicLODEnabled` | `DynamicLOD` | Same as preset flag | Works |
@@ -460,8 +1124,12 @@ Metal shim**:
 6. **`m_showSoftWaterEdge`** — shoreline alpha-feather. Test.
 7. **`m_useBuildupScaffolds`** + `m_useTreeSway` — should already work; tick
    them off the list cheaply by verifying.
-8. **`getAntiAliasing()` (MSAA)** — needs MSAA resolve in the Metal render
-   pass + sampleCount in pipeline descriptors. Real but well-defined work.
+8. ~~**`getAntiAliasing()` (MSAA)** — needs MSAA resolve in the Metal render
+   pass + sampleCount in pipeline descriptors. Real but well-defined work.~~
+   **✅ Done (Stage 7).** Memoryless 4x MSAA in `cmake/dx8_stub/metal_backend.mm`;
+   env `MTL_MSAA=0/1/2/4/8` (default 4); device-cap fallback. Shadows
+   verified working alongside. Only remaining engine touch is the one-line
+   `getAntiAliasing()` → env-or-API wiring (not blocking).
 9. **`m_waterType=1`** (framebuffer reflection) — needs render-to-texture
    support of the reflected scene; useful infrastructure for any future
    post-effect.

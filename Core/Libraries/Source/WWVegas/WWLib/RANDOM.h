@@ -37,6 +37,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 // "unreferenced inline function has been removed" Yea, so what?
 #pragma warning(disable : 4514)
 
@@ -60,7 +62,13 @@ class RandomClass {
 		};
 
 	protected:
-		unsigned long Seed;
+		// TheSuperHackers @port macos-port-phase1 2026-05-25
+		// LP64 fix: must be exactly 32 bits to match the Win32 LCG behaviour.
+		// Previously `unsigned long`, which is 8 bytes on macOS LP64 — the
+		// (Seed * MULT_CONSTANT + ADD_CONSTANT) recurrence then does NOT
+		// overflow at 2^32 and produces a different sequence, breaking sim
+		// determinism vs the retail Win32 build.
+		uint32_t Seed;
 
 		/*
 		**	Internal working constants that are used to generate the next

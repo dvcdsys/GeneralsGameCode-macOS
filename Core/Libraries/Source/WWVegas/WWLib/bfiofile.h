@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <cstdint>     // int32_t — LP64 sweep
+
 #include "RAWFILE.h"
 
 /*
@@ -82,12 +84,14 @@ class BufferIOFileClass : public RawFileClass
 
 		void *Buffer;
 
-		long BufferSize;
-		long BufferPos;
-		long BufferFilePos;
-		long BufferChangeBeg;
-		long BufferChangeEnd;
-		long FileSize;
-		long FilePos;
-		long TrueFileStart;
+		// LP64 fix: was raw `long` (4 on Win32, 8 on macOS). File-position arithmetic
+		// is 32-bit by retail design (max 2GB files in the buffered IO layer).
+		int32_t BufferSize;
+		int32_t BufferPos;
+		int32_t BufferFilePos;
+		int32_t BufferChangeBeg;
+		int32_t BufferChangeEnd;
+		int32_t FileSize;
+		int32_t FilePos;
+		int32_t TrueFileStart;
 };

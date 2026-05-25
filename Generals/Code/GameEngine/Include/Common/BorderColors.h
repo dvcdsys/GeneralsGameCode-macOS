@@ -21,10 +21,12 @@
 
 #pragma once
 
+#include <cstdint>     // LP64 sweep
+
 struct BorderColor
 {
 	const char *m_colorName;
-	unsigned long m_borderColor;
+	uint32_t m_borderColor;  // LP64 fix
 };
 
 const BorderColor BORDER_COLORS[] =

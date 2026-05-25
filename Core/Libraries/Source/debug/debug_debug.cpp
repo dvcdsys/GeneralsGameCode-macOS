@@ -155,7 +155,8 @@ void Debug::PostStaticInit()
   if (h!=INVALID_HANDLE_VALUE)
   {
     char cmdBuffer[512];
-    unsigned long ioCur=0,ioUsed=0,cmdCur=0;
+    // LP64 sweep: ReadFile takes LPDWORD = uint32_t* now.
+    DWORD ioCur=0,ioUsed=0,cmdCur=0;
     ReadFile(h,ioBuffer,sizeof(ioBuffer),&ioUsed,nullptr);
     for (;;)
     {

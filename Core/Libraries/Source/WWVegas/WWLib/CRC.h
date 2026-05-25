@@ -37,6 +37,7 @@
 #pragma once
 
 #include	<stdlib.h>
+#include <cstdint>   // uint32_t — see LP64 note below
 
 // TheSuperHackers @build feliwir 17/04/2025 include _ltrotl macros
 #include <Utility/intrin_compat.h>
@@ -52,7 +53,9 @@ class CRCEngine {
 	public:
 
 		// Constructor for CRC engine (it can have an override initial CRC value).
-		CRCEngine(long initial=0) : CRC(initial), Index(0) {
+		// Explicit cast to silence narrowing warning on macOS where long is 64-bit
+		// and CRC is now uint32_t (4 bytes) — see field note below.
+		CRCEngine(long initial=0) : CRC((uint32_t)initial), Index(0) {
 			StagingBuffer.Composite = 0;
 		};
 
@@ -84,8 +87,18 @@ class CRCEngine {
 		/*
 		**	Current accumulator of the CRC value. This value doesn't take into
 		**	consideration any pending data in the staging buffer.
+		**
+		**	TheSuperHackers @fix macOS-port-LP64: was `long CRC`. On macOS LP64
+		**	`long` is 8 bytes; the CRC algorithm packs data as 32-bit words and
+		**	XOR/rotates a 32-bit accumulator. With an 8-byte accumulator + an
+		**	8-byte staging buffer + 8-byte stride reads in crc.cpp, macOS
+		**	produced a totally different CRC value from Win32 for the same
+		**	input. CRCs gate save-file validation, asset hashing, network
+		**	sync, and INI section lookup — a mismatch poisons all of them.
+		**	`uint32_t` is 4 bytes on both Win32 and macOS, so this is a no-op
+		**	for the Windows build. Same class as bittype.h uint32 fix.
 		*/
-		long CRC;
+		uint32_t CRC;
 
 		/*
 		**	This is the sub index into the staging buffer used to keep track of
@@ -97,10 +110,11 @@ class CRCEngine {
 		**	This is the buffer that holds the incoming partial data. When the buffer
 		**	is filled, the value is transformed into the CRC and the buffer is flushed
 		**	in preparation for additional data.
+		**	Buffer size must be exactly 4 — see CRC field note above.
 		*/
 		union {
-			long Composite;
-			char Buffer[sizeof(long)];
+			uint32_t Composite;
+			char     Buffer[sizeof(uint32_t)];
 		} StagingBuffer;
 };
 

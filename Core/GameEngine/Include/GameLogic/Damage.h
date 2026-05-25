@@ -236,19 +236,29 @@ typedef UnsignedInt DeathTypeFlags;
 const DeathTypeFlags DEATH_TYPE_FLAGS_ALL = 0xffffffff;
 const DeathTypeFlags DEATH_TYPE_FLAGS_NONE = 0x00000000;
 
+// TheSuperHackers @port macos-port-phase1 2026-05-25
+// Same LP64 fix as VeterancyLevel: DEATH_NORMAL=0 makes (dt-1) negative; on Win32
+// `1UL` is 32-bit so the shift wraps mod 32 (lands at bit 31 — accidentally
+// matched by DEATH_TYPE_FLAGS_ALL=0xFFFFFFFF), but on macOS LP64 `1UL` is 64-bit,
+// the shift lands at bit 63 outside the 32-bit `flags` and AND returns 0. Result:
+// every DieModule with the default "all deaths allowed" mask rejected DEATH_NORMAL,
+// so units never died on macOS. Force a 32-bit mod-32 shift to replicate Win32.
 inline Bool getDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags & (1UL << (dt - 1))) != 0;
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags & (1U << bit)) != 0;
 }
 
 inline DeathTypeFlags setDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags | (1UL << (dt - 1)));
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags | (1U << bit));
 }
 
 inline DeathTypeFlags clearDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags & ~(1UL << (dt - 1)));
+	const unsigned bit = ((unsigned)(int)dt - 1u) & 31u;
+	return (flags & ~(1U << bit));
 }
 
 //-------------------------------------------------------------------------------------------------
