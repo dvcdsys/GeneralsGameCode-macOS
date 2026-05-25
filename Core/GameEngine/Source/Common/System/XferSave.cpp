@@ -120,7 +120,11 @@ void XferSave::open( AsciiString identifier )
 	Xfer::open( identifier );
 
 	// open the file
+#if defined(__APPLE__)
+	m_fileFP = fopen( ::apple_path::normalize(identifier.str()), "w+b" );
+#else
 	m_fileFP = fopen( identifier.str(), "w+b" );
+#endif
 	if( m_fileFP == nullptr )
 	{
 

@@ -378,10 +378,19 @@ void DebugInit(int flags)
 
 		char dirbuf[ _MAX_PATH ];
 		::GetModuleFileName( nullptr, dirbuf, sizeof( dirbuf ) );
+#if defined(__APPLE__)
+		// GetModuleFileName shim returns POSIX path with `/` separators.
+		// Original code only stripped past '\\' which never matched.
+		if (char *pEnd = strrchr(dirbuf, '/'))
+		{
+			*(pEnd + 1) = 0;
+		}
+#else
 		if (char *pEnd = strrchr(dirbuf, '\\'))
 		{
 			*(pEnd + 1) = 0;
 		}
+#endif
 
 		static_assert(ARRAY_SIZE(theLogFileNamePrev) >= ARRAY_SIZE(dirbuf), "Incorrect array size");
 		strcpy(theLogFileNamePrev, dirbuf);

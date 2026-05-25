@@ -378,7 +378,11 @@ static GHTTPBool configCallback( GHTTPRequest request, GHTTPResult result,
 
 	AsciiString fname;
 	fname.format("%sGeneralsOnline\\Config.txt", TheGlobalData->getPath_UserData().str());
+#if defined(__APPLE__)
+	FILE *fp = fopen(::apple_path::normalize(fname.str()), "wb");
+#else
 	FILE *fp = fopen(fname.str(), "wb");
+#endif
 	if (fp)
 	{
 		fwrite(configBuffer, bufferLen, 1, fp);
@@ -433,7 +437,11 @@ static GHTTPBool configHeadCallback( GHTTPRequest request, GHTTPResult result,
 				Int fileLen = 0;
 				AsciiString fname;
 				fname.format("%sGeneralsOnline\\Config.txt", TheGlobalData->getPath_UserData().str());
+#if defined(__APPLE__)
+				FILE *fp = fopen(::apple_path::normalize(fname.str()), "rb");
+#else
 				FILE *fp = fopen(fname.str(), "rb");
+#endif
 				if (fp)
 				{
 					fseek(fp, 0, SEEK_END);
@@ -457,7 +465,11 @@ static GHTTPBool configHeadCallback( GHTTPRequest request, GHTTPResult result,
 
 					AsciiString fname;
 					fname.format("%sGeneralsOnline\\Config.txt", TheGlobalData->getPath_UserData().str());
+#if defined(__APPLE__)
+					FILE *fp = fopen(::apple_path::normalize(fname.str()), "rb");
+#else
 					FILE *fp = fopen(fname.str(), "rb");
+#endif
 					if (fp)
 					{
 						configBuffer = NEW char[fileLen];

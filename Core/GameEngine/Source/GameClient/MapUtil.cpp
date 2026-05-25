@@ -337,7 +337,11 @@ void MapCache::writeCacheINI( const AsciiString &mapDir )
 	TheFileSystem->createDirectory(mapDir);
 
 	filepath.concat(m_mapCacheName);
+#if defined(__APPLE__)
+	FILE *fp = fopen(::apple_path::normalize(filepath.str()), "w");
+#else
 	FILE *fp = fopen(filepath.str(), "w");
+#endif
 	DEBUG_ASSERTCRASH(fp != nullptr, ("Failed to create %s", filepath.str()));
 	if (fp == nullptr) {
 		return;

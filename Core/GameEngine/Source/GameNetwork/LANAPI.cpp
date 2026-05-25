@@ -276,7 +276,11 @@ void LANAPI::checkMOTD()
 		UnsignedInt newMOTDCRC = 0;
 		AsciiString asciiMOTD;
 		char buf[4096];
+#if defined(__APPLE__)
+		FILE *fp = fopen(::apple_path::normalize(TheGlobalData->m_MOTDPath.str()), "r");
+#else
 		FILE *fp = fopen(TheGlobalData->m_MOTDPath.str(), "r");
+#endif
 		Int len;
 		if (fp)
 		{

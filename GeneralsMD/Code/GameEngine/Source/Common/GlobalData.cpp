@@ -1364,8 +1364,20 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 
 	if (!myDocumentsDirectory.isEmpty()) {
 		// Now build the full path string
-		if (!myDocumentsDirectory.endsWith("\\"))
-			myDocumentsDirectory.concat('\\');
+#if defined(__APPLE__)
+		// TheSuperHackers @port macOS 2026-05-25
+		// SHGetSpecialFolderPath shim returns POSIX-style paths
+		// ("/Users/.../Documents"). Use `/` so the whole path stays
+		// POSIX instead of becoming a mixed `/Users/.../Documents\Foo\`
+		// blob that direct-fopen call sites cannot parse.
+		const char kSep = '/';
+		const char* kSepStr = "/";
+#else
+		const char kSep = '\\';
+		const char* kSepStr = "\\";
+#endif
+		if (!myDocumentsDirectory.endsWith(kSepStr))
+			myDocumentsDirectory.concat(kSep);
 
 		AsciiString leafName;
 		if (!GetStringFromRegistry("", "UserDataLeafName", leafName))
@@ -1376,8 +1388,8 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 		}
 
 		myDocumentsDirectory.concat(leafName);
-		if (!myDocumentsDirectory.endsWith("\\"))
-			myDocumentsDirectory.concat('\\');
+		if (!myDocumentsDirectory.endsWith(kSepStr))
+			myDocumentsDirectory.concat(kSep);
 	}
 
 	return myDocumentsDirectory;

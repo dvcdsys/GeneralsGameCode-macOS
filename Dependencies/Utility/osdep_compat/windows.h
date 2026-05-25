@@ -621,4 +621,13 @@ typedef LONG HRESULT;
 #define EXCEPTION_INVALID_DISPOSITION      0xC0000026u
 #endif
 
+// TheSuperHackers @port macOS 2026-05-25 — global path-normalisation
+// macros for fopen/remove/rename. Engine code constructs many paths
+// with `\` separators that bypass TheFileSystem and would fail on
+// POSIX fopen. Pulled in last so the override macros expand after the
+// standard `<cstdio>` declarations are in scope.
+#if defined(__APPLE__)
+#include "apple_path_shim.h"
+#endif
+
 #endif // !_WIN32

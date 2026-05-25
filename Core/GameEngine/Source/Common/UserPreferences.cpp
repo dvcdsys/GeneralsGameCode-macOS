@@ -123,7 +123,15 @@ Bool UserPreferences::load(AsciiString fname)
 	m_filename = TheGlobalData->getPath_UserData();
 	m_filename.concat(fname);
 
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS 2026-05-25: fname is hardcoded with
+	// backslashes (e.g. "GeneralsOnline\\QMPref%d.ini"). POSIX fopen
+	// won't parse those — normalise via apple_path so the user's
+	// preferences actually load/save.
+	FILE *fp = fopen(::apple_path::normalize(m_filename.str()), "r");
+#else
 	FILE *fp = fopen(m_filename.str(), "r");
+#endif
 	if (fp)
 	{
 		char buf[LINE_LEN];
@@ -155,7 +163,11 @@ Bool UserPreferences::write()
 	if (m_filename.isEmpty())
 		return false;
 
+#if defined(__APPLE__)
+	FILE *fp = fopen(::apple_path::normalize(m_filename.str()), "w");
+#else
 	FILE *fp = fopen(m_filename.str(), "w");
+#endif
 	if (fp)
 	{
 		PreferenceMap::const_iterator it = begin();

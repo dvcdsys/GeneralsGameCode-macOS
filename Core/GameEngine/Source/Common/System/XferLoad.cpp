@@ -80,7 +80,11 @@ void XferLoad::open( AsciiString identifier )
 	Xfer::open( identifier );
 
 	// open the file
+#if defined(__APPLE__)
+	m_fileFP = fopen( ::apple_path::normalize(identifier.str()), "rb" );
+#else
 	m_fileFP = fopen( identifier.str(), "rb" );
+#endif
 	if( m_fileFP == nullptr )
 	{
 
