@@ -1211,6 +1211,83 @@ faithful shim should plumb the index everywhere).
 
 ---
 
+## ▶ Cloud Shadows → "black squares" on terrain — DEFERRED ⏸️ (cloud/shroud TEXCOORDINDEX state-leak)
+
+**Symptom.** With the **Cloud Shadows** graphics option ENABLED, scattered
+sharp BLACK quads (diamond/parallelogram shapes, terrain-cell sized) appear on
+the terrain — on open grass, away from objects. With Cloud Shadows OFF the
+terrain is clean. Fog of war works correctly in BOTH states.
+
+**Investigation (env-gated diagnostics, all in `MetalContext_Draw`):**
+- `MTL_TESTCLEAR=1` (clear → blue): squares stayed **black**, not blue → they
+  are real draws painting black, NOT holes / missing chunks showing clear color.
+- `MTL_SKIP_MULTIPLY=1` (skip multiply-blend passes): skipping `src=DESTCOLOR,
+  dst=ZERO` alone → squares REMAINED. Skipping ALSO `src=ZERO, dst=SRCCOLOR`
+  → squares GONE **but fog of war also gone** → the squares live in the same
+  multiply family as the shroud/fog overlay.
+- `MTL_DRAWLOG=1` (one line per unique draw signature) showed the culprit
+  passes are camera-space multiply passes; several arrive with **`tci=0`**
+  (PASSTHRU) when they should be `tci=2` (CAMERASPACEPOSITION).
+- `GEN_NO_SHROUD=1` (force all shroud cells = 255 white): squares STAYED black
+  → NOT the shroud texel VALUES. A white shroud should multiply terrain by 1.0
+  (no darkening); black squares persisting means the texgen samples the shroud
+  texture's black BORDER (or a wrong texel), not the white interior.
+
+**Root cause (confirmed).** Same class as the "Terrain black spots" fix above,
+but for the **camera-space-position texgen** used by the cloud/noise/shroud
+overlay passes. `ShroudTextureShader::set` and `TerrainShader2Stage::set(2)`
+(the cloud/noise pass) both set `D3DTSS_TEXCOORDINDEX = TCI_CAMERASPACEPOSITION`
++ `D3DTTFF_COUNT2` + a `D3DTS_TEXTURE0/1` projection matrix, so the overlay
+texture is projected onto terrain from each vertex's camera-space position.
+Our shader handles this via the `tciActive` branch
+(`tciMode==2 && texXformCount>=2 && posFloats==3` → `uv = texXform·view·world·pos`).
+When Cloud Shadows is on, the extra cloud pass sets then **resets**
+`TEXCOORDINDEX`, and a subsequent shroud/terrain draw reaches our backend with
+`tciMode=0` (the engine's per-draw state at draw time was 0 — the shim tracks it
+faithfully). The triple-gate then FAILS → the shader falls back to `uv = in.uv`
+(raw terrain-atlas UVs) → the overlay samples a black atlas gutter / shroud
+border → solid black quad. (The shim comment in `metal_backend.h` near `tciMode`
+already documents the original "solid black quads on cliff peaks" instance of
+this exact failure, fixed for the shroud-only case; cloud-on re-triggers it.)
+
+**Why NOT a simple combiner / multitexture problem.** First hypothesis was a
+missing 2nd texture stage (cloud=stage0, edge-mask=stage1). A full stage-1
+multitexture combiner + DESTCOLOR blend was implemented and tested — it did
+**not** fix the squares AND it degraded fog of war (stage-1 sampled with raw
+UVs because the stage-1 `D3DTS_TEXTURE1` texgen was un-plumbed). That work was
+**reverted** (`git checkout` of `dx8_device.cpp`, `metal_backend.h/.mm`). Do
+NOT re-attempt the multitexture combiner without ALSO plumbing the stage-1
+camera-space texgen — and even then the real bug is the `tci=0` state-leak, not
+the combiner.
+
+**Decision (2026-05-29).** Deferred. Cloud Shadows is optional eye-candy
+(moving cloud shadows on terrain); everything else (fog of war, terrain, units)
+is correct without it. User disables Cloud Shadows in Options → Graphics for
+now. No code change landed (working tree reverted to the clean committed state).
+
+**Path to fix when revisited:**
+1. Reproduce with `MTL_DRAWLOG=1` + Cloud Shadows ON; confirm which exact pass
+   signatures arrive with `tci=0` that should be `tci=2`.
+2. Decide where to correct the state: either (a) make the shim re-derive
+   CAMERASPACEPOSITION when a stage has `D3DTTFF_COUNT2` + a non-identity
+   `D3DTS_TEXTURE{stage}` even if `TEXCOORDINDEX` low bits got reset to the
+   stage number (heuristic), or (b) trace the engine's cloud→shroud pass
+   ordering and ensure our `m_tss`/`m_transforms` snapshot per draw matches
+   what D3D would have at that draw (faithful state tracking).
+3. If pursuing correct cloud rendering, ALSO plumb the **stage-1** texture
+   transform (`D3DTS_TEXTURE1`) + stage-1 `tciMode/texXformCount` into the
+   uniforms and compute `o.uv1 = texXform1·view·world·pos` — the cloud/noise
+   pass (`ST_TERRAIN_BASE_NOISE12`) uses camera-space texgen on BOTH stages.
+   ⚠️ The `Uniforms` MSL/CPU structs have delicate padding for `lights[]`
+   alignment — adding fields risks breaking ALL lighting; verify offsets.
+4. Verify fog of war stays correct (it's the same multiply family — easy to
+   regress).
+
+**Diagnostic env vars used (left in tree only if still present; otherwise
+re-add):** `MTL_TESTCLEAR`, `MTL_SKIP_MULTIPLY`, `MTL_DRAWLOG`, `GEN_NO_SHROUD`.
+
+---
+
 ## ▶ Water depth-ordering (renders OVER occluders) — FIXED ✅
 
 After the black-grid was killed (see next section), the user reported a second
