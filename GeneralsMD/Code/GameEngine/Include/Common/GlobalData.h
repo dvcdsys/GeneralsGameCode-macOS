@@ -281,6 +281,7 @@ public:
 	Bool m_particleEdit;					///< Should we attempt to load the particle editor (.DLL)
 	Bool m_displayDebug;					///< Used to display display debug info
 	Bool m_winCursors;						///< Should we force use of windows cursors?
+	Bool m_logFrameCRCs;					///< Per-frame "Appended CRC" debug log. Off by default — very spammy. Enable with -logFrameCRCs.
 	Bool m_constantDebugUpdate;		///< should we update the debug stats constantly, vs every 2 seconds?
 	Bool m_showTeamDot;						///< Shows the little colored team dot representing which team you are controlling.
 

@@ -819,6 +819,12 @@ Int parseWinCursors(char *args[], int num)
 	return 1;
 }
 
+Int parseLogFrameCRCs(char *args[], int num)
+{
+	TheWritableGlobalData->m_logFrameCRCs = TRUE;
+	return 1;
+}
+
 Int parseQuickStart( char *args[], int num )
 {
 	parseNoLogo( args, num );
@@ -1290,6 +1296,7 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-ignoresync", parseSync },
 	{ "-shellmap", parseShellMap },
 	{ "-winCursors", parseWinCursors },
+	{ "-logFrameCRCs", parseLogFrameCRCs },
 	{ "-constantDebug", parseConstantDebug },
 	{ "-seed", parseSeed },
 	{ "-noagpfix", parseIncrAGPBuf },

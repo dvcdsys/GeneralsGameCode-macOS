@@ -3767,7 +3767,8 @@ void GameLogic::update()
 			messageList = TheCommandList;
 		messageList->appendMessage(msg);
 
-		DEBUG_LOG(("Appended %sCRC on frame %d: %8.8X", isPlayback ? "Playback " : "", m_frame, m_CRC));
+		if (TheGlobalData && TheGlobalData->m_logFrameCRCs)
+			DEBUG_LOG(("Appended %sCRC on frame %d: %8.8X", isPlayback ? "Playback " : "", m_frame, m_CRC));
 	}
 
 	// collect stats

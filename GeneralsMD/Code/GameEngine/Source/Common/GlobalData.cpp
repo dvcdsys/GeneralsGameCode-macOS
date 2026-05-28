@@ -665,6 +665,7 @@ GlobalData::GlobalData()
 	m_particleEdit = FALSE;
 	m_displayDebug = FALSE;
 	m_winCursors = TRUE;
+	m_logFrameCRCs = FALSE;
 	m_constantDebugUpdate = FALSE;
 	m_showTeamDot = FALSE;
 	m_fixedSeed = -1; // disabled
