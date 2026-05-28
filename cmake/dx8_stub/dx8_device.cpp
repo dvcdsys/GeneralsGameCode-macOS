@@ -416,7 +416,7 @@ HRESULT STDMETHODCALLTYPE MetalTexture8::GetSurfaceLevel(UINT Level, IDirect3DSu
 class MetalVertexBuffer8 : public IDirect3DVertexBuffer8 {
 public:
     MetalVertexBuffer8(IDirect3DDevice8* dev, MetalContext* ctx, UINT length, DWORD usage, DWORD fvf, D3DPOOL pool)
-        : m_refCount(1), m_device(dev), m_length(length), m_usage(usage), m_fvf(fvf), m_pool(pool)
+        : m_refCount(1), m_device(dev), m_ctx(ctx), m_length(length), m_usage(usage), m_fvf(fvf), m_pool(pool)
     {
         m_buffer   = MetalContext_CreateBuffer(ctx, length);
         m_contents = MetalContext_BufferContents(m_buffer);
@@ -436,8 +436,31 @@ public:
     STDMETHOD_(void, PreLoad)() override {}
     STDMETHOD_(D3DRESOURCETYPE, GetType)() override { return D3DRTYPE_VERTEXBUFFER; }
 
-    STDMETHOD(Lock)(UINT OffsetToLock, UINT /*SizeToLock*/, BYTE** ppbData, DWORD /*Flags*/) override
+    STDMETHOD(Lock)(UINT OffsetToLock, UINT /*SizeToLock*/, BYTE** ppbData, DWORD Flags) override
     {
+        // Honour D3DLOCK_DISCARD by ORPHANING the buffer (driver "rename"):
+        // allocate a fresh MTLBuffer and hand back its memory. This is required
+        // for the dynamic ring buffers the engine reuses within a single frame
+        // — most importantly the shared dynamic shadow-volume VB
+        // (W3DVolumetricShadow.cpp). The engine appends volumes with
+        // NOOVERWRITE and, when the ring fills, issues a DISCARD to recycle from
+        // offset 0. Our MTLBuffer contents are read by the GPU lazily at Present,
+        // so without renaming, that DISCARD would overwrite vertices belonging
+        // to draws already encoded this frame (whose stream still points at the
+        // old offsets) → corrupted/flickering shadow volumes that worsen as more
+        // unit volumes overflow the ring. The old buffer stays alive because the
+        // command buffer that referenced it retains it until GPU completion, so
+        // earlier draws keep reading the correct (old) data while new writes go
+        // to the fresh buffer. NOOVERWRITE / plain locks keep the current
+        // buffer (the engine guarantees it won't touch already-queued regions).
+        if ((Flags & D3DLOCK_DISCARD) && m_ctx && m_length > 0) {
+            void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
+            if (fresh) {
+                MetalContext_ReleaseBuffer(m_buffer); // drop our ref; GPU keeps its own
+                m_buffer   = fresh;
+                m_contents = MetalContext_BufferContents(m_buffer);
+            }
+        }
         if (ppbData) *ppbData = m_contents ? ((BYTE*)m_contents + OffsetToLock) : nullptr;
         return S_OK; // shared MTLBuffer: writes are visible directly, no upload needed.
     }
@@ -461,6 +484,7 @@ public:
 private:
     ULONG             m_refCount;
     IDirect3DDevice8* m_device;
+    MetalContext*     m_ctx;        // for D3DLOCK_DISCARD buffer orphaning
     void*             m_buffer;
     void*             m_contents;
     UINT              m_length;
@@ -475,7 +499,7 @@ private:
 class MetalIndexBuffer8 : public IDirect3DIndexBuffer8 {
 public:
     MetalIndexBuffer8(IDirect3DDevice8* dev, MetalContext* ctx, UINT length, DWORD usage, D3DFORMAT fmt, D3DPOOL pool)
-        : m_refCount(1), m_device(dev), m_length(length), m_usage(usage), m_format(fmt), m_pool(pool)
+        : m_refCount(1), m_device(dev), m_ctx(ctx), m_length(length), m_usage(usage), m_format(fmt), m_pool(pool)
     {
         m_buffer   = MetalContext_CreateBuffer(ctx, length);
         m_contents = MetalContext_BufferContents(m_buffer);
@@ -495,8 +519,21 @@ public:
     STDMETHOD_(void, PreLoad)() override {}
     STDMETHOD_(D3DRESOURCETYPE, GetType)() override { return D3DRTYPE_INDEXBUFFER; }
 
-    STDMETHOD(Lock)(UINT OffsetToLock, UINT /*SizeToLock*/, BYTE** ppbData, DWORD /*Flags*/) override
+    STDMETHOD(Lock)(UINT OffsetToLock, UINT /*SizeToLock*/, BYTE** ppbData, DWORD Flags) override
     {
+        // D3DLOCK_DISCARD → orphan to a fresh MTLBuffer (driver "rename"); see
+        // the matching comment in MetalVertexBuffer8::Lock. The dynamic
+        // shadow-volume IB is recycled with DISCARD the same way the VB is, so
+        // both must rename in lockstep or the index data for already-queued
+        // draws gets clobbered mid-frame.
+        if ((Flags & D3DLOCK_DISCARD) && m_ctx && m_length > 0) {
+            void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
+            if (fresh) {
+                MetalContext_ReleaseBuffer(m_buffer);
+                m_buffer   = fresh;
+                m_contents = MetalContext_BufferContents(m_buffer);
+            }
+        }
         if (ppbData) *ppbData = m_contents ? ((BYTE*)m_contents + OffsetToLock) : nullptr;
         return S_OK;
     }
@@ -519,6 +556,7 @@ public:
 private:
     ULONG             m_refCount;
     IDirect3DDevice8* m_device;
+    MetalContext*     m_ctx;        // for D3DLOCK_DISCARD buffer orphaning
     void*             m_buffer;
     void*             m_contents;
     UINT              m_length;
