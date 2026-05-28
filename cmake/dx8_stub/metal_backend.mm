@@ -28,8 +28,22 @@ std::deque<KeyEv>   g_keyQ;
 bool                g_capsOn = false;
 unsigned long       g_prevModFlags = 0;
 NSView*             g_inputView = nil;   // active content view, for coord conversion
+// Engine-side render resolution in PIXELS (what the game thinks the screen is).
+// Set by MetalContext_Create / MetalContext_Resize. The NSView's bounds are in
+// POINTS and may be smaller than this (HiDPI: 2x scale; or screen-fit clamp at
+// 2K+ on a smaller display). EventPoint linearly maps view-points → engine-pixels.
+int                 g_engineW = 0;
+int                 g_engineH = 0;
+} // namespace
 
-// Convert an NSEvent window location to content-view pixels, top-left origin.
+extern "C" void MetalInput_SetEngineSize(int w, int h)
+{
+    g_engineW = (w > 0) ? w : 0;
+    g_engineH = (h > 0) ? h : 0;
+}
+
+namespace {
+// Convert an NSEvent window location to engine pixel coords, top-left origin.
 // Returns false if the point is outside the view's bounds — caller should
 // DROP the mouse event in that case. This matters for screen-edge scroll
 // (LookAtXlat.cpp:349-360): the engine treats `m_currentPos.x >= width - 3`
@@ -41,6 +55,14 @@ NSView*             g_inputView = nil;   // active content view, for coord conve
 // following whichever screen corner the cursor wandered into. Previously
 // we clamped low-side (x<0 → 0) but not high-side, so the right/bottom
 // over-shoot leaked through.
+//
+// HiDPI / high-resolution scaling: the NSView's bounds are in POINTS, but the
+// engine's UI coordinate system is in PIXELS (whatever resolution the user
+// picked in Options → Display). At 2K+ on a Retina display the window
+// content rect is also clamped to the screen (in points), so view.bounds.width
+// is e.g. 1280 while the engine expects 2560. We linearly remap so clicking
+// the right edge of the visible window registers as the right edge of the
+// engine's UI grid regardless of the physical window size.
 inline bool EventPoint(NSEvent* e, int* outX, int* outY)
 {
     *outX = 0; *outY = 0;
@@ -48,16 +70,34 @@ inline bool EventPoint(NSEvent* e, int* outX, int* outY)
     NSPoint p = [g_inputView convertPoint:e.locationInWindow fromView:nil];
     CGFloat w = g_inputView.bounds.size.width;
     CGFloat h = g_inputView.bounds.size.height;
+    if (w <= 0.0 || h <= 0.0) return false;
     // Reject coords clearly outside the view (with a 1-point tolerance so
     // an event with p.x == bounds.width still counts as the last interior
     // column rather than being dropped).
     if (p.x < 0.0 || p.x > w || p.y < 0.0 || p.y > h) return false;
-    int x = (int)p.x;
-    int y = (int)(h - p.y);          // flip: Cocoa is bottom-left, engine top-left
+    // Map view-points → engine-pixels. If the engine size hasn't been published
+    // yet (very early boot before MetalContext_Create finishes), fall back to
+    // 1:1 — that path is short enough that no UI exists to click on anyway.
+    int engineW = (g_engineW > 0) ? g_engineW : (int)w;
+    int engineH = (g_engineH > 0) ? g_engineH : (int)h;
+    double sx = (double)engineW / (double)w;
+    double sy = (double)engineH / (double)h;
+    // Round (not truncate) so the engine-pixel chosen for view-point P is the
+    // pixel whose centre is nearest P. Truncation biases every coord toward 0
+    // and shifts the engine-side cursor up-and-left by ~0.5 engine-pixels per
+    // axis vs. the OS cursor visually drawn at P. At low resolutions that's
+    // imperceptible; at 2K via screen-fit downscale, sx can be ~1.7 so each
+    // view-point covers ~1.7 engine-pixels and the half-pixel bias becomes
+    // ~1 engine-pixel — enough to cause a small but visible "drift" between
+    // the OS cursor and the engine pick point, magnified by camera depth into
+    // a multi-tile world-space offset when zoomed out. Rounding centres the
+    // mapping and the drift disappears.
+    int x = (int)(p.x * sx + 0.5);
+    int y = (int)((h - p.y) * sy + 0.5);   // flip: Cocoa bottom-left → engine top-left
     if (x < 0) x = 0;
     if (y < 0) y = 0;
-    if (x > (int)w - 1) x = (int)w - 1;
-    if (y > (int)h - 1) y = (int)h - 1;
+    if (x > engineW - 1) x = engineW - 1;
+    if (y > engineH - 1) y = engineH - 1;
     *outX = x; *outY = y;
     return true;
 }
@@ -591,6 +631,18 @@ struct MetalContext {
     int                  depthW;
     int                  depthH;
     std::unordered_map<uint32_t, id<MTLDepthStencilState>> depthStates;
+
+    // Currently-applied MTLViewport (in framebuffer pixels). Tracked so per-draw
+    // viewport changes from the engine (DX8Wrapper::Set_Viewport → our
+    // dx8_device.cpp SetViewport which populates DrawCommand.vpX/Y/W/H) actually
+    // reach Metal. Without this the encoder kept the boot-time full-screen
+    // viewport for the entire frame and any reduced-area pass (e.g. a tactical
+    // view that excludes the control-bar strip, or render2d's full-screen reset)
+    // got rasterised into the wrong pixel range — causing world-space 3D draws
+    // (units) and CPU-projected 2D HUD overlays (health bars, selection rings)
+    // to land at different screen Y for the same world point, growing with
+    // camera tilt.
+    int                  appliedVpX, appliedVpY, appliedVpW, appliedVpH;
 
     // Stage 7: MSAA. On Apple Silicon (TBDR) both the MSAA color and MSAA depth
     // attachments are MTLStorageModeMemoryless — they live entirely in tile
@@ -1382,7 +1434,35 @@ static bool EnsureEncoder(MetalContext* ctx)
 
     MTLViewport vp = { 0.0, 0.0, (double)ctx->width, (double)ctx->height, 0.0, 1.0 };
     [ctx->enc setViewport:vp];
+    // Track what we just applied so the per-draw viewport-change check (see
+    // ApplyViewportIfChanged) doesn't issue a redundant setViewport: on the
+    // very first draw of the frame.
+    ctx->appliedVpX = 0; ctx->appliedVpY = 0;
+    ctx->appliedVpW = ctx->width; ctx->appliedVpH = ctx->height;
     return true;
+}
+
+// Apply a per-draw viewport change if it differs from what's currently bound on
+// the encoder. The engine routinely calls D3D's SetViewport between draw passes
+// — see CameraClass::Apply (camera.cpp:748) for the 3D scene viewport and
+// Render2DClass::Render (render2d.cpp:625) for the 2D HUD reset to full screen.
+// In real D3D those calls take effect for the next draw; we have to forward
+// them to Metal explicitly, otherwise units (rasterised at the last applied
+// viewport) and CPU-projected HUD overlays (computed from the engine's View
+// dimensions, which assume whatever the engine just set) diverge in pixel Y.
+namespace {
+inline void ApplyViewportIfChanged(MetalContext* ctx, int x, int y, int w, int h)
+{
+    if (!ctx || !ctx->enc) return;
+    if (w <= 0) w = ctx->width;
+    if (h <= 0) h = ctx->height;
+    if (x == ctx->appliedVpX && y == ctx->appliedVpY &&
+        w == ctx->appliedVpW && h == ctx->appliedVpH) return;
+    MTLViewport vp = { (double)x, (double)y, (double)w, (double)h, 0.0, 1.0 };
+    [ctx->enc setViewport:vp];
+    ctx->appliedVpX = x; ctx->appliedVpY = y;
+    ctx->appliedVpW = w; ctx->appliedVpH = h;
+}
 }
 
 // ---------------------------------------------------------------------------
@@ -1458,7 +1538,35 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         extern MetalContext* g_activeMetalCtx;
         g_activeMetalCtx = ctx;
 
-        NSRect frame = NSMakeRect(0, 0, width, height);
+        // Engine resolution is in PIXELS; NSWindow content rect is in POINTS.
+        // On a Retina display a 2560x1440 game resolution would request a
+        // 2560x1440-POINT window — which is 5120x2880 PIXELS and won't fit on
+        // any laptop screen. Cocoa then clamps the window to the visible
+        // screen frame, but the view's bounds end up smaller than the engine
+        // expects, breaking input mapping. Instead: size the window to fit
+        // within the screen's visibleFrame (in points), preserving aspect
+        // ratio, and let the CAMetalLayer up-render at the requested
+        // engine-pixel resolution via drawableSize. EventPoint linearly remaps
+        // mouse coords from view-points to engine-pixels so the cursor stays
+        // pixel-accurate regardless of how Cocoa actually sized the window.
+        NSScreen* screen = [NSScreen mainScreen];
+        NSRect visible = screen ? screen.visibleFrame
+                                : NSMakeRect(0, 0, (CGFloat)width, (CGFloat)height);
+        // Leave a small margin so the titlebar and screen edges stay clear.
+        CGFloat maxW = visible.size.width  - 32.0;
+        CGFloat maxH = visible.size.height - 64.0;   // leave room for titlebar
+        if (maxW < 320.0) maxW = visible.size.width;
+        if (maxH < 240.0) maxH = visible.size.height;
+        CGFloat winW = (CGFloat)width;
+        CGFloat winH = (CGFloat)height;
+        if (winW > maxW || winH > maxH) {
+            double sx = (double)maxW / (double)winW;
+            double sy = (double)maxH / (double)winH;
+            double s  = (sx < sy) ? sx : sy;
+            winW = (CGFloat)((double)winW * s);
+            winH = (CGFloat)((double)winH * s);
+        }
+        NSRect frame = NSMakeRect(0, 0, winW, winH);
         NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                   NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
         NSWindow* window = [[NSWindow alloc] initWithContentRect:frame
@@ -1492,6 +1600,13 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->view   = view;
         ctx->layer  = layer;
         g_inputView = view;  // for input coordinate conversion
+        // Publish the engine pixel resolution so EventPoint can scale view-points
+        // → engine-pixels (HiDPI + screen-fit clamp).
+        g_engineW = width;
+        g_engineH = height;
+        fprintf(stderr,
+                "[metal] window: engine=%dx%dpx, content=%.0fx%.0fpt, drawable=%dx%dpx\n",
+                width, height, (double)winW, (double)winH, width, height);
 
         BuildShadersAndStaticState(ctx);
 
@@ -1668,6 +1783,10 @@ extern "C" void MetalContext_Resize(MetalContext* ctx, int width, int height)
         ctx->width  = width;
         ctx->height = height;
         ctx->layer.drawableSize = CGSizeMake(width, height);
+        // Keep input-mapper in sync when the engine switches resolution at
+        // runtime (Options → Display → Apply).
+        g_engineW = width;
+        g_engineH = height;
     }
 }
 
@@ -1832,12 +1951,30 @@ static void RunShadowReplay(MetalContext* ctx)
         float sgn = s_fwdFlip ? +1.0f : -1.0f;
         camFwdX = sgn * V[2]; camFwdY = sgn * V[6]; camFwdZ = sgn * V[10];
     }
-    // Focus a bit in front of the camera along its forward direction. The
-    // tactical camera in Generals tilts down, so focus lands on the ground.
-    const float kFocusDist = 600.0f;
-    float focusX = camEyeX + camFwdX * kFocusDist;
-    float focusY = camEyeY + camFwdY * kFocusDist;
-    float focusZ = camEyeZ + camFwdZ * kFocusDist;
+    // Focus point = where the camera's forward ray hits the ground plane (Z=0).
+    // Previously we used a fixed 600u step along forward, which placed focus
+    // mid-air whenever the camera was high (max zoom-out: camera at Z>2000,
+    // 600u down still ~1500u above ground). The shadow map then centred on a
+    // sky point while the visible terrain lived OUTSIDE the light frustum,
+    // producing wildly-aliased "line" shadows that snapped to a different
+    // texel grid every frame as the camera drifted. Intersecting with Z=0
+    // keeps focus on the actually-visible ground at every zoom level, which
+    // makes the texel-grid snap below produce frame-stable results.
+    float focusX, focusY, focusZ;
+    if (fabsf(camFwdZ) > 1e-3f && (camEyeZ * camFwdZ) < 0.0f) {
+        // Camera above ground and looking down — ray hits Z=0 at positive t.
+        float t = -camEyeZ / camFwdZ;
+        focusX = camEyeX + camFwdX * t;
+        focusY = camEyeY + camFwdY * t;
+        focusZ = 0.0f;
+    } else {
+        // Degenerate / looking-up case (cinematic, debug) — fall back to a
+        // forward step so we always produce SOME usable focus.
+        const float kFocusDist = 600.0f;
+        focusX = camEyeX + camFwdX * kFocusDist;
+        focusY = camEyeY + camFwdY * kFocusDist;
+        focusZ = camEyeZ + camFwdZ * kFocusDist;
+    }
     // Debug — print eye/fwd/focus once at startup + every 600 frames so we can
     // sanity-check the camera math against the actual scene (terrain is at
     // Z≈0..few hundred, tactical eye is at Z≈200..500 looking down).
@@ -1852,15 +1989,21 @@ static void RunShadowReplay(MetalContext* ctx)
     //       `farRange` units away. Ortho's far plane (built below) is 2*farRange
     //       so the focus point lands at NDC ≈ 0.5, with casters above/below
     //       covering the [0,1] range.
-    //       4000u default fits Generals' map vertical extent comfortably (scene
-    //       Z usually 0..400, tactical camera Z up to 1000). Bigger farRange =
-    //       less peter-pan-per-NDC-bias, smaller = tighter depth precision.
-    static float s_farRange = -1.0f;
-    if (s_farRange < 0.0f) {
+    //       Adaptive to camera height: at max zoom-out the camera can be
+    //       2000-4000u above ground, and the visible terrain stretches far
+    //       enough that a fixed farRange would clip out casters / receivers
+    //       and a fixed halfExt would miss whole edges of the visible scene.
+    //       Both grow linearly with |camEyeZ| with floors that match the
+    //       previous fixed defaults so close-zoom quality is unchanged.
+    static float s_farRangeBase = -1.0f;
+    if (s_farRangeBase < 0.0f) {
         const char* e = getenv("MTL_SHADOW_LIGHT_DIST");
-        s_farRange = e ? (float)atof(e) : 4000.0f;
+        s_farRangeBase = e ? (float)atof(e) : 4000.0f;
     }
-    const float farRange = s_farRange;
+    const float camHeightAbs = fabsf(camEyeZ);
+    // farRange grows so the light eye stays comfortably above the tallest
+    // caster even as the camera rises. 2× camera height is a safe envelope.
+    const float farRange = fmaxf(s_farRangeBase, camHeightAbs * 2.0f);
     float lightEyeX = focusX - sunDx * farRange;
     float lightEyeY = focusY - sunDy * farRange;
     float lightEyeZ = focusZ - sunDz * farRange;
@@ -1886,12 +2029,19 @@ static void RunShadowReplay(MetalContext* ctx)
     //        Snapping pins texel boundaries to world-space positions, so as
     //        long as the camera moves less than texelSize between frames,
     //        the shadow map texels stay on the same world coords.
-    static float s_halfExt = -1.0f;
-    if (s_halfExt < 0.0f) {
+    static float s_halfExtBase = -1.0f;
+    if (s_halfExtBase < 0.0f) {
         const char* e = getenv("MTL_SHADOW_HALF_EXT");
-        s_halfExt = e ? (float)atof(e) : 2000.0f;
+        s_halfExtBase = e ? (float)atof(e) : 2000.0f;
     }
-    const float halfExt   = s_halfExt;
+    // halfExt grows with camera altitude so the orthographic light frustum
+    // covers the visible terrain at every zoom level. Generals' tactical
+    // camera tilts ~45° and uses ~50° h-FOV, so the visible ground patch is
+    // roughly camHeight wide in each axis from the focus point. We use 0.9×
+    // as a safety multiplier so casters near the screen edge still land
+    // inside the shadow map. Capped from below by the legacy 2000u default
+    // so close-zoom shadow texel density matches the previous behaviour.
+    const float halfExt   = fmaxf(s_halfExtBase, camHeightAbs * 0.9f);
     const float texelSize = (2.0f * halfExt) / (float)METAL_SHADOWMAP_SIZE;
     // Project focus onto light's right/up axes, snap, reconstruct.
     {
@@ -2490,8 +2640,20 @@ extern "C" int MetalCursor_Show(int show)
     bool shouldBeHidden = (g_cursorShowCounter < 0);
     if (shouldBeHidden != g_cursorHidden) {
         @autoreleasepool {
-            if (shouldBeHidden) [NSCursor hide];
-            else                [NSCursor unhide];
+            if (shouldBeHidden) {
+                [NSCursor hide];
+            } else {
+                // Explicitly set the arrow as the active cursor and unhide.
+                // [NSCursor unhide] alone is not always enough — the OS may
+                // restore the last app-set cursor or leave the cursor in an
+                // ambiguous state if no tracking area / cursorUpdate handler
+                // ever set one. Setting the arrow explicitly forces a
+                // visible system cursor while we wait for proper engine-
+                // cursor rendering (RM_POLYGON / RM_W3D need shipped
+                // assets that the macOS port does not yet have).
+                [[NSCursor arrowCursor] set];
+                [NSCursor unhide];
+            }
         }
         g_cursorHidden = shouldBeHidden;
     }
@@ -2609,6 +2771,15 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
 
     @autoreleasepool {
         if (!EnsureEncoder(ctx)) return;
+
+        // Honour the engine's per-draw D3D viewport (stored by
+        // dx8_device.cpp::SetViewport into dc->vp*). Must come AFTER
+        // EnsureEncoder so the encoder exists. Without this, every draw uses
+        // whatever viewport was last bound (boot default = full ctx), and
+        // engine-requested narrower viewports for the tactical scene get
+        // silently ignored — which manifests as health bars / HUD overlays
+        // floating away from units in pixel-Y proportional to camera tilt.
+        ApplyViewportIfChanged(ctx, dc->vpX, dc->vpY, dc->vpW, dc->vpH);
 
         // Debug: MTL_SHADOW_VOL_VIZ=1 forces colour writes ON for stencil
         // volume INCR/DECR/DECRSAT/INCRSAT draws so the volume mesh itself is
@@ -2777,8 +2948,12 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         u.shadowEnable  = (ctx->shadowsEnabled && dc->posFloats == 3) ? 1 : 0;
         u._pad0 = u._pad1 = u._pad2 = u._pad3 = 0;
         // Viewport pixel size for the XYZRHW screen→NDC formula in vs_main.
-        u.viewportSize[0] = (float)(ctx->width  > 0 ? ctx->width  : 1);
-        u.viewportSize[1] = (float)(ctx->height > 0 ? ctx->height : 1);
+        // Must be the CURRENT D3D viewport (the engine's per-draw Set_Viewport
+        // value), not the full context size — XYZRHW pixel coords are written
+        // by the engine assuming whatever viewport is active. Matches DXVK's
+        // d3d9_fixed_function.cpp invExtent treatment.
+        u.viewportSize[0] = (float)(dc->vpW > 0 ? dc->vpW : ctx->width);
+        u.viewportSize[1] = (float)(dc->vpH > 0 ? dc->vpH : ctx->height);
         u._padVP[0] = u._padVP[1] = 0.0f;
         std::memcpy(u.matDiffuse,    dc->matDiffuse,    sizeof(float) * 4);
         std::memcpy(u.matAmbient,    dc->matAmbient,    sizeof(float) * 4);
