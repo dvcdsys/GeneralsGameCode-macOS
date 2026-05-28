@@ -25,6 +25,7 @@ if(APPLE)
         ${CMAKE_CURRENT_LIST_DIR}/dx8_stub/dx8_device.cpp
         ${CMAKE_CURRENT_LIST_DIR}/dx8_stub/metal_backend.mm
         ${CMAKE_CURRENT_LIST_DIR}/dx8_stub/gdi_text.mm
+        ${CMAKE_CURRENT_LIST_DIR}/dx8_stub/apple_ani_cursor.mm
     )
     # core_config (osdep_compat include path + _UNIX) is not defined yet at this
     # include point, so add the Win32 shim path and UNIX define directly.

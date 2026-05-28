@@ -1447,19 +1447,32 @@ inline int MessageBoxW(void * /*hwnd*/, const WCHAR *text,
 
 // ---------------------------------------------------------------------------
 // Mouse cursor — wire Win32 calls to NSCursor via the Cocoa metal_backend.
-// MetalCursor_Show is counter-based (Win32 ShowCursor semantics); SetCursor
-// uses HCURSOR==nullptr as the engine's "hide system cursor; software cursor
-// only" signal, and any non-null HCURSOR as "show some system cursor". We
-// can't map individual HCURSOR bitmaps to NSCursor shapes from a header, so
-// non-null currently maps to the default arrow — fine because the engine
-// ALREADY draws its own software-cursor sprite on top with the correct shape.
+// MetalCursor_Show is counter-based (Win32 ShowCursor semantics).
+//
+// LoadCursorFromFile parses the engine's original .ANI cursor files (RIFF
+// container of .CUR frames) into an array of NSCursors via apple_ani_cursor.mm.
+// The returned HCURSOR is an opaque pointer to that cached struct; the engine
+// stores it per cursor type and passes it back to SetCursor each frame.
+//
+// SetCursor switches the active animated cursor and hides/shows the system
+// cursor as needed. A non-null HCURSOR is the engine's "show some cursor"
+// signal; null is "hide cursor (engine draws its own)".
 // ---------------------------------------------------------------------------
-extern "C" int  MetalCursor_Show(int show);
-extern "C" int  MetalCursor_WarpClient(int clientX, int clientY);
+extern "C" int   MetalCursor_Show(int show);
+extern "C" int   MetalCursor_WarpClient(int clientX, int clientY);
+extern "C" void* MetalCursor_LoadAni(const char* path);
+extern "C" void  MetalCursor_SetActiveAni(void* handle);
+
+// Forward declaration so the inline LoadCursorFromFile below can call
+// the path normaliser. The full definition lives in apple_path_shim.h,
+// which is pulled in further down windows.h — declaration here keeps
+// inline-body parsing happy regardless of include order at the call site.
+namespace apple_path { const char* normalize(const char* path); }
+
 inline HCURSOR SetCursor(HCURSOR c) {
     // The engine alternates SetCursor(nullptr) <-> SetCursor(bitmap) each time
-    // the cursor mode flips between "software-only" and "system+software". We
-    // mirror this on the show/hide counter so the system cursor is hidden
+    // the cursor mode flips between "software-only" and "system+software".
+    // Mirror this on the show/hide counter so the system cursor is hidden
     // whenever the engine is in software-cursor mode.
     static int s_lastHidden = 0;
     int wantHidden = (c == nullptr) ? 1 : 0;
@@ -1467,10 +1480,30 @@ inline HCURSOR SetCursor(HCURSOR c) {
         MetalCursor_Show(wantHidden ? 0 : 1);   // 0=hide step, 1=show step
         s_lastHidden = wantHidden;
     }
+    // Activate the engine-supplied animated cursor (no-op if same as last
+    // and the cursor pointer is non-null — see MetalCursor_SetActiveAni).
+    // Skip activation for the dummy 0x1 sentinel we hand back when a file
+    // failed to parse so we don't dereference a bogus pointer.
+    if (c == nullptr || (uintptr_t)c == 0x1) {
+        MetalCursor_SetActiveAni(nullptr);
+    } else {
+        MetalCursor_SetActiveAni((void*)c);
+    }
     return nullptr;
 }
 inline int     ShowCursor(BOOL show)             { return MetalCursor_Show(show ? 1 : 0); }
-inline HCURSOR LoadCursorFromFile(const char * /*path*/) { return (HCURSOR)0x1; /* dummy non-null */ }
+inline HCURSOR LoadCursorFromFile(const char *path) {
+    // Normalise the Windows-style "data\\cursors\\Foo.ANI" the engine
+    // hands us into a POSIX path that fopen on macOS can actually open.
+    // apple_path::normalize lives in apple_path_shim.h, which is
+    // included at the bottom of windows.h on Apple builds.
+    const char* posixPath = ::apple_path::normalize(path);
+    void* h = MetalCursor_LoadAni(posixPath);
+    // Return a dummy non-null if parse failed so the engine's
+    // DEBUG_ASSERTCRASH(cursorResources[..]) doesn't trip; SetCursor
+    // recognises 0x1 and treats it as "no cursor".
+    return h ? (HCURSOR)h : (HCURSOR)0x1;
+}
 inline HCURSOR LoadCursorFromFileA(const char *p)        { return LoadCursorFromFile(p); }
 inline BOOL    GetCursorPos(POINT *p)  { if (p) { p->x = 0; p->y = 0; } return TRUE; }
 inline BOOL    SetCursorPos(int x, int y) { return MetalCursor_WarpClient(x, y) ? TRUE : FALSE; }
