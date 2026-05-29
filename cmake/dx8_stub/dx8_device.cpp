@@ -168,7 +168,7 @@ public:
             m_staging.resize((size_t)m_pitch * (h ? h : 1), 0);
         }
     }
-    ~MetalTexture8() { MetalContext_ReleaseTexture(m_texture); }
+    ~MetalTexture8() { if (m_level0Surface) m_level0Surface->Release(); MetalContext_ReleaseTexture(m_texture); }
 
     void* dxTexture() const { return m_texture; } // opaque MTLTexture*
 
@@ -265,6 +265,10 @@ private:
     bool              m_isMissing = false;
     bool              m_compressed = false;
     std::vector<unsigned char> m_staging;
+    // Persistent CPU mirror of mip level 0 (lazily created by GetSurfaceLevel).
+    // Real D3D hands back the *same* surface memory each call; the engine relies
+    // on that for partial / read-modify-write texture updates (see GetSurfaceLevel).
+    IDirect3DSurface8* m_level0Surface = nullptr;
 };
 
 // ---------------------------------------------------------------------------
@@ -395,18 +399,41 @@ private:
 // MetalSurface8 (full definition only available above this point).
 HRESULT STDMETHODCALLTYPE MetalTexture8::GetSurfaceLevel(UINT Level, IDirect3DSurface8** ppSurfaceLevel)
 {
-    // Hand back a surface describing this mip level. We only expose level 0
-    // (GetLevelCount()==1); each level halves the dimensions (min 1).
+    // We only expose level 0 (GetLevelCount()==1); each level halves the
+    // dimensions (min 1).
     if (!ppSurfaceLevel) return E_FAIL;
+
+    // Level 0 is CACHED and PERSISTENT. Real D3D's GetSurfaceLevel returns the
+    // same underlying surface memory every call, and the engine depends on that
+    // for partial / multi-pass / read-modify-write texture updates:
+    //   - the radar shroud (fog of war) repaints only the cells that changed
+    //     this frame and relies on the rest of the texture surviving;
+    //   - the radar object overlay clears once, then draws two object lists into
+    //     the same surface in separate GetSurfaceLevel passes;
+    //   - the font glyph atlas copies new glyphs into an already-populated level.
+    // Our staging is the authoritative CPU mirror that flushToTexture uploads
+    // wholesale on UnlockRect, so a fresh zeroed surface per call would erase
+    // everything outside the just-written rect. Caching one surface keeps the
+    // mirror intact between calls. (bindUploadTexture wires it to this texture's
+    // MTLTexture so UnlockRect / CopyRects push pixels to the GPU.)
+    if (Level == 0) {
+        if (!m_level0Surface) {
+            UINT w = m_width  ? m_width  : 1;
+            UINT h = m_height ? m_height : 1;
+            MetalSurface8* surf = new MetalSurface8(m_device, w, h, m_format);
+            surf->bindUploadTexture(m_texture);
+            m_level0Surface = surf;          // texture keeps one reference
+        }
+        m_level0Surface->AddRef();           // reference for the returned pointer
+        *ppSurfaceLevel = m_level0Surface;
+        return D3D_OK;
+    }
+
+    // Non-zero levels are never produced (GetLevelCount()==1) but keep a sane
+    // fallback: a transient, unbound surface.
     UINT w = m_width  >> Level; if (!w) w = 1;
     UINT h = m_height >> Level; if (!h) h = 1;
-    // Bind the level surface to this texture's MTLTexture (level 0 only) so that
-    // CopyRects / UnlockRect into it pushes the pixels to the GPU. This is the
-    // path the font glyph atlas uses (Render2DSentenceClass copies an
-    // A4R4G4B4 image surface into the texture's surface level).
-    MetalSurface8* surf = new MetalSurface8(m_device, w, h, m_format);
-    if (Level == 0) surf->bindUploadTexture(m_texture);
-    *ppSurfaceLevel = surf;
+    *ppSurfaceLevel = new MetalSurface8(m_device, w, h, m_format);
     return D3D_OK;
 }
 
