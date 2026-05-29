@@ -995,16 +995,21 @@ static id<MTLRenderPipelineState> GetPipeline(MetalContext* ctx, const MetalDraw
     int uvOff = (dc->texCoordIndex == 1 && dc->tex1Offset >= 0)
               ? dc->tex1Offset
               : (dc->tex0Offset < 0 ? 0 : dc->tex0Offset);
-    // colorWriteMask occupies 1 bit in the key (binary: writes-on / writes-off).
-    // The engine only uses 0xF (all) and 0 (none) — no per-channel masking.
-    int  writeOn = (dc->colorWriteMask != 0) ? 1 : 0;
+    // colorWriteMask occupies 4 bits in the key — the full per-channel D3D RGBA
+    // mask (R=1,G=2,B=4,A=8). The soft-water-edge feature is the one place the
+    // engine uses partial masks: the shoreline pass writes ALPHA only (8) to lay
+    // a depth gradient into dest-alpha without touching terrain RGB, while normal
+    // passes write RGB only (7) so they don't pollute that alpha. Collapsing this
+    // to binary on/off broke soft water (white shore squares + patchy water that
+    // reveals the seabed). 0 (None) and 0xF (All) still map straight through.
+    int  writeBits = dc->colorWriteMask & 0xF;
     uint64_t key = (uint64_t)dc->fvf
                  | ((uint64_t)(dc->blendEnable ? 1 : 0) << 32)
                  | ((uint64_t)(dc->srcBlend  & 0xFF)    << 33)
                  | ((uint64_t)(dc->destBlend & 0xFF)    << 41)
                  | ((uint64_t)(dc->posFloats & 0x7)     << 49)
                  | ((uint64_t)(uvOff & 0xFF)            << 52)
-                 | ((uint64_t)writeOn                   << 60);
+                 | ((uint64_t)writeBits                 << 60);
     auto it = ctx->pipelines.find(key);
     if (it != ctx->pipelines.end()) return it->second;
 
@@ -1044,10 +1049,19 @@ static id<MTLRenderPipelineState> GetPipeline(MetalContext* ctx, const MetalDraw
     pd.stencilAttachmentPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
     MTLRenderPipelineColorAttachmentDescriptor* ca = pd.colorAttachments[0];
     ca.pixelFormat = MTLPixelFormatBGRA8Unorm;
-    // D3DRS_COLORWRITEENABLE = 0 (stencil-only passes during volumetric shadow
-    // rendering): disable the color attachment entirely so the back/front face
-    // passes write only to the stencil buffer, not to the framebuffer.
-    ca.writeMask = writeOn ? MTLColorWriteMaskAll : MTLColorWriteMaskNone;
+    // Per-channel color write mask. D3DRS_COLORWRITEENABLE = 0 (stencil-only
+    // passes during volumetric shadow rendering) disables the attachment so the
+    // front/back-face passes write only stencil, not the framebuffer. The
+    // soft-water-edge feature relies on partial masks: ALPHA-only (8) for the
+    // shoreline dest-alpha gradient, RGB-only (7) for everything else so it
+    // doesn't clobber that gradient. D3D bits (R=1,G=2,B=4,A=8) map onto the
+    // Metal mask bits one-for-one.
+    MTLColorWriteMask wm = MTLColorWriteMaskNone;
+    if (writeBits & 1) wm |= MTLColorWriteMaskRed;
+    if (writeBits & 2) wm |= MTLColorWriteMaskGreen;
+    if (writeBits & 4) wm |= MTLColorWriteMaskBlue;
+    if (writeBits & 8) wm |= MTLColorWriteMaskAlpha;
+    ca.writeMask = wm;
     if (dc->blendEnable) {
         ca.blendingEnabled             = YES;
         ca.sourceRGBBlendFactor        = MapBlend(dc->srcBlend);

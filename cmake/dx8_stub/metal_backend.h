@@ -182,12 +182,13 @@ typedef struct MetalDrawCall {
     int      zFunc;            // D3DCMPFUNC (0 => LessEqual default)
 
     // ---- Stage 5: color write mask ----
-    // D3DRS_COLORWRITEENABLE bit mask (RGBA). 0xF (all on) is the engine
-    // default. Volumetric shadow rendering disables color writes for the
-    // stencil-fill passes (front-face INCR + back-face DECR) so only stencil
-    // changes; without honouring this, those passes paint visible garbage
-    // over the scene and the shadow effect breaks. Mapped to
-    // MTLColorWriteMask: 0 => None, anything else => All.
+    // D3DRS_COLORWRITEENABLE bit mask (RGBA: R=1,G=2,B=4,A=8). 0xF (all on) is
+    // the engine default. Volumetric shadow rendering disables color writes for
+    // the stencil-fill passes (front-face INCR + back-face DECR) so only stencil
+    // changes; without honouring this, those passes paint visible garbage over
+    // the scene and the shadow effect breaks. The soft-water edge uses the
+    // partial masks 8 (alpha only) and 7 (rgb only). GetPipeline maps each D3D
+    // bit onto the matching MTLColorWriteMask bit per-channel.
     int      colorWriteMask;
 
     // ---- Stage 5: stencil ----
