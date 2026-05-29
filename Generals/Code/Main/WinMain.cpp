@@ -82,7 +82,18 @@ const char *gAppPrefix = ""; /// So WB can have a different debug log file name.
 
 static Bool gInitializing = false;
 static Bool gDoPaint = true;
+#if defined(__APPLE__)
+// TheSuperHackers @port On macOS there is no Win32 WndProc, so the WM_ACTIVATEAPP
+// branch that flips isWinMainActive TRUE on focus never runs. Left at the Win32
+// default of FALSE, TheGameEngine->m_isActive would stay FALSE for the whole
+// session, and canOpenQuitMenu() (which gates the in-game ESC / control-bar menu
+// on TheGameEngine->isActive()) would always reject — making the pause/quit menu
+// impossible to open. The Cocoa window is active for the lifetime of the app
+// (we do not yet track focus loss), so default to active here.
+static Bool isWinMainActive = true;
+#else
 static Bool isWinMainActive = false;
+#endif
 
 static HBITMAP gLoadScreenBitmap = nullptr;
 
