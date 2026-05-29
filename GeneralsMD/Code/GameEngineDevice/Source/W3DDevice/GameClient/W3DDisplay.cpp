@@ -832,7 +832,20 @@ void W3DDisplay::init()
 		WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
 		WW3D::Enable_Static_Sort_Lists(true);
 		WW3D::Set_Thumbnail_Enabled(false);
+#if defined(__APPLE__)
+		// Metal's rasterizer (like D3D10+) samples texel centers at pixel
+		// centers for screen-space quads, so the legacy D3D8 -0.5px half-texel
+		// compensation must NOT be applied here. With it on, every 2D UI draw
+		// samples half a texel past where it should: for atlas sub-images
+		// (e.g. the tiled button-border pieces in SCSmShellUserInterface512)
+		// the right/bottom edge lands exactly on the sub-rect boundary and
+		// LINEAR filtering bleeds in the neighbouring atlas texel, producing
+		// seams between adjacent tiles ("dashed" borders). Disabling the bias
+		// realigns sampling to texel centers and also sharpens text slightly.
+		WW3D::Set_Screen_UV_Bias( FALSE );
+#else
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
+#endif
 		WW3D::Set_Texture_Bitdepth(32);
 
 		setWindowed( TheGlobalData->m_windowed );
