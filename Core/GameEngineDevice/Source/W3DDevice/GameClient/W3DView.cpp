@@ -3749,6 +3749,56 @@ void W3DView::updateTerrain()
 		drawHeight = WorldHeightMap::LOW_ANGLE_DRAW_HEIGHT;
 	}
 
+#if defined(__APPLE__)
+	// TheSuperHackers @port Fit the terrain draw window to what the camera can
+	// actually see. The terrain is drawn as a fixed window of cells centred on
+	// the camera pivot (NORMAL = 129 cells / 1290 world units). That size is
+	// tuned for the 4:3 retail zoom; on modern wide screens the vertical fov is
+	// narrower, so the camera looks further toward the horizon and at high zoom
+	// the visible ground exceeds the window. The terrain then ends mid-view and
+	// props/buildings (which are not bound by this window) render past the edge,
+	// appearing to float on the water layer.
+	//
+	// Cast rays through the four screen corners onto the ground plane and grow
+	// the window to cover the furthest one. setTerrainDrawSize() clamps to the
+	// map extent, so over-estimating just draws the whole (smaller) map. Sizes
+	// quantise to 32-cell tiles, so panning at a constant zoom keeps the same
+	// window (no per-frame vertex-buffer rebuild). Guarded to Apple.
+	{
+		const Real groundZ = m_pos.z;
+		Real maxExtent = 0.0f;
+		ICoord2D corners[4];
+		corners[0].x = m_originX;              corners[0].y = m_originY;
+		corners[1].x = m_originX + getWidth(); corners[1].y = m_originY;
+		corners[2].x = m_originX;              corners[2].y = m_originY + getHeight();
+		corners[3].x = m_originX + getWidth(); corners[3].y = m_originY + getHeight();
+		for (Int i = 0; i < 4; ++i)
+		{
+			Vector3 rayStart, rayEnd;
+			getPickRay(&corners[i], &rayStart, &rayEnd);
+			// Only trust rays that actually descend through the ground plane.
+			if (rayStart.Z - rayEnd.Z > 1.0f)
+			{
+				const Real gx = Vector3::Find_X_At_Z(groundZ, rayStart, rayEnd);
+				const Real gy = Vector3::Find_Y_At_Z(groundZ, rayStart, rayEnd);
+				maxExtent = std::max(maxExtent, (Real)fabs(gx - m_pos.x));
+				maxExtent = std::max(maxExtent, (Real)fabs(gy - m_pos.y));
+			}
+		}
+		if (maxExtent > 0.0f)
+		{
+			// Cells needed on each side of the pivot (+1 margin); window spans 2x.
+			const Int halfCells = (Int)ceilf(maxExtent / MAP_XY_FACTOR) + 1;
+			Int tiles = (2 * halfCells + (VERTEX_BUFFER_TILE_LENGTH - 1)) / VERTEX_BUFFER_TILE_LENGTH;
+			tiles = std::max(tiles, 4);   // never smaller than NORMAL_DRAW
+			tiles = std::min(tiles, 24);  // safety cap (~769 cells); clamped to map extent anyway
+			const Int computed = 1 + tiles * VERTEX_BUFFER_TILE_LENGTH;
+			drawWidth = std::max(drawWidth, computed);
+			drawHeight = std::max(drawHeight, computed);
+		}
+	}
+#endif
+
 	TheTerrainRenderObject->setTerrainDrawSize(drawWidth, drawHeight);
 	TheTerrainRenderObject->updateCenter(m_3DCamera, &cameraPivot, it);
 
