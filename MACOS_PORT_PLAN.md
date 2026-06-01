@@ -736,8 +736,8 @@ captures; reading a working reference takes minutes. See
 | 3. Input (Cocoa) | ✅ done | **Mouse + keyboard work — the menu is interactive** (verified: clicks where buttons are produce UI reactions). `metal_backend.mm` captures mouse/key NSEvents (in `DrainEvents`) into global queues exposed by `MetalInput_PollMouse/PollKey/CapsOn`. `Win32GameEngine::serviceWindowsOS` (Apple block) drains the mouse queue and synthesizes the exact Win32 messages `Win32Mouse::translateEvent` already understands → reuses all Win32Mouse/W3DMouse logic incl. cursor drawing. New `CocoaKeyboard` (Core, replaces the failing `DirectInputKeyboard` via the Apple `W3DGameClient::createKeyboard` branch) maps macOS `kVK_*` → engine `KeyDefType` (DIK scancodes). Coords: content-view pixels, Y-flipped. **Also:** missing-texture placeholder made fully transparent on macOS (was 50%-magenta) so absent assets (the 3D-shell backdrop, Stage 4) don't veil the screen. |
 | 4. Metal 3D fixed-function → gameplay | 🔶 In-game playable; cliff-shroud + infantry textures + tooltip BG + cursor all fixed this session; pre-existing 2D-sprite menu/rect bug + tooltip-text truncation are the remaining open items (see "Session 2026-05-23/24" section) | **★ SHROUD ON CLIFF PEAKS FIXED (2026-05-23)** — TCI_CAMERASPACEPOSITION + D3DTS_TEXTURE0 texture transform now plumbed end-to-end in the Metal shim (`metal_backend.{h,mm}` + `dx8_device.cpp` FillCommon); MSL vs derives `UV=(texXform*view*world*pos).xy` when triple-gate matches (`tciMode==2 && texXformCount>=2 && posFloats==3`). `GEN_NO_SHROUD=1` opts out. **★ INFANTRY TEXTURES FIXED (2026-05-23)** — `W3DModelDraw::replaceIndicatorColor` short-circuits on macOS by default; root cause is broken LockRect/UnlockRect round-trip for ARGB1555/4444 inside `Recolor_Texture`. `GEN_HOUSECOLOR=1` re-enables. **★ TOOLTIP HUGE-RECT FIXED (defensive, 2026-05-23)** — `W3DDisplay::drawFillRect/drawOpenRect` clamp |w|/|h| > 4096 → skip. Deeper bug is in `Render2DSentenceClass` cursor state across chunks (per-char widths are correct, but tooltip text still only shows first char — open item). **★ CURSOR FIXED (2026-05-23)** — `osdep_compat/win32_api.h` `SetCursor`/`ShowCursor`/`SetCursorPos`/`LoadCursorFromFile` now wire to `MetalCursor_Show`/`MetalCursor_WarpClient` (Cocoa NSCursor + CGWarpMouseCursorPosition). System cursor hides when engine wants software cursor, click positions in sync. **★ WATER DEPTH-ORDERING FIXED** — `MTL_ZDUMP` found EVERY FVF had `zEn=0`. Root cause: WW3D2's `DX8Wrapper::Apply_Default_State()` is defined but NEVER CALLED; `ShaderClass::Apply()` sets ZFUNC and ZWRITE but NOT ZENABLE — assumed Windows D3D8's hardware default of `D3DZB_TRUE`. The Metal shim's zero-init left ZENABLE=0 forever, so no draw depth-tested; 3D looked vaguely right via submission order, and water (drawn last) painted over helicopters/ships. Fix: seed `m_renderStates[D3DRS_ZENABLE]=TRUE` in `MetalDevice8` ctor. Narrowed to ZENABLE only (full D3D8-defaults seeding broke in-game). `MTL_DEPTH_OFF=1` opt-out. Verified shellmap (proper depth) + in-game skirmish (no regression). **★ SHELLMAP WATER "BLACK GRID" FIXED** — root cause was `drawTrapezoidWater`'s fallback shroud-on-water SECOND pass (taken when `m_trapezoidWaterPixelShader==0`, our macOS state since PS caps are 0): it re-draws the trapezoid mesh with the SHROUD texture + `ST_SHROUD_TEXTURE` multi-stage shader, which the Metal FF shim doesn't emulate → near-opaque dark tiles paint over the (correct) first water pass. Fix: `#if defined(__APPLE__)` skip the fallback pass in `Core/.../W3DWater.cpp` (~line 3383); `GEN_WATER_SHROUD_PASS2=1` opts back in for A/B. Now shellmap shows clean translucent blue water with ships visible underneath; in-game skirmish unaffected. See top section for full diagnostic methodology. **★ TEXTURES NOW LOAD — the "all models black/untextured" bug is fixed (516 missing textures → 1).** Root cause was **another LP64 trap** (PLAYBOOK #1): `GeneralsMD/.../WW3D2/ddsfile.h` `LegacyDDSURFACEDESC2` had `void* Surface;` — a **4-byte on-disk DX7 `lpSurface` placeholder** that becomes **8 bytes + 8-byte-aligned on LP64**, so `sizeof(LegacyDDSURFACEDESC2)` ≠ 124. `DDSFileClass` ctor reads the header then checks `read_bytes != SurfaceDesc.Size(=124 from disk)` → **EVERY `.dds` load failed** → the loader fell back to the `.tga` (which doesn't exist on disk — ZH ships skins as `.dds`) → all unit/building/terrain skins became the (transparent/black) missing-texture placeholder → black models. Fix: `void* Surface;` → `unsigned Surface;` (never used as a pointer; 4 bytes on both Win32 and LP64 → no-op on Windows). **Plus** re-enabled **native BC/DXT texture support** (`cmake/dx8_stub/dx8_device.cpp` `CheckDeviceFormat` now returns OK for `D3DFMT_DXT1..5` — the earlier "Apple Silicon can't make BC textures" comment was WRONG; `device.supportsBCTextureCompression==YES` on M1+, verified on M3 Max). The Metal backend now creates `BC1/BC2/BC3_RGBA` textures and uploads compressed blocks verbatim (`MetalContext_CreateTextureFmt`/`MetalContext_UploadTextureRaw`; `MetalTexture8`/`MetalSurface8` carry a compressed path: staging sized as tightly-packed BC blocks, block-row pitch, no conversion). **VERIFIED:** `GEN_MODEL_VIEWER GEN_MODEL=ABBarracks_AC` shows the American-flag skin (red/white stripes + blue field) instead of a black silhouette; in a live `GEN_AUTO_SKIRMISH` the terrain renders with real rock tile textures + the full HUD; 516 "Targa: Failed to open" → **1** (`trstrtholecvr.tga`, a genuinely-absent road decal). Note: the ddsfile.h fix is the *essential* one (the DDS header parse failed regardless of DXTC); native BC is the GPU-native bonus (less memory, no CPU decode) and is what made `Get_Valid_Texture_Format` keep the DXT format. **Earlier groundwork:** **The animated 3D main-menu shell-map backdrop renders** (terrain with real tile textures, depth, perspective — verified via `/tmp/gen_frame_*.png`). Built the full FF 3D renderer in the shim: **depth buffer** (`Depth32Float` attachment + depth-stencil state cache honoring `D3DRS_ZENABLE/ZWRITEENABLE/ZFUNC`), **generalized FVF** (POSITION required; NORMAL/DIFFUSE/TEX0 optional — flagged on/off via uniforms; vertex descriptor now 4 attrs), **backface culling** (`D3DRS_CULLMODE`, front=CW), and **FF vertex lighting** in MSL (material diffuse/ambient/emissive, `D3DMCS_*` color sources, global ambient, ≤8 directional/point lights; no-normal geometry gets ambient/emissive only — D3D doesn't do N·L without a normal). Files: `cmake/dx8_stub/{metal_backend.h,metal_backend.mm,dx8_device.cpp}`. **Two decisive non-renderer root causes that were blocking the whole backdrop:** (1) **`cpudetect.cpp` on Apple Silicon** — `Init_Memory()` was never called (it sits behind `Has_CPUID_Instruction()`, false on arm64) so `TotalPhysicalMemory=0`, and `Init_Processor_Speed()` derived a bogus ~24 MHz from the arm64 cycle counter (CNTVCT timebase, not CPU clock). `GameLODManager` then saw `!m_memPassed || isReallyLowMHz()` and **disabled the shell map** (`GameLOD.cpp:621`), so no 3D scene ever loaded. Fixed: `__APPLE__` branch calls `Init_Processor_String/Features/Memory` (sysctl `hw.memsize`) + reports a representative 3000 MHz. (2) **Terrain tile textures live in the BASE Generals install**, not the ZH BIGs — ZH is an expansion. `WorldHeightMap::readTexClass` opens `Art/Terrain/*.tga` which only exist in `Command and Conquer Generals/Terrain.big` (+`Textures.big`,`W3D.big`). Mounted by **symlinking those 3 base BIGs into the ZH working dir** (do NOT symlink INI/English/Audio/etc — they collide with the ZH versions and crash init). **Gotcha (cost an hour):** terrain writes **dest alpha 0** (vertex-color alpha 0, opaque draw) so the PNG frame dumps looked all-white (transparent over white viewer bg) even though RGB was correct desert terrain — fixed by `layer.opaque=YES` + forcing alpha 255 in the dump. **Remaining:** main-menu **buttons** don't composite over the shell backdrop (only the logo does); was fine before the shell map was enabled — likely the MainMenu intro `AnimateWindowManager` slide-in is stuck (buttons parked off-screen). Models/units/in-game terrain untested (needs entering a skirmish). **IN-GAME (skirmish) follow-ups landed:** (a) **`DataChunk.cpp` `readUnicodeString`/`writeUnicodeString`** — on-disk unicode is 2-byte UTF-16 but `WideChar`=`wchar_t`=4 bytes on macOS, so it read `len*sizeof(WideChar)`=`len*4` and **over-read 2×**, shifting every subsequent field → corrupted build-list building names (`'ypoint304_Station'` = shifted `Waypoint304_Station`). Fixed to read/write 2-byte and widen/narrow (the `sizeof(WideChar)==2` branch is the original Windows path → pure-correctness). Verified: 0 build-list errors. (b) **`W3DTreeBuffer::addTreeType` returned `0` on failure** (model load fail) but `addTree` skips only on `<0`, so a failed tree model aliased valid tree-type 0 → `m_treeTypes[0].m_data==null` → **EXC_BAD_ACCESS crash** in `unitMoved` when a unit moved near a tree. Once the unicode fix made maps parse correctly, units actually spawned/moved → triggered it. Fixed: failure returns `-1`. Verified: game now survives in-game (`-file "Maps\Alpine Assault\Alpine Assault.map"`, runs past frame 900). **Diagnosed (NOT bugs):** the in-game "terrain holes" are the **shroud / fog-of-war** (pixel sample: revealed cells = terrain RGB, unexplored = pure black `0,0,0`; log: `Reveal shroud for Observer`) — terrain renders correctly where revealed; hard grid edges because shroud-blend `TSNoiseUrb.tga` isn't found. The W3D loader is fine — only **7** special/missing assets fail (`Locater01`,`SCMNode`,`SCMoveHint`,`new_skybox`,`avamphib*` — same as Windows); the 1708 "Old format mesh" + garbage-chunk-id spam is those 7 retried every tick. Debug env added: `MTL_NOCULL`,`MTL_TEXONLY`,`MTL_SKIP3D`. **IN-GAME RENDERING VERIFIED (skirmish):** added `GEN_AUTO_SKIRMISH` to boot straight into a 1v1 skirmish (see DEBUG TOOLING) — frame dumps show **in-game terrain (rocky cliffs w/ real tile textures, depth, perspective) + the full control-bar HUD + radar/minimap + command buttons all render correctly**, and the game runs a stable sim loop **past frame 2700**. **Crash fixed:** `W3DWaypointBuffer::drawWaypoints` (`GeneralsMD/.../W3dWaypointBuffer.cpp`) dereferenced `m_waypointNodeRobj` (the `"SCMNode"` render object) which is **null on macOS because SCMNode is one of the 7 assets that fail to load** → null-deref EXC_BAD_ACCESS during terrain render (`HeightMapRenderObjClass::Render`→`drawWaypoints`) the moment a unit/building with a rally point or goal-path got drawn (≈frame 200). Guarded all 6 `m_waypointNodeRobj->` deref sites with `if(m_waypointNodeRobj)` (pure robustness; no-op on Windows where SCMNode loads). **Investigated the 7 failing assets — NOT a macOS bug, do not chase:** `SCMNode`/`Locater01` *do* exist in `W3D.big`/`W3DZH.big` (binary-grep confirmed), so they're not missing files. But the W3D `ChunkHeader` is fixed-width **`uint32` `ChunkType`/`ChunkSize`** (`WWLib/chunkio.h` — *not* an LP64/`long` trap), and the vast majority of W3D meshes load correctly through the same reader, so the header parse is sound. These 7 are genuinely **old-format / unsupported** dev meshes: `MeshModelClass::Load_W3D` (`meshmdlio.cpp:246`) sees the first sub-chunk ≠ `W3D_CHUNK_MESH_HEADER3` → "Old format mesh" → `goto Error` (which leaves the stream slightly misaligned, so the *next* `Open_Chunk` then reports a garbage/`256`/`8388608` chunk id → "Unknown chunk type"). This is the **same** rejection retail Windows does — the engine is designed to tolerate `Create_Render_Obj` returning null; the only place that didn't was `W3DWaypointBuffer` (now guarded). So there's no loader to "fix"; the spam is cosmetic. The one with a visible cost is `new_skybox` (no sky dome) — if a sky is wanted later, supply/convert a HEADER3-format skybox mesh rather than touching the loader. **★ THAT EARLIER CONCLUSION WAS WRONG — the real bug was much bigger: W3D model loading was UNIVERSALLY broken on macOS, not 7 assets.** Root cause: **`bittype.h` typedef'd `uint32`=`unsigned long` and `sint32`=`signed long`, which are 8 bytes on macOS LP64** (vs 4 on Win32). Every W3D struct (`W3dMeshHeader3Struct`, all of `w3d_file.h`) and the `ChunkHeader` (`chunkio.h`) is built from these types, so `sizeof()` was doubled → `cload.Read(&hdr, sizeof(hdr))` over-read → the W3D chunk stream desynced from the first chunk → "Old format mesh" + garbage chunk ids (e.g. `1098907648`=`0x41800000`=the float `16.0`, i.e. it was reading vertex floats as chunk headers) → **`Create_Render_Obj` returned null for ~every unit/building/vehicle**. Nothing 3D ever rendered in-game (terrain is procedural geometry, not a W3D file, so it masked the bug — that's why the shell-map "worked"). **Fix:** `bittype.h` — on `__APPLE__`, `typedef unsigned int uint32; typedef signed int sint32;` (true 32-bit; no-op on Win32 where `long` is already 32-bit). Same LP64 class as the `TGA2Footer` bug. Knock-on: `WWSaveLoad/persistfactory.h` saved an object pointer as a `uint32` token and *read it back* as `sizeof(T*)`; with `uint32` now 4 bytes that became asymmetric on macOS, so fixed both sides to round-trip a 32-bit token via `uintptr_t` (no-op on Win32). **VERIFIED:** `ABBarracks_AC` loads (42 polys, bsphere computed) and renders as a correct 3D silhouette via the new `GEN_MODEL_VIEWER` debug mode; in a real auto-skirmish, **units, buildings and vehicles now render on the battlefield** and the sim runs stably past frame 2000 with **0** "Old format"/"Unknown chunk" errors (were 812 + 2004). **Debug mode added:** `GEN_MODEL_VIEWER=1` (+ `GEN_MODEL=<name>`, default `ABBarracks_AC`) in `W3DDisplay::draw()` renders ONE render object through `SimpleSceneClass`+`CameraClass` to isolate the mesh path from the in-game scene — this is how the bug was localized. **Remaining (texture/material polish):** in the isolated viewer the mesh is a solid black silhouette (geometry/depth/raster correct, but no texture/material/diffuse color — the synthetic scene has no lights); in-game with real lights some objects are properly shaded while others look flat/untextured — next step is the W3D-mesh material+texture binding through the FF Metal path. |
 | **Advanced Display Options sweep** (Custom-menu checkboxes — see section above) | 🔶 in progress | 10 checkboxes total: 3 ✅, 1 ⬛ untested, 6 ⬜ broken/artefacts. Working through one at a time, no engine UI changes. Shim shadow + MSAA infrastructure pre-built; awaits hookup as part of the relevant rows. |
-| 5. Audio (OpenAL) | ⬜ pending | |
-| 6. Video (FFmpeg) | ⬜ pending | |
+| 5. Audio (Miles-API impl on AVAudioEngine) | ✅ DONE — music + UI + 3D sounds play | **★ STAGE 5 LANDED (2026-05-31)** — Strategy A from the plan: replaced the upstream `miles-sdk-stub` (no-op) with a real Miles SDK implementation in `cmake/miles_apple/` (CMakeLists + `miles_apple.mm` + copy of `mss/mss.h`), drop-in for the engine. **Zero engine changes** — `MilesAudioManager.cpp` builds + runs unchanged. **Backend:** `AVAudioEngine` (mixing/output) + `AudioToolbox` `ExtAudioFile` (MP3/WAV decode via in-memory callbacks). **What plays:** main-menu music, UI clicks, weapon SFX, unit voices (3D w/ manual pan + distance attenuation), looping music, fading streams. **`cmake/miles.cmake`** gates `APPLE → add_subdirectory(cmake/miles_apple)` else FetchContent the upstream stub; downstream `corei_gameenginedevice_public → milesstub` link is unchanged. **6 root-cause fixes in the AVFoundation glue (Sequoia / M-series):** (1) **mainMixer rate mismatch**: AVAudioEngine lazily wires mainMixer→outputNode at *44.1 kHz default* before the env/player attach, but outputNode is *48 kHz* — connection silently zeroes → no audio. Fix: explicit `disconnectNodeOutput:mainMixer` + reconnect at `outputNode.outputFormatForBus:0` (48 kHz) in `ensureEngineRunning`. (2) **Voice pool overflow**: Miles preallocates 4×2D + 32×3D handles up front; attaching all 36 `AVAudioPlayerNode`s to a running engine triggers an internal abort. Fix: lazy node creation — `AIL_allocate_*_handle` returns a handle with `node=nil`; node is allocated in `AIL_set_*_sample_file` only when a file is actually bound. (3) **"Player started when in a disconnected state"**: reused `AVAudioPlayerNode` enters a permanent disconnected state after the first `play → completion → re-schedule` cycle on Sequoia, even with the node still attached + connected (verified via `attachedNodes` + `outputConnectionPointsForNode`). Fix: detach old node + alloc/attach a fresh node on every file bind. Expensive but reliable; Miles only re-binds at event start, never on the audio thread. (4) **`AVAudioPlayerNode -reset` triggers the same disconnect**: deliberately not called in `stopAndDetach` (only `-stop`). (5) **`AVAudioEnvironmentNode` is unusable on M-series for *any* rendering algorithm** (HRTF / EqualPowerPanning / Sphere all throw the disconnected-state exception even with the fresh-node + try/catch infra). We route 3D voices flat through `mainMixer` and do **manual pan + distance attenuation** in `apply3DPanAndVolumeForSource`: `right = forward × up`, `pan = (delta · right_normalized) / maxDistance` (clamped ±1), `volume = sourceVol × (dist ≤ minD ? 1 : dist ≥ maxD ? 0 : minD/dist)`. For a top-down RTS this matches what a player expects and **rotates with the camera** (listener forward+up tracked in `AIL_set_3D_orientation`). (6) **IMA-ADPCM round-trip**: `AudioFileCache::openFile` calls our `AIL_decompress_ADPCM` then hands back a *raw PCM pointer* (no WAV header) via `AIL_set_(3D_)sample_file`. `parseWav` would fail and `decodeFullyToPCM` (AudioToolbox) can't read raw PCM either. Fix: `g_imaBlobs` registry maps the decompressed pointer → `{channels, rate, size}`; `set_sample_file` checks the registry first and builds an `AVAudioPCMBuffer` directly. `AIL_mem_free_lock` unregisters. **Robustness:** every `[engine attach]`/`[engine connect]`/`[engine detach]`/`[player schedule]`/`[player play]` site is `@try`/`@catch`-wrapped; the catch logs `ex.name`+`ex.reason` and bails the operation rather than letting the NSException unwind into `GameEngine::update` (which previously surfaced as the generic `Uncaught Exception in GameEngine::update` → `Technical Difficulties` MessageBox). **Performance:** music streams are decoded into a **`g_streamCache`** keyed by filename (LRU cap 3) — `MilesAudioManager::getFileLengthMS` opens the stream once just to measure length, then the engine opens it again for playback; without the cache that double-decoded every track (~3 s + ~67 MB float32 stereo per 3-min MP3). Cache hit logged as `AIL_open_stream(...): cache hit`. **Files:** `cmake/miles_apple/CMakeLists.txt`, `cmake/miles_apple/miles_apple.mm` (~1500 LOC Objective-C++), `cmake/miles_apple/mss/mss.h` (copy of upstream header), `cmake/miles_apple/cleanup.c` (copy). **Debug envs:** `MILES_APPLE_LOG=1\|2` (chatty/lifecycle), `MILES_APPLE_MUTE=1` (silent but cycles handles so EOS still fires), `MILES_APPLE_NOAUDIO=1` (refuse all streams — for isolating the audio path), `MILES_APPLE_NOPOOL=1` (refuse pool handles — useful when bisecting graph-mutation crashes), `MILES_APPLE_NOENGINE=1` (skip `AVAudioEngine` startup entirely — pure stub mode), `MILES_APPLE_1STREAM=1` (cap concurrent streams to 1). **Open holes** (not blockers — fix as encountered): HRTF spatialisation deferred (manual stereo pan instead — RTS top-down is OK with this); `AIL_set_3D_sample_distances` uses the *latest* source's min/max for env model — moot since env is unused, but the per-source falloff is correct; ~~`AIL_set_sample_ms_position` is a stub~~ (now implemented for 2D/3D/stream via buffer-slice + `generation`-bumped reschedule, 2026-05-31); rare segfault when opening main menu reported once by user (no crash log captured yet — needs `~/Library/Logs/DiagnosticReports/generalszh-*.crash` next time it happens). ~~Stable crash on ScoreScreen after mission end~~ — **FIXED (2026-05-31)** — UAF in `g_device.pendingCallbacks`: when `Display::stopMovie → AIL_close_stream → delete s` ran for a cutscene stream, its loop-continuation block (queued from the AVAudio completionHandler at miles_apple.mm:1541) was still in the queue; engine's next `MilesAudioManager::update → AIL_set_sample_file → drainCallbacks()` fired the block, which did `[s->node …]` on the freed stream → `EXC_BAD_ACCESS in libobjc lookUpImpOrForward`. lldb trace was decisive (frames 2→3→4→5 told the whole story). Fix: liveness registry `g_aliveHandles : unordered_set<void*>`, callback queue typed as `(owner, cb)` pairs; `markAlive` at `AIL_allocate_*_handle / AIL_open_stream`, `markDead` **before** `delete` at `AIL_release_*_handle / AIL_close_stream`; `drainCallbacks` skips any block whose owner is no longer alive. Safe in our single-threaded engine-update model: release and drain are on the same thread, so the check + use can't race. **Verified:** game runs 20s+ from skirmish boot with **0 NSException, 0 decode failures** under `MILES_APPLE_LOG=2`; main-menu music plays via cache hit; user confirmed audible playback. |
+| 6. Video (FFmpeg) | 🔶 in progress — decode + texture path wired, audio TBD | **★ STAGE 6 KICKED OFF (2026-05-31)** — FFmpeg 8.0.1 (Homebrew) wired into the apple-arm64 preset; intro cutscenes decode without crash. **Changes:** (1) **`cmake/FindFFMPEG.cmake`** — new pkg-config-driven `find_package(FFMPEG)` module (engine's `Core/GameEngineDevice/CMakeLists.txt:233` already calls `find_package(FFMPEG REQUIRED)` when `RTS_BUILD_OPTION_FFMPEG=ON`, but no `FindFFMPEG.cmake` existed in-tree — wraps `pkg_check_modules` for `libavformat`/`libavcodec`/`libswscale`/`libavutil` + optional `libswresample` and exposes `FFMPEG_FOUND/INCLUDE_DIRS/LIBRARY_DIRS/LIBRARIES`). (2) **`CMakePresets.json`** — `apple-arm64` preset now sets `RTS_BUILD_OPTION_FFMPEG: ON`. Result: `corei_gameenginedevice_public` gets `RTS_HAS_FFMPEG` defined → `W3DGameClient::createVideoPlayer()` returns `FFmpegVideoPlayer` instead of the no-op `BinkVideoPlayer` (binkstub). **Decode path verified live:** smoke run logs show `FFmpegVideoPlayer::createStream()` opening `Data/english/Movies/EA_LOGO.bik` + `sizzle_review.bik`; swscale runs every frame (warning `No accelerated colorspace conversion found from yuv420p to bgra` is a perf-only advisory, not a blocker). `otool -L` shows the binary linked against the right dylibs (libavformat.62, libavcodec.62, libswscale.9, libavutil.60, libswresample.6). **Render path is the existing 2D quad pipeline:** `FFmpegVideoStream::frameRender(buffer)` → `sws_scale` writes BGR0 into `W3DVideoBuffer::lock()` → `TextureClass` surface → dx8_stub `LockRect`/`UnlockRect` → Metal texture. `W3DDisplay::drawVideoBuffer` calls `m_2DRender->Add_Quad(rect, vbuffer->texture())` — same code path Stage 2 already exercises for the menu. **Perf regression caught + fixed in the same session (2026-05-31):** user reported 7-10 FPS / >100% CPU once FFmpeg was on, then 40-120 oscillation after the first fix. `sample(1)` walked three layers of per-frame allocation + a missing VSync pin: **(1) MetalSurface8 ctor zero-init** of full 14.7 MB back-buffer staging (47% CPU on menu); **(2) per-frame BGRA conversion scratch** in flushToTexture (37% CPU on loadscreen video); **(3) CAMetalLayer maximumDrawableCount=3 with no explicit displaySyncEnabled** letting CPU race 3 frames ahead before VSync blocked (ragged 40-120 oscillation). Fixes in dx8_stub: lazy staging, persistent m_bgraScratch, `displaySyncEnabled=YES` + `maximumDrawableCount=2`. See "Cross-cutting perf fix series" under Stage 2's "Remaining" section for the full writeup. Post-fix sample shows `FramePacer → Sleep → __semwait_signal` at 79% of main-thread time — engine throttles itself, framerate steady at refresh rate. **What remains:** (a) **visual verification** — needs the user (cutscenes appear on screen, scale correctly, are skippable with ESC/click). (b) **audio** — `FFmpegVideoStream::onFrame`'s audio branch is `#ifdef RTS_USE_OPENAL` only. On macOS the cutscene plays silent (or whatever the music track still routes through Miles). Wiring options: define `RTS_USE_OPENAL`+stub `OpenALAudioStream` over our Miles shim (smallest engine touch), or add `RTS_USE_MILES_FFMPEG_AUDIO` that pumps PCM frames into a Miles HSTREAM, or accept silent for v1 and revisit. (c) **`getHandleForBink`** in our Miles shim is still a stub — matters once audio is wired. **Files:** `cmake/FindFFMPEG.cmake` (new), `CMakePresets.json` (1 line). Engine code unchanged. |
 | 7. Polish / persistence / packaging / QA | ⬜ pending | |
 
 Legend: ✅ done · 🔶 in progress · ⬜ pending.
@@ -770,6 +770,82 @@ end-to-end across:
   unrendered (no skybox model — see remaining items). All terrain, units, water
   pixels are covered.
 
+### Cross-cutting perf fix series (2026-05-31, surfaced during Stage 6)
+
+Three independent allocations were burning per-frame CPU on the menu /
+loadscreen / cutscene paths, plus a missing VSync explicit-config caused
+ragged 40-120 FPS oscillations on top. All landed in the same session as
+FFmpeg was first switched on. Together: ~50% main-thread CPU idle → ~80%
+idle, framerate steadied around the display refresh rate (60 Hz on most
+Macs, 120 Hz on ProMotion).
+
+**1. `MetalSurface8` lazy staging.** `dx8_stub`'s `MetalSurface8(w,h,fmt)` ctor used to
+`m_staging.resize((size_t)pitch * h, 0)` immediately — for a screen-sized back
+buffer at 2560×1440×4 that's **14.7 MB zero-filled per allocation**. The engine
+calls `DX8Wrapper::_Get_DX8_Back_Buffer()` (which `new`s a fresh `MetalSurface8`)
+**every frame from `W3DSmudgeManager::render`** even when no smudges exist
+(the common case in menus / cutscenes / shellmap), then `Release_Ref`s it
+straight away. Sample(1) profile showed `std::vector::__append` + `__destroy_vector`
+at the top of stack consuming **~47% of main-thread CPU** during the main menu
+(989/4142 + 889/4142 = 1878 samples). FFmpeg made this visible: pre-FFmpeg the
+slack covered it; once FFmpeg started feeding ~30 frames/s of `sws_scale` work
+the loop fell off a cliff (7-10 FPS, >100% CPU). Fix:
+```cpp
+// cmake/dx8_stub/dx8_device.cpp — MetalSurface8 ctor
+m_staging_size = (size_t)m_pitch * h;   // remember logical bytes
+// ...lazy resize from a new ensureStaging() in surfBits / LockRect / on-demand only
+```
+With the fix the menu sample shows `semaphore_wait_trap` (idle) as the dominant
+top of stack — CPU is 60+% idle. The smudge allocation pattern entirely
+disappears. **Watch for this pattern elsewhere**: any per-frame fresh `MetalSurface8`
+(render-target probe, image surface created/copied/released) shares the same
+underlying lazy-alloc property now. **Files:** `cmake/dx8_stub/dx8_device.cpp`
+(MetalSurface8 class — ctor + ensureStaging helper + surfBits / LockRect /
+GetDesc updated to report the logical size from `m_staging_size`, not
+`m_staging.size()`).
+
+**2. Persistent BGRA scratch in `flushToTexture`.** Even with #1, the loadscreen
+profile still pinned ~37% main-thread CPU at
+`FFmpegVideoStream::frameRender → W3DVideoBuffer::unlock → MetalSurface8::UnlockRect → flushToTexture`,
+specifically the `std::vector<unsigned char> bgra((size_t)w * h * 4)` temporary
+that BGR0/ARGB-to-BGRA8 conversion writes into before `MetalContext_UploadTextureBGRA8`.
+For a typical 800×600 video frame that's 1.9 MB per frame allocated and freed.
+Fix: hoist the vector onto the surface as `m_bgraScratch` and `resize()` only
+when it grows (the common case is "same size every frame" → single capacity
+check, no alloc). Post-fix the flushToTexture path drops from ~1837 to ~25
+samples; `ConvertRowToBGRA8` becomes the dominant cost, which is honest work
+(per-pixel byte-swap with no SIMD). **Files:** `cmake/dx8_stub/dx8_device.cpp`
+(MetalSurface8::flushToTexture + new `m_bgraScratch` member).
+
+**3. CAMetalLayer VSync explicit + drawable-pool cap.** User reported main-menu
+background cutscene and mission gameplay jumping between 40 and 120 FPS even
+after #1+#2. **Historical context (from user, 2026-05-31):** before the
+shadow + 3dfx fixes earlier in Stage 4 / display options sweep, "rendering
+was on CPU and the speed looked like the original" — i.e. the *absence* of
+3D acceleration was itself acting as the de-facto frame-rate governor, with
+CPU-bound rasterisation keeping the loop somewhere near 30 FPS. Once shadows
+and the rest of the GPU path came online (a *fix*, not a regression), the
+CPU stopped being the bottleneck, the pacer ran uncapped, and the absence of
+a proper FPS cap or VSync hookup became visible as ragged framerate. **The
+right fix is what this section does — pace on display refresh, not on
+incidental CPU exhaustion.** Skirmish was unaffected because the in-game
+Options menu has an "FPS limit" toggle that flips `m_useFpsLimit`; outside
+skirmish (main menu, mission cutscenes, load screen) there's no UI for it,
+so the engine cap was bypassed. CAMetalLayer defaults to `maximumDrawableCount = 3` so the CPU
+can race up to three frames ahead of the display before `nextDrawable` blocks;
+combined with the engine's busy-spin frame limiter the result is bursty
+pacing (heavy frame eats the CPU-ahead budget, next-drawable blocks, lull,
+burst, repeat). Skirmish was stable because its options-menu "FPS limit ON"
+toggles `m_useFpsLimit` and the engine cap kicks in — outside skirmish (no UI
+to set it) the cap is bypassed. Fix in `cmake/dx8_stub/metal_backend.mm`
+window-init: explicitly set `displaySyncEnabled = YES` (default but pin it)
+and `maximumDrawableCount = 2`. The third frame's `nextDrawable` now blocks
+on the refresh-rate deadline so pacing rides VSync. Env overrides:
+`MTL_NO_VSYNC=1` (uncapped — profiling), `MTL_DRAWABLES=1..3` (A/B pool
+depth). Post-fix sample on the loadscreen-with-video shows
+`FramePacer::update → FrameRateLimit::wait → Sleep → __semwait_signal` at
+79% of main-thread time → headroom restored, framerate locked to refresh.
+
 ### Remaining (not blocking; documented for future polish)
 
 1. **No skybox** — `new_skybox` is one of the seven "Old format mesh" assets
@@ -790,30 +866,39 @@ end-to-end across:
    emulation). Real fix: implement that shader as Metal multi-pass or sample
    the shroud as a second texture stage in the existing pipeline.
 
+### Render FPS cap (2026-05-31)
+
+`FramePacer::getActualFramesPerSecondLimit()` is overridden on Apple to **pin
+render at 30 FPS** in every game state — main menu shellmap, cutscenes,
+loadscreen, missions, skirmish, score screen. Reason: the original game was
+effectively CPU-bound at ~30 FPS on period hardware; cutscene/idle-anim
+timings are tuned to that, and running render at 60+ visibly speeds up
+camera moves and ambient idle anims even though logic still ticks at
+`LOGICFRAMES_PER_SECOND=30` (logic is decoupled from render rate; units
+don't move faster, but visual ramp does). User reported missions floating
+~75 (riding VSync slack on a 75 Hz display) with cutscenes dropping to 20
+under video-upload load — uneven pacing was the chief complaint. Hard cap
+at 30 makes every state feel like the original. Override with
+`GEN_FPS_CAP=N` (N>0 → that value; 0/negative → uncapped, returns the
+upstream gate behavior). The pre-existing engine state machine still calls
+`setFramesPerSecondLimit(20|240)` per state — we just ignore its result and
+return our cached cap instead. **Files:** `Core/GameEngine/Source/Common/FramePacer.cpp:106-138`
+(single `getActualFramesPerSecondLimit` body wrapped in `#if defined(__APPLE__)`).
+
 ### Debug env-vars left in tree (all Apple-only, zero cost off)
-- `GEN_QUICK_MENU=1` — skip cinematic intro+shellmap, land on main menu fast.
-- `GEN_AUTO_SKIRMISH=1` (+ `GEN_AUTO_MAP=Maps\Foo\Foo.map`) — boot into a
-  1v1 skirmish.
-- `GEN_MODEL_VIEWER=1` (+ `GEN_MODEL=<name>`) — render one W3D mesh in
-  isolation through a synthetic scene.
-- `GEN_NO_WATER=1`, `GEN_WATER_SOLID=1`, `GEN_WATER_SHROUD_PASS2=1`,
-  `GEN_NO_SHROUD=1` — water diagnostics.
-- `MTL_DUMP=1`, `MTL_DUMPTEX=1`, `MTL_DEBUG=1`, `MTL_TESTCLEAR=1`,
-  `MTL_NOCULL=1`, `MTL_TEXONLY=1`, `MTL_SKIP3D=1`, `MTL_WATER_NOPASS2=1`,
-  `MTL_WATERGEOM=1`, `MTL_ZDUMP=1`, `MTL_DEPTH_OFF=1` — renderer diagnostics.
-- `GEN_NO_3WAY/_ROADS/_BIB/_PROPS/_SCORCH/_BRIDGE/_TRACKS/_SHROUD` — terrain
-  overlay bisect env vars (HeightMap.cpp). Used to localize cliff black quads
-  + huge-rect artifacts to specific render layers.
-- `GEN_HOUSECOLOR=1` — opt back into the broken player-color recoloring path
-  (default: skipped — see "House-color recoloring" section below).
-- `GEN_DBG_FILLRECT=1|2|3`, `GEN_DBG_FONT=1`, `GEN_DBG_HEALTHBAR=1` —
-  diagnostic loggers added this session.
-- `GEN_MODEL_ANIM=HTREE.HANIM` — drive a looped HAnim on the model viewer
-  (default: `<model>.<model>`, matches Generals's idle-anim naming).
-- `GEN_CLIFF_DEBUG=1`, `GEN_CLIFF_NOSTRETCH=1` — terrain cell classification
-  paint + cliff UV-stretch bypass (used to localize TCI shroud bug).
-- `GEN_SHROUD_ENABLE=1` — historical opt-in while shroud was default-off;
-  now shroud is always on with the TCI fix below.
+
+**Full catalogue lives in [MACOS_ENV_VARS.md](MACOS_ENV_VARS.md)** — every
+`GEN_*` / `MILES_APPLE_*` / `MTL_*` flag in the tree, organised by purpose
+(quick-launch, FPS cap, feature overrides, render-stage kill-switches,
+shadow tuning, audio shim, Metal backend). Update that file when adding any
+new flag; keep this section a brief teaser only.
+
+Most-reached-for flags during the port (the rest is in the catalogue):
+- `GEN_QUICK_MENU=1` — skip intro+shellmap, land on main menu fast.
+- `GEN_FPS_CAP=N` — render FPS cap (default 30; 0 / negative → uncapped).
+- `GEN_AUTO_SKIRMISH=1` + `GEN_AUTO_MAP=Maps\...` — straight to skirmish.
+- `MILES_APPLE_LOG=2` — chatty audio shim trace.
+- `MTL_DEBUG=1` — verbose Metal log.
 
 ---
 
@@ -1796,8 +1881,8 @@ Stage 1 (DATA load) ──┬──> Stage 3 (INPUT) ──┐
                       │                       ├──> Stage 7 (POLISH/QA)
 Stage 2 (Metal 2D) ───┴──> Stage 4 (Metal 3D)─┤
                                               │
-Stage 5 (AUDIO) ──────────────────────────────┤
-Stage 6 (VIDEO) ──────────────────────────────┘
+Stage 5 (AUDIO) ✅ ───────────────────────────┤
+Stage 6 (VIDEO) 🔶 — decode landed, audio TBD ─┘
 ```
 - **Stage 1** unblocks the engine so it actually reaches the renderer — do it first (or alongside Stage 2).
 - **Stage 2** (2D) gives the **main menu** — the first big visible win. Needs Stage 1 to be testable in-game (but can be developed/verified partly via the smoke-test).
@@ -1951,7 +2036,88 @@ The engine now **boots all the way to the main-menu shell and runs its frame loo
 
 ---
 
-## Stage 5 — Audio (OpenAL backend, replaces Miles)
+## Stage 5 — Audio ✅ DONE (Miles-API impl on AVAudioEngine)
+
+> ### 🚦 Decided 2026-05-31: Strategy A (real Miles impl in shim) — not the plan's original "OpenALAudioManager subclass" route.
+>
+> The original Stage-5 plan proposed writing a new `OpenALAudioManager` subclass next to `MilesAudioManager` and gating per platform. We picked the **alternative strategy A** instead — re-implement the Miles SDK's ~30 in-use `AIL_*` functions on top of system frameworks (AVAudioEngine + AudioToolbox) inside `cmake/miles_apple/`, drop-in replacement for the upstream `miles-sdk-stub`. **Engine code (`MilesAudioManager.cpp` and friends) is not touched.** This matches the shim-only philosophy of `cmake/dx8_stub/` for graphics: keep the engine a clean Windows/Miles codebase; isolate the macOS port in the translation layer.
+
+**Status: PLAYABLE** — music, UI sounds, unit voices, weapon SFX all audible. 0 NSException, 0 decode failures verified across 20 s of skirmish boot + main-menu navigation. User confirmed audible playback 2026-05-31.
+
+**Key files:**
+- `cmake/miles.cmake` — gates `APPLE → add_subdirectory(cmake/miles_apple)` vs FetchContent the upstream no-op stub.
+- `cmake/miles_apple/CMakeLists.txt` — builds `milesstub` (static, output name `mss32`); links `Foundation` + `AVFoundation` + `AudioToolbox` + `CoreAudio`.
+- `cmake/miles_apple/miles_apple.mm` — ~1500 LOC Objective-C++ implementation of the AIL_* surface used by the engine.
+- `cmake/miles_apple/mss/mss.h` — verbatim copy of upstream header (kept identical so engine-side `#include "mss/mss.h"` compiles untouched).
+- `cmake/miles_apple/cleanup.c` — verbatim copy of upstream cleanup helper.
+- Engine side (unchanged, just for reference):
+  - `Core/GameEngineDevice/Source/MilesAudioDevice/MilesAudioManager.cpp`
+  - `Core/GameEngineDevice/Include/MilesAudioDevice/MilesAudioManager.h`
+  - `Core/GameEngine/Include/Common/GameAudio.h` (abstract `AudioManager` base)
+  - `Core/Libraries/Source/WWVegas/WWAudio/*` (sound scene / 3D positioning — uses Miles directly)
+
+**Architecture:**
+- One global `AVAudioEngine` + `mainMixerNode` (forced to outputNode's native rate, see fix #1 below).
+- Streams (music) → fresh `AVAudioPlayerNode` per `AIL_open_stream` → mainMixer. Full-decode-then-schedule of the entire MP3 (~67 MB float32 stereo per 3-min track) using `AudioFileOpenWithCallbacks` + `ExtAudioFile` on in-memory data slurped via the engine's `AIL_set_file_callbacks` hooks (which read from `.big` archives).
+- 2D samples → fresh `AVAudioPlayerNode` per `AIL_set_sample_file` → mainMixer. Source is raw WAV in memory from `AudioFileCache`; parsed via tiny inline `parseWav`; falls back to `decodeFullyToPCM` for non-PCM WAV; falls back to the IMA registry for engine-pre-decompressed PCM.
+- 3D samples → same as 2D + **manual pan + distance attenuation in `apply3DPanAndVolumeForSource`** (NOT through `AVAudioEnvironmentNode` — see fix #5).
+- EOS callbacks: `[node scheduleBuffer:atTime:options:completionHandler:]` `enqueue`s a dispatch_block onto `g_device.pendingCallbacks` (mutex-protected `std::deque`). Drained on every `AIL_*` entry via `drainCallbacks()` so the engine's `MilesAudioManager::processPlayingList` sees `m_status == PS_Stopped` flips on the game thread.
+- HSAMPLE/HSTREAM are bare pointers to `AppleSample`/`AppleStream` C++ structs (forward-only typedefs in mss.h, we own the body). H3DSAMPLE/H3DPOBJECT inherit `h3DPOBJECT` (the header has a body `{ unsigned int junk; }` — we use `junk` as a magic tag (`'L3DP'` = listener, `'S3DS'` = sample) so the orientation/position/userdata calls that take a bare H3DPOBJECT can disambiguate). HDIGDRIVER keeps the header layout `{ char pad[168]; int emulated_ds; }` exactly because `WWAudio::Init_Driver` reads `m_Driver2D->emulated_ds`.
+
+**Six root-cause fixes during bring-up (read these before touching the file):**
+
+1. **mainMixer rate mismatch (silent output).** `AVAudioEngine` lazily wires `mainMixerNode → outputNode` at 44.1 kHz default. Our env+player attaches happen *before* this lazy wire-up, freezing mainMixer's output at 44.1 kHz — but outputNode wants 48 kHz on M-series. The mainMixer→outputNode edge silently zeros samples. **Fix** in `ensureEngineRunning()`: explicit `[engine disconnectNodeOutput:mainMixer]` + `[engine connect:mainMixer to:outputNode format:outFmt]` at the device's native format. Without this, every other AVAudio call succeeds and `isRunning=1`/`isPlaying=1` but nothing comes out.
+
+2. **Voice-pool overflow at boot.** Miles preallocates 4×2D + 32×3D handles. Attaching 36 `AVAudioPlayerNode`s to a running engine triggers an internal `AVAudioEngine` abort (~"Technical Difficulties" RELEASE_CRASH). **Fix**: lazy node creation — `AIL_allocate_*_handle` returns a real handle but stores `node = nil`; `AIL_set_*_sample_file` actually creates the `AVAudioPlayerNode`, attaches it, connects it. Most voices are never bound, so we cap at ~real-active-voices ≤ 10 in practice.
+
+3. **"Player started when in a disconnected state" — the big one.** Once `AVAudioPlayerNode -play` completes a scheduled buffer and the completion handler fires, the node enters a permanently broken internal state on Sequoia: subsequent `-play` throws `com.apple.coreaudio.avfaudio — player started when in a disconnected state` even though `attachedNodes.containsObject` is YES and `outputConnectionPointsForNode` returns the right edge. **Fix**: detach the old node and alloc + attach a fresh `AVAudioPlayerNode` on every file bind. Expensive (~µs per voice) but reliable; Miles only re-binds when a new event starts (engine update tick), never inside the audio thread.
+
+4. **`-reset` re-triggers the disconnect.** `AVAudioPlayerNode -reset` puts the node into the same broken state. Documented as "clears any pending buffers and resets state to defaults" but in practice it disconnects the output. **Fix**: deliberately not called in `stopAndDetach` — only `-stop`.
+
+5. **`AVAudioEnvironmentNode` is unusable on M-series.** Tried `HRTF`, `EqualPowerPanning`, `SphericalHead`, `HRTFHQ`, `SourceModePointSource`, fixed-format input — all throw the disconnected-state exception. The env node has internal requirements that are not stated in the docs and that the AVAudioEngine debug output never explains. **Fix**: routed 3D voices flat through `mainMixer` and hand-rolled the spatial math in `apply3DPanAndVolumeForSource(Apple3DSample *)`:
+   ```
+   right = forward × up
+   pan   = clamp((source - listener) · right_normalized / maxDist, -1, +1)
+   dist  = |source - listener|
+   gain  = dist ≤ minD ? 1 : dist ≥ maxD ? 0 : minD / dist
+   ```
+   Listener forward/up come from `AIL_set_3D_orientation` (engine pushes these every update tick from `setDeviceListenerPosition`). The basis is global atomics (`g_listenerFwdX/Y/Z`, `g_listenerUpX/Y/Z`) so the audio thread can read without locks. For a top-down RTS this *matches what a player expects* and rotates with the camera — when the view spins, the soundscape spins with it. HRTF would have been nicer for headphone gameplay but unblocking shipping > spatial fidelity right now.
+
+6. **IMA-ADPCM round-trip.** `AudioFileCache` calls our `AIL_decompress_ADPCM` to expand WAV-format-`0x11` blobs into raw 16-bit PCM, then hands the resulting *raw PCM pointer* (no WAV header) back via `AIL_set_(3D_)sample_file`. `parseWav` fails on the bare pointer. `decodeFullyToPCM` (AudioToolbox) can't read raw PCM either. **Fix**: a `g_imaBlobs` (`std::unordered_map<void*, ImaDecodedBlob{channels, rate, size}>`, mutex-protected) tracks every blob we produce; `set_sample_file` checks the registry first and builds an `AVAudioPCMBuffer` from the in-place int16. `AIL_mem_free_lock` erases the entry + `free`s.
+
+**Robustness:** every engine-graph mutation (`attachNode:`, `connect:to:format:`, `detachNode:`, `disconnectNodeOutput:`) and every player-node action (`scheduleBuffer:`, `play`, `stop`) is wrapped in `@try`/`@catch (NSException *ex)`. The catch logs `ex.name + ex.reason` and bails the operation. Without this, any AVFoundation exception propagates into `GameEngine::update` → its catch-all sees an `Uncaught Exception` → `ReleaseCrash` writes `ReleaseCrashInfo.txt` and the user sees the generic "Technical Difficulties" MessageBox (which is what happened during all the bring-up crashes).
+
+**Performance:**
+- `g_streamCache` (`std::unordered_map<std::string, StreamCacheEntry>` + LRU cap 3) memoises decoded music streams. `MilesAudioManager::getFileLengthMS` opens a stream just to call `AIL_stream_ms_position(stream, &total, nullptr); AIL_close_stream(stream);` — the engine then opens it *again* for actual playback. Without the cache, every track was decoded twice (~3 s + 67 MB each). Hit logged as `AIL_open_stream(<file>): cache hit`. Eviction logged as `stream cache evict: <file>`.
+
+**Debug envs:**
+- `MILES_APPLE_LOG=1` — verbose (every AIL_* call, very chatty)
+- `MILES_APPLE_LOG=2` — lifecycle only (startup, handles, file load, schedule, exceptions)
+- `MILES_APPLE_MUTE=1` — silent output but EOS callbacks still fire (for testing the engine-side state machine without sound)
+- `MILES_APPLE_NOAUDIO=1` — `AIL_open_stream` returns null (use to isolate stream-related crashes)
+- `MILES_APPLE_NOPOOL=1` — `AIL_allocate_*_handle` returns null (use to isolate pool-related crashes; with this on, the engine sees no usable voices and plays no 2D/3D, only streams)
+- `MILES_APPLE_NOENGINE=1` — `ensureEngineRunning` returns false (full no-op mode, equivalent to upstream stub)
+- `MILES_APPLE_1STREAM=1` — refuse a second concurrent `AIL_open_stream` (useful for bisecting graph mutation issues when multiple streams overlap)
+
+**Where to start the next audio session:**
+
+1. **Investigate the rare segfault** the user reported when opening the main menu (2026-05-31). No crash log captured. Next time it happens, fetch `~/Library/Logs/DiagnosticReports/generalszh-*.ips` (Apple format) — stack will show whether it's in AVFoundation, the engine, or somewhere else. If it's in our shim, search for recent graph mutations near the crash time in the `MILES_APPLE_LOG=2` output. Likely candidates: an NSException slipping past `@try` in a code path we missed, or a race between completion-handler `enqueueCallback` and the user's main-menu UI thread.
+
+2. **HRTF spatialisation** (low priority — manual stereo pan is plenty for RTS). If we want headphone-quality 3D, the path is: re-attempt `AVAudioEnvironmentNode` with the player connected via `AVAudioConverterNode` (might satisfy the env node's hidden format requirement), or write our own HRTF filter using `AVAudioUnitEffect` subclass. Not worth it until everything else is shipped.
+
+3. ~~**`AIL_set_sample_ms_position`** is a no-op stub.~~ **DONE (2026-05-31).** Implemented for all three handle types: 2D `AIL_set_sample_ms_position`, 3D `AIL_set_3D_sample_offset` (bytes→frame, mono 16-bit assumed — matches engine's `Sound3DHandleClass`), and stream `AIL_set_stream_ms_position`. Mechanism: AVAudioPlayerNode has no native "play-from-frame-N", so we slice the source `AVAudioPCMBuffer` from `startFrame` into a fresh sub-buffer via a new `sliceBufferFromFrame` helper, stop the node, bump `generation` so any in-flight completion handler is ignored, schedule the slice, and resume play (only if `wasPlaying`). Loop continuation reschedules the **full** original buffer for subsequent iterations (subsequent loops start at frame 0, matching Miles semantics). Seek-before-play is a logged no-op — the engine's own `m_Timestamp` keeps its playhead in sync, so for typical SFX/voice this is invisible; if a cutscene later needs frame-accurate seek-before-play, queue a `seekFrame` in `ApplePlayerBase` and honour it in `scheduleAndPlay`. All three paths wrap `scheduleBuffer:`/`play` in `@try`/`@catch` like the rest of the shim.
+
+4. **Cinematic streams (`AT_Streaming` non-music)** — speech-with-uninterruptible-flag in cutscenes. Path exists (`playStream` handles it the same as music) but untested with real cutscene flow until Stage 6 wires the FFmpeg video player.
+
+5. **`AIL_quick_load_and_play` / `AIL_quick_unload`** are stubs. Used by the GameSpy intro splash on Windows. Probably never triggered on macOS (we don't ship GameSpy), but if a future flow hits them, implement on top of `AVAudioFile + AVAudioPlayerNode`.
+
+6. **Audio settings UI** (Options menu → Audio sliders for music/SFX/speech/voice volumes) — engine-side wiring is intact; the Miles impl honors `AIL_set_*_volume_pan` and `AIL_set_*_sample_volume`. Verify sliders work end-to-end if the user reports a control that doesn't behave.
+
+7. **Bink audio handle** (`getHandleForBink` / `releaseHandleForBink`) — currently stubs; will matter for Stage 6 when the FFmpeg video player negotiates an audio handle for the cutscene track.
+
+---
+
+## Stage 5 (original plan — kept for reference, not the path taken)
 
 **Goal:** Music, unit voices, SFX play.
 
@@ -1959,7 +2125,7 @@ The engine now **boots all the way to the main-menu shell and runs its frame loo
 
 **Key files:** `Core/GameEngineDevice/Source/MilesAudioDevice/MilesAudioManager.cpp` (the current backend — a stub on macOS), the abstract `AudioManager`/`AudioDevice` interfaces in `Core/GameEngine/Include/Common/`, `Core/Libraries/Source/WWVegas/WWAudio/*` (sound scene/3D positioning). The FFmpeg video player (`Core/GameEngineDevice/Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp`) already decodes audio and is a model.
 
-**Approach:**
+**Approach (NOT taken — see Strategy A above):**
 1. Add **OpenAL Soft** as a dependency. The `apple-arm64` preset currently bypasses vcpkg (a vcpkg-baseline issue — see Stage 7 / NOTE below). Either fix vcpkg first, or vendor OpenAL Soft via FetchContent, or link the system `OpenAL.framework` (deprecated but present) for a first cut.
 2. Create `OpenALAudioManager` subclassing the same `AudioManager` base as `MilesAudioManager` (don't disturb game logic). Implement `init`, `playAudioEvent`, 3D source positioning, streaming for music.
 3. Decode audio: Generals audio is mostly `.wav`/`.mp3` inside the `.big` archives; use the engine's file system to read, decode (FFmpeg, already linked, or system AudioToolbox) → PCM → OpenAL buffers.
@@ -1971,13 +2137,75 @@ The engine now **boots all the way to the main-menu shell and runs its frame loo
 
 ---
 
-## Stage 6 — Video (cutscenes via FFmpeg)
+## Stage 6 — Video (cutscenes via FFmpeg) 🔶 IN PROGRESS
 
 **Goal:** Campaign/intro cutscenes play.
 
-**Prerequisites:** Stage 2 (need a way to blit decoded frames to the screen) + Stage 5 (audio track).
+**Prerequisites:** Stage 2 ✅ + Stage 5 ✅ (audio track wiring still TBD though).
 
-**Key files:** `Core/GameEngineDevice/Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp` (already present — the engine was migrated off Bink to FFmpeg). The `Bink` path is a stub (`binkstub`).
+**Key files:** `Core/GameEngineDevice/Source/VideoDevice/FFmpeg/FFmpegVideoPlayer.cpp` + `FFmpegFile.cpp` (already present — Stephan Vedder, April 2025; engine was migrated off Bink to FFmpeg upstream). The `Bink` path is a stub (`binkstub`).
+
+### Landed (2026-05-31)
+
+**Strategy:** lean on the upstream FFmpeg path; gate the build at the preset level rather than rewriting decoder code.
+
+1. **`cmake/FindFFMPEG.cmake` (new)** — the engine's `Core/GameEngineDevice/CMakeLists.txt:233` already calls `find_package(FFMPEG REQUIRED)` when the build option is on, but no `FindFFMPEG.cmake` ships in-tree (and CMake has no built-in module for FFmpeg). New file wraps `pkg_check_modules`:
+   - **Required:** `libavformat`, `libavcodec`, `libswscale`, `libavutil` — fail-fast with a "brew install ffmpeg" hint if missing.
+   - **Optional:** `libswresample` (only the OpenAL audio path needs it, currently inactive on Apple).
+   - **Exposes:** `FFMPEG_FOUND`, `FFMPEG_INCLUDE_DIRS`, `FFMPEG_LIBRARY_DIRS`, `FFMPEG_LIBRARIES` — the exact names the engine's CMakeLists.txt expects.
+   - Lives under `cmake/`, which is already in `CMAKE_MODULE_PATH` per `CMakeLists.txt:23`.
+
+2. **`CMakePresets.json`** — added `"RTS_BUILD_OPTION_FFMPEG": "ON"` to the `apple-arm64` preset's cacheVariables. Effect chain: → `RTS_BUILD_OPTION_FFMPEG=ON` → `find_package(FFMPEG REQUIRED)` succeeds → engine compiles `FFmpegVideoPlayer.cpp`/`FFmpegFile.cpp` + sets `RTS_HAS_FFMPEG` → `W3DGameClient.h:118` (gated by `#ifdef RTS_HAS_FFMPEG`) makes `createVideoPlayer()` return `NEW FFmpegVideoPlayer` instead of the no-op `BinkVideoPlayer`.
+
+### Verified live (smoke run, no game-state crash)
+
+- `otool -L generalszh` shows the binary linked against `libavformat.62`, `libavcodec.62`, `libswscale.9`, `libavutil.60`, `libswresample.6` (all from `/opt/homebrew/opt/ffmpeg/lib`).
+- Log shows `FFmpegVideoPlayer::createStream() — About to open bink file` + `opened localized bink file Data/english/Movies/EA_LOGO.bik` and the follow-up `sizzle_review.bik` — both engine-driven cutscene opens.
+- swscaler prints `[swscaler] No accelerated colorspace conversion found from yuv420p to bgra` every frame — informational, NOT a blocker. (`yuv420p` is the .bik native pixel format, `bgra`-equivalent is what `W3DVideoBuffer` requests via `AV_PIX_FMT_BGR0`. SIMD path missing on arm64 in this FFmpeg build; CPU fallback works.)
+- No crash, no `Uncaught Exception in GameEngine::update`, no `Technical Difficulties`.
+
+### Render path (already in place — Stage 2's quad pipeline does the work)
+
+```
+FFmpegFile::decodePacket  ──► avcodec_send_packet / receive_frame ──► AVFrame
+                                                                       │
+FFmpegVideoStream::onFrame  ◄──────────────────────────────────────────┘
+                                                                       │
+FFmpegVideoStream::frameRender(VideoBuffer*)                            │
+   │                                                                   │
+   ├── sws_getCachedContext(yuv420p → BGR0)                            │
+   ├── buffer->lock()  ──► W3DVideoBuffer::lock                        │
+   │                          └─► TextureClass::Get_Surface_Level     │
+   │                                  └─► dx8_stub LockRect           │
+   │                                          └─► Metal CPU-writable  │
+   │                                              texture buffer       │
+   ├── sws_scale(...)  // CPU yuv→BGR0                                 │
+   └── buffer->unlock()                                                 │
+                                                                        │
+W3DDisplay::drawVideoBuffer(buffer, x1, y1, x2, y2)                     │
+   ├── setup2DRenderState(vbuffer->texture(), DRAW_IMAGE_ALPHA, FALSE) │
+   ├── m_2DRender->Add_Quad(rect, uvRect)                              │
+   └── m_2DRender->Render()  ──► same path the menu uses ──► Metal ◄──┘
+```
+
+Because this is the menu's own pipeline (Stage 2's `Render2DClass` → dx8_stub → Metal), nothing new had to be wired on the GPU side. **Whether frames actually appear on screen is the visual-verification step the user has to do.**
+
+### Open — pick up next session
+
+1. **Visual verification by the user.** Boot the game with the new preset, watch for: EA logo + sizzle reel between launch and main menu; cutscenes during/after campaign missions. Confirm scaling looks right (engine picks letterbox-by-height vs pillarbox-by-width depending on aspect — `W3DDisplay::playLogoMovie` ~line 3140), confirm ESC/click skips. Reproduce by running from the data dir (`cd ~/Command\ and\ Conquer\ Generals\ Zero\ Hour/Command\ and\ Conquer\ Generals\ Zero\ Hour` then `./...generalszh`).
+
+2. **Audio track.** `FFmpegVideoStream::onFrame`'s audio handling is `#ifdef RTS_USE_OPENAL` only — disabled on Apple where we have the Miles shim, not OpenAL. Three options in order of engine-touch:
+   - **Smallest:** define `RTS_USE_OPENAL` Apple-only + provide a tiny `OpenALAudioStream` adapter in our Miles shim that takes `(samples, size, AL_FORMAT_*, rate)` and routes through a new HSTREAM-equivalent. Pros: zero touch on `FFmpegVideoPlayer.cpp`. Cons: a fake `OpenALAudioStream` class header to satisfy the include.
+   - **Cleaner:** add a `RTS_USE_MILES_FFMPEG_AUDIO` codepath alongside the OpenAL one in `FFmpegVideoStream::onFrame` that opens a Miles HSTREAM at the FFmpeg-reported sample rate / channels, then schedules each decoded `AVFrame` worth of PCM via a new `AIL_set_stream_pcm_buffer` helper we'd add to `miles_apple.mm`. Pros: explicit, no fake-OpenAL stub. Cons: edits engine code + new public-ish API surface in the shim.
+   - **Punt:** ship cutscenes silent for v1, revisit in Stage 6 polish. The Stage-5 music typically keeps playing under the cutscene anyway, so this isn't catastrophic for the EA logo / sizzle.
+
+3. **Bink audio handle plumbing** (`getHandleForBink` / `releaseHandleForBink` in `miles_apple.mm` are stubs) — wires the audio decision above into the Miles ↔ video boundary. Decide when picking the audio strategy.
+
+4. **swscaler perf warnings.** If profile shows yuv→bgra eats too much CPU at 60Hz, request `AV_PIX_FMT_NV12`-staying-in-NV12 + Metal does the colour-convert in a fragment shader. Premature until we see jank, which we won't on intro stills.
+
+5. **`av_register_all` guard** — `FFmpegFile::open` has `#if LIBAVFORMAT_VERSION_MAJOR < 58` already; we're on 62 so it's correctly inactive. No change needed; noting for posterity.
+
+### Original (pre-Stage 6) plan — kept for reference
 
 **Approach:** Wire `FFmpegVideoPlayer` to decode the `.bik`/`.vp6` movies (in `Data/Movies/` and the `.big`s) → upload each frame to a Metal texture → draw as a fullscreen quad (reuse Stage 2's 2D path). Sync audio via Stage 5. Ensure FFmpeg is actually linked on Apple (vcpkg `ffmpeg` or vendored).
 
@@ -2010,7 +2238,7 @@ The engine now **boots all the way to the main-menu shell and runs its frame loo
 
 **Endianness:** arm64 is little-endian (same as x86), so most binary formats are fine — EXCEPT the `.big` archive header and a few asset headers that are big-endian; check byte-swaps there.
 
-**Known stubs returning fake values (grep `TODO(macos)` and `TODO(metal`):** input (cursor/keys), all `Draw*` (until Stage 4), GDI text rasterization (until Stage 2 text), audio (until Stage 5), networking/online (WinINet, GameSpy — out of scope for single-player), the embedded IE web browser (dead permanently).
+**Known stubs returning fake values (grep `TODO(macos)` and `TODO(metal`):** input (cursor/keys), all `Draw*` (until Stage 4), GDI text rasterization (until Stage 2 text), ~~audio~~ (Stage 5 done — real Miles impl in `cmake/miles_apple/`), networking/online (WinINet, GameSpy — out of scope for single-player), the embedded IE web browser (dead permanently).
 
 **Useful commands:**
 ```bash

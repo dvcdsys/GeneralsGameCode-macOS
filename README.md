@@ -91,6 +91,49 @@ cd "/path/to/Command and Conquer Generals Zero Hour"
 "$ABIN"
 ```
 
+## Launcher (recommended for players)
+
+For a no-terminal experience there is a small native **launcher app**
+(`launcher/`, SwiftUI). It shows a window where you pick the folder with
+your original Zero Hour data and press **Start**. If the engine isn't
+installed yet it downloads the latest release automatically, then runs
+the game with that folder as the working directory.
+
+```bash
+# Build the launcher app locally
+bash launcher/build-app.sh           # -> "dist/GeneralsZH Launcher.app"
+open "dist/GeneralsZH Launcher.app"
+```
+
+The launcher installs the engine to
+`~/Library/Application Support/GeneralsZH/runtime/`. Before any release
+exists (or to test a local build), point it at a payload zip directly:
+
+```bash
+GZH_LOCAL_PAYLOAD="$(pwd)/dist/GeneralsZH-macOS-arm64.zip" \
+  open "dist/GeneralsZH Launcher.app"
+```
+
+See [`launcher/README.md`](launcher/README.md) for details.
+
+## Releases (CI/CD)
+
+`.github/workflows/macos-release.yml` builds the Apple-Silicon engine +
+launcher on every push to `main` (artifacts only) and **publishes a
+GitHub Release on any `v*` tag**. Workflow: develop in feature branches →
+merge to `main` → tag → release.
+
+```bash
+git tag v0.1
+git push origin v0.1            # CI builds and publishes the release
+```
+
+Each release attaches `GeneralsZH-macOS-arm64.zip` (the engine payload the
+launcher downloads), `GeneralsZH-Launcher.app.zip`, and `SHA256SUMS`.
+Builds are ad-hoc signed (not notarized) — first launch needs
+right-click → **Open**. Anonymous downloads by the launcher require the
+repository to be **public**.
+
 ### Debug entry points
 
 | Env var | Effect |
@@ -105,8 +148,10 @@ cd "/path/to/Command and Conquer Generals Zero Hour"
 | `MTL_DEBUG=1` | Per-frame draw-call stats to stderr |
 | `MTL_TEXONLY=1` | Fragment shader returns raw texture sample (skip combiner+lighting) |
 
-See [`MACOS_PORT_PLAN.md`](MACOS_PORT_PLAN.md) for the full env-var
-inventory and what each was added to bisect.
+See [`MACOS_ENV_VARS.md`](MACOS_ENV_VARS.md) for the full env-var
+catalogue (all `GEN_*` / `MTL_*` / `MILES_APPLE_*` flags grouped by purpose),
+and [`MACOS_PORT_PLAN.md`](MACOS_PORT_PLAN.md) for the per-stage notes on
+what each was added to bisect.
 
 ## Contributions
 

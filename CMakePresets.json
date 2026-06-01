@@ -178,7 +178,8 @@
                 "RTS_DEBUG_LOGGING": "ON",
                 "RTS_DEBUG_PROFILE": "OFF",
                 "RTS_DEBUG_STACKTRACE": "OFF",
-                "RTS_DEBUG_CRASHING": "OFF"
+                "RTS_DEBUG_CRASHING": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "ON"
             }
         },
         {

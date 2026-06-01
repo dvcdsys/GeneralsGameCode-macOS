@@ -470,6 +470,33 @@ void GameEngine::init()
 		// special-case: parse command-line parameters after loading global data
 		CommandLine::parseCommandLineForEngineInit();
 
+#if defined(__APPLE__)
+		// macOS port: the C runtime main() passes an empty command line to the
+		// engine (argv is intentionally dropped — see WinMain.cpp), so the usual
+		// "-mod" flag never reaches parseMod(). Provide env-var equivalents that
+		// set the very same globals parseMod() would, right before loadMods()
+		// consumes them. Unlike the command-line tokenizer (which splits on
+		// spaces), an env var is a single string, so paths with spaces work
+		// (e.g. ".../GLM/Cold War Crisis/1.5/_469_CWC.gib").
+		//   GEN_MOD      = path to a single mod archive (.big/.gib)  -> m_modBIG
+		//   GEN_MOD_DIR  = folder containing *.big mod archives      -> m_modDir
+		// Both load with overwrite=TRUE in loadMods(), so the mod overrides the
+		// base game assets, exactly like a Windows "-mod" launch.
+		{
+			if (const char *modBig = ::getenv("GEN_MOD"); modBig && modBig[0]) {
+				TheWritableGlobalData->m_modBIG = modBig;
+				DEBUG_LOG(("GEN_MOD: using mod archive '%s'", modBig));
+			}
+			if (const char *modDir = ::getenv("GEN_MOD_DIR"); modDir && modDir[0]) {
+				AsciiString dir = modDir;
+				if (!dir.endsWith("/") && !dir.endsWith("\\"))
+					dir.concat('/');
+				TheWritableGlobalData->m_modDir = dir;
+				DEBUG_LOG(("GEN_MOD_DIR: using mod directory '%s'", dir.str()));
+			}
+		}
+#endif
+
 		TheArchiveFileSystem->loadMods();
 
 		// doesn't require resets so just create a single instance here.

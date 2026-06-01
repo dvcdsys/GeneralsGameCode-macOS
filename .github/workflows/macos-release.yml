@@ -1,0 +1,95 @@
+name: macOS Release (Apple Silicon)
+
+# Builds the native macOS arm64 Zero Hour engine + the SwiftUI launcher.
+#
+# - push to main / manual run  -> build + package, upload as workflow artifacts
+#                                 (sanity check, no Release published)
+# - push of a tag  v*          -> build + package + publish a GitHub Release
+#                                 with the engine payload and the launcher app
+#
+# Apple Silicon only (M-series). No vcpkg: the macOS build links just the
+# bundled bink/miles dylibs + system frameworks, so the toolchain is only
+# Xcode + CMake + Ninja.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  # Never cancel an in-flight tag/release build; only supersede branch builds.
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Build & package (arm64)
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Show toolchain
+        run: |
+          cmake --version
+          ninja --version
+          xcodebuild -version
+          swift --version
+
+      - name: Configure (apple-arm64 preset)
+        run: cmake --preset apple-arm64
+
+      - name: Build engine (Release)
+        run: cmake --build build/apple-arm64 --config Release --target generalszh
+
+      - name: Package engine payload
+        run: bash scripts/package-macos-release.sh Release build/apple-arm64
+
+      - name: Build launcher app
+        run: |
+          APP_PATH="$(bash launcher/build-app.sh | tail -n1)"
+          echo "Launcher: ${APP_PATH}"
+          ( cd dist && ditto -c -k --keepParent "GeneralsZH Launcher.app" "GeneralsZH-Launcher.app.zip" )
+          shasum -a 256 dist/GeneralsZH-Launcher.app.zip | tee -a dist/SHA256SUMS
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: GeneralsZH-macOS-arm64
+          path: |
+            dist/GeneralsZH-macOS-arm64.zip
+            dist/GeneralsZH-Launcher.app.zip
+            dist/SHA256SUMS
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "${TAG}" \
+            dist/GeneralsZH-macOS-arm64.zip \
+            dist/GeneralsZH-Launcher.app.zip \
+            dist/SHA256SUMS \
+            --title "Generals Zero Hour — macOS (Apple Silicon) ${TAG}" \
+            --latest \
+            --notes "Native macOS arm64 build of Command & Conquer: Generals — Zero Hour.
+
+          ## Install
+          1. Download **GeneralsZH-Launcher.app.zip**, unzip, move the app to /Applications.
+          2. First launch: right-click the app → **Open** (it is ad-hoc signed, not notarized).
+          3. In the launcher, pick the folder with your original Zero Hour data (\`.big\` files) and press **Start**.
+             The engine (**GeneralsZH-macOS-arm64.zip**) is downloaded automatically from this release.
+
+          You must own a legitimate copy of Zero Hour — EA game data is **not** included.
+
+          Apple Silicon (M-series) only. Checksums in \`SHA256SUMS\`."

@@ -9,6 +9,8 @@
 *.user
 *.ncb
 /build*
+/dist/
+launcher/.build/
 macos_port_tests/build/
 nbproject/
 project/

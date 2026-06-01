@@ -1,0 +1,36 @@
+diff --git a/cmake/dx8_stub/metal_backend.mm b/cmake/dx8_stub/metal_backend.mm
+index 485ef5e1f..19cecce9b 100644
+--- a/cmake/dx8_stub/metal_backend.mm
++++ b/cmake/dx8_stub/metal_backend.mm
+@@ -1604,6 +1604,31 @@ inline void ApplyViewportIfChanged(MetalContext* ctx, int x, int y, int w, int h
+         // for offscreen PNG captures (debug only; YES is the fast default).
+         layer.framebufferOnly = getenv("MTL_DUMP") ? NO : YES;
+         layer.drawableSize    = CGSizeMake(width, height);
++        // VSync pacing. With the default `maximumDrawableCount=3` the CPU can
++        // race up to 3 frames ahead of the display before `nextDrawable` blocks
++        // — which combined with the engine's own busy-spin frame limiter
++        // (FrameRateLimit::wait) produced ragged 40-120 FPS oscillations on
++        // the main menu / cutscene background that the user complained about:
++        // a heavy frame (video upload, particle burst) ate into the
++        // CPU-ahead budget without back-pressuring the next frame. Capping
++        // the pool at 2 means the third frame's `nextDrawable` blocks on the
++        // refresh-rate deadline → steady ~60 FPS on a 60 Hz display, ~120 on
++        // ProMotion. `displaySyncEnabled = YES` is the default but we set it
++        // explicitly so a future Apple-SDK change can't silently disable it.
++        // Override either with `MTL_NO_VSYNC=1` (uncapped, useful for
++        // profiling raw CPU/GPU cost) or `MTL_DRAWABLES=N` (1-3) to A/B the
++        // pacing while keeping VSync on.
++        if (@available(macOS 10.13, *)) {
++            layer.displaySyncEnabled = getenv("MTL_NO_VSYNC") ? NO : YES;
++        }
++        {
++            NSUInteger drawables = 2;
++            if (const char* e = getenv("MTL_DRAWABLES")) {
++                int v = atoi(e);
++                if (v >= 1 && v <= 3) drawables = (NSUInteger)v;
++            }
++            layer.maximumDrawableCount = drawables;
++        }
+ 
+         [window setContentView:view];
+         [window makeFirstResponder:view];
