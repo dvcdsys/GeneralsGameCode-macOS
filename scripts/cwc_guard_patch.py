@@ -108,6 +108,14 @@ KINDOF_RE   = re.compile(r"^\s*KindOf\s*=\s*(.+)$", re.IGNORECASE)
 CMDSET_RE   = re.compile(r"^\s*CommandSet\s*=\s*(\S+)", re.IGNORECASE)
 WEAPON_RE   = re.compile(r"^\s*Weapon\s*=\s*PRIMARY\s+(\S+)", re.IGNORECASE)
 OBJECT_RE   = re.compile(r"^Object\s+(\S+)", re.IGNORECASE)
+# Rider/weapon-swap lines reference the active CommandSet as a positional token,
+# NOT via `CommandSet =`. Format:
+#   RiderN = <riderObj> <RIDERflag> <WEAPONflag> <STATUSflag> <SomethingCommandSet> <SET_*>
+# Capture every "...CommandSet" token on such a line so weapon-upgrade variants
+# (e.g. CWCusAH6 minigun->rockets swaps Rider1CommandSet -> Rider2CommandSet)
+# also get the Guard button — otherwise the button vanishes on weapon upgrade.
+RIDER_RE        = re.compile(r"^\s*Rider\d+\s*=", re.IGNORECASE)
+CMDSET_TOKEN_RE = re.compile(r"\b(\w+CommandSet)\b")
 
 TYPE_TOKENS = {"INFANTRY", "VEHICLE", "AIRCRAFT", "STRUCTURE", "PROJECTILE",
                "DOZER", "HORDE_VEHICLE"}
@@ -153,6 +161,7 @@ def classify_object(lines):
     command_sets = set()
 
     for ln in lines:
+        code = _strip_comment(ln)
         mk = KINDOF_RE.match(ln)
         if mk and top_kindof is None:
             val = _strip_comment(mk.group(1)).upper()
@@ -168,6 +177,9 @@ def classify_object(lines):
         mc = CMDSET_RE.match(ln)
         if mc:
             command_sets.add(mc.group(1).strip())
+        elif RIDER_RE.match(code):
+            # weapon-swap variant sets referenced positionally on a Rider line
+            command_sets.update(CMDSET_TOKEN_RE.findall(code))
 
     if top_kindof is None:
         return False, command_sets

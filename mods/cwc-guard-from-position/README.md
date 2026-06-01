@@ -57,7 +57,7 @@ against CWC 1.5. It classifies by each Object's `KindOf` + weapons:
   (patching them would leak the button onto non-combat objects); `Civilian*`
   mission props.
 
-On CWC 1.5 that selects **203 / 1747 Objects → 56 CommandSets patched**. The
+On CWC 1.5 that selects **203 / 1747 Objects → 66 CommandSets patched (incl. rider weapon-swap variants)**. The
 button is added at each set's lowest free visible slot (1–14) without
 overwriting any existing command. Three full transports
 (`BTR80`, `BTR80p`, `Mi8`) have no free visible slot and are skipped.
