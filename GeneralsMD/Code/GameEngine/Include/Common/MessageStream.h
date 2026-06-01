@@ -580,6 +580,7 @@ public:
 		MSG_ADD_WAYPOINT,														///< location
 		MSG_DO_GUARD_POSITION,											///< Guard with the currently selected group
 		MSG_DO_GUARD_OBJECT,												///< Guard with the currently selected group
+		MSG_DO_GUARD_POSITION_FROM_POSITION,				///< args: homeLoc, watchLoc, guardMode — stand-and-defend variant
 		MSG_DO_STOP,																///< Stop with the currently selected group
 		MSG_DO_SCATTER,															///< Scatter the currently selected group
 		MSG_INTERNET_HACK,													///< Begin a persistent internet hack (free slow income)

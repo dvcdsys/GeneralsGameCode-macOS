@@ -464,6 +464,12 @@ public:  // ********************************************************************
 	virtual void setRadiusCursor(RadiusCursorType r, const SpecialPowerTemplate* sp, WeaponSlotType wslot);
 	virtual void setRadiusCursorNone() { setRadiusCursor(RADIUSCURSOR_NONE, nullptr, PRIMARY_WEAPON); }
 
+	// TheSuperHackers @feature Guard-from-position: two-click state and persistent home-zone decal.
+	void setGuardFromPositionHome( const Coord3D& pos );
+	void clearGuardFromPositionState();
+	Bool hasGuardFromPositionHome() const { return m_guardFromPositionHomeSet; }
+	const Coord3D *getGuardFromPositionHome() const { return &m_guardFromPositionHomePos; }
+
 	virtual void setInputEnabled( Bool enable );										///< Set the input enabled or disabled
 	virtual Bool getInputEnabled() { return m_inputEnabled; }	///< Get the current input status
 
@@ -932,6 +938,13 @@ protected:
 	RadiusDecalTemplate					m_radiusCursors[RADIUSCURSOR_COUNT];
 	RadiusDecal									m_curRadiusCursor;
 	RadiusCursorType						m_curRcType;
+
+	// TheSuperHackers @feature Guard-from-position two-click state.
+	// While waiting for the second click, the persistent home-zone decal sits on the saved home pos
+	// and the regular radius cursor follows the mouse for the watch-zone preview.
+	Coord3D											m_guardFromPositionHomePos;
+	Bool												m_guardFromPositionHomeSet;
+	RadiusDecal									m_guardFromPositionHomeDecal;
 
 	//Floating Text Data
 	FloatingTextList						m_floatingTextList;				///< Our list of floating text

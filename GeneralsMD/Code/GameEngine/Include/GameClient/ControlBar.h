@@ -175,6 +175,7 @@ enum GUICommandType CPP_11(: Int)
 	GUI_COMMAND_GUARD,										///< guard command
 	GUI_COMMAND_GUARD_WITHOUT_PURSUIT,		///< guard command, no pursuit out of guard area
 	GUI_COMMAND_GUARD_FLYING_UNITS_ONLY,	///< guard command, ignore nonflyers
+	GUI_COMMAND_GUARD_FROM_POSITION,		///< two-click: stand at A, watch & attack zone around B; return when threat clears
 	GUI_COMMAND_STOP,											///< stop moving
 	GUI_COMMAND_WAYPOINTS,								///< create a set of waypoints for this unit
 	GUI_COMMAND_EXIT_CONTAINER,						///< an inventory box for a container like a structure or transport
@@ -234,6 +235,7 @@ static const char *const TheGuiCommandNames[] =
 	"GUARD",
 	"GUARD_WITHOUT_PURSUIT",
 	"GUARD_FLYING_UNITS_ONLY",
+	"GUARD_FROM_POSITION",
 	"STOP",
 	"WAYPOINTS",
 	"EXIT_CONTAINER",

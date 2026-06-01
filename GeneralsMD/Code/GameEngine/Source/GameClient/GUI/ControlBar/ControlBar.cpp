@@ -1069,6 +1069,40 @@ void ControlBar::init()
 	// load the command sets
 	ini.loadFileDirectory( "Data\\INI\\CommandSet", INI_LOAD_OVERWRITE, nullptr );
 
+	// TheSuperHackers @feature Loose mod-override slots: anything dropped under
+	// Data\INI\OverrideCommandButton\ or Data\INI\OverrideCommandSet\ is parsed as
+	// INI_LOAD_CREATE_OVERRIDES so a mod (or a per-feature patch like Guard-From-Position)
+	// can add new buttons AND re-spec existing CommandSet entries without tripping the
+	// "Duplicate commandset" throw in parseCommandSetDefinition. Silently no-ops if the
+	// directories don't exist.
+	{
+		UnsignedInt nBtn = 0, nSet = 0;
+		try { nBtn = ini.loadDirectory( "Data\\INI\\OverrideCommandButton", INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
+		try { nSet = ini.loadDirectory( "Data\\INI\\OverrideCommandSet",    INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
+		DEBUG_LOG(("[override-ini] loaded %u OverrideCommandButton files, %u OverrideCommandSet files", nBtn, nSet));
+		// Spot-check: does the GuardFromPosition button exist after load?
+		const CommandButton *gfp = findCommandButton(AsciiString("Command_GuardFromPosition"));
+		DEBUG_LOG(("[override-ini] Command_GuardFromPosition button: %s", gfp ? "FOUND" : "MISSING"));
+		// Spot-check: did our override of CWCusInfAssaultStandCommandSet take effect?
+		{
+			const AsciiString testName("CWCusInfAssaultStandCommandSet");
+			CommandSet *base = findNonConstCommandSet(testName);
+			DEBUG_LOG(("[override-ini] CWCusInfAssaultStandCommandSet base ptr: %p", (void*)base));
+			if (base) {
+				Overridable *finalOv = base->friend_getFinalOverride();
+				DEBUG_LOG(("[override-ini]   base->finalOverride ptr: %p (same as base: %s)",
+					(void*)finalOv, (void*)finalOv == (void*)base ? "YES (no override)" : "NO (chained)"));
+				CommandSet *resolved = (CommandSet*)finalOv;
+				for (Int s = 0; s < MAX_COMMANDS_PER_SET; ++s) {
+					const CommandButton *btn = resolved->getCommandButton(s);
+					if (btn) {
+						DEBUG_LOG(("[override-ini]   resolved slot %2d = '%s'", s + 1, btn->getName().str()));
+					}
+				}
+			}
+		}
+	}
+
 	// post process step after loading the command buttons and command sets
 	postProcessCommands();
 
@@ -1389,6 +1423,24 @@ void ControlBar::reset()
 
 	m_lastFlashedAtPointValue = -1;
 	m_genStarFlash = TRUE;
+
+	// TheSuperHackers @feature Loose mod-override slots: deleteOverrides() above
+	// wiped every override we created at init time, but we want our loose
+	// OverrideCommandButton/ + OverrideCommandSet/ entries to PERSIST across
+	// game/map transitions (Guard-From-Position should stay on units after the
+	// player exits a skirmish and starts a new one). Re-loading the dirs here
+	// puts the overrides back on top of the freshly-restored base CommandSets,
+	// then postProcessCommands() re-caches the button images (cacheButtonImage
+	// runs only via postProcessCommands and consumes m_buttonImageName, so
+	// freshly-allocated override buttons must be passed through it again to
+	// resolve their MappedImage; otherwise they render invisible even though
+	// the slot is wired up in the CommandSet).
+	{
+		INI ini;
+		try { ini.loadDirectory( "Data\\INI\\OverrideCommandButton", INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
+		try { ini.loadDirectory( "Data\\INI\\OverrideCommandSet",    INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
+		postProcessCommands();
+	}
 }
 
 //-------------------------------------------------------------------------------------------------

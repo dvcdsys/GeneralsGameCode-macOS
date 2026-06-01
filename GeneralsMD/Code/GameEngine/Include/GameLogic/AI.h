@@ -410,6 +410,7 @@ enum AICommandType CPP_11(: Int)	// Stored in save file, do not reorder/renumber
 	AICMD_EVACUATE_INSTANTLY,
 	AICMD_EXIT_INSTANTLY,
 	AICMD_GUARD_RETALIATE,
+	AICMD_GUARD_POSITION_FROM_POSITION,	// TheSuperHackers @feature stand at A, watch zone around B; return when threat clears
 };
 
 struct AICommandParms
@@ -766,6 +767,20 @@ public:
 		aiDoCommand(&parms);
 	}
 
+	// Stand at homePos, watch and attack around watchPos. Returns to homePos when threat leaves watchPos.
+	// guardMode is forced to GUARDMODE_FROM_POSITION inside dispatch; the parameter is reserved for future variants.
+	void aiGuardPositionFromPosition( const Coord3D *homePos, const Coord3D *watchPos, GuardMode guardMode, CommandSourceType cmdSource )
+	{
+		AICommandParms parms(AICMD_GUARD_POSITION_FROM_POSITION, cmdSource);
+		// Pack: m_pos = watched zone (becomes m_locationToGuard like a normal guard),
+		//       m_coords[0] = home position (becomes m_attackFromLocation).
+		parms.m_pos = *watchPos;
+		parms.m_coords.clear();
+		parms.m_coords.push_back(*homePos);
+		parms.m_intValue = guardMode;
+		aiDoCommand(&parms);
+	}
+
 	void aiGuardObject( Object *objToGuard, GuardMode guardMode, CommandSourceType cmdSource )
 	{
 		AICommandParms parms(AICMD_GUARD_OBJECT, cmdSource);
@@ -938,6 +953,7 @@ public:
 	void groupGuardPosition( const Coord3D *pos, GuardMode guardMode, CommandSourceType cmdSource );						///< guard the given spot
 	void groupGuardObject( Object *objToGuard, GuardMode guardMode, CommandSourceType cmdSource );			///< guard an object
 	void groupGuardArea( const PolygonTrigger *areaToGuard, GuardMode guardMode, CommandSourceType cmdSource ); ///< guard an area
+	void groupGuardPositionFromPosition( const Coord3D *homePos, const Coord3D *watchPos, GuardMode guardMode, CommandSourceType cmdSource ); ///< stand at homePos, watch zone around watchPos
 	void groupAttackArea( const PolygonTrigger *areaToGuard, CommandSourceType cmdSource ); ///< guard an area
 	void groupHackInternet( CommandSourceType cmdSource );				///< Begin hacking the internet for free cash from the heavens.
 	void groupDoSpecialPower( UnsignedInt specialPowerID, UnsignedInt commandOptions );

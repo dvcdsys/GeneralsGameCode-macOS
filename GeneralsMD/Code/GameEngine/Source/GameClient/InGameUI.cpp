@@ -1263,6 +1263,10 @@ InGameUI::InGameUI()
 
 	m_curRcType = RADIUSCURSOR_NONE;
 
+	// TheSuperHackers @feature Guard-from-position two-click state init.
+	m_guardFromPositionHomePos.zero();
+	m_guardFromPositionHomeSet = false;
+
 	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 }
@@ -1404,6 +1408,47 @@ void InGameUI::init()
 }
 
 //-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Guard-from-position: persist home pos + spawn home-zone decal.
+// Uses the same GUARD_AREA template the regular guard radius cursor uses, so modders / users
+// see a familiar guard-style ring tinted by player colour.
+//-------------------------------------------------------------------------------------------------
+void InGameUI::setGuardFromPositionHome( const Coord3D& pos )
+{
+	m_guardFromPositionHomePos = pos;
+	m_guardFromPositionHomeSet = true;
+
+	m_guardFromPositionHomeDecal.clear();
+
+	if (getSelectCount() == 0)
+		return;
+
+	Drawable *draw = getFirstSelectedDrawable();
+	if (draw == nullptr || draw->getObject() == nullptr)
+		return;
+
+	Object *obj = draw->getObject();
+	Player *controller = obj->getControllingPlayer();
+	if (controller == nullptr)
+		return;
+
+	const Real radius = AIGuardMachine::getStdGuardRange(obj);
+	if (radius <= 0.0f)
+		return;
+
+	// Reuse the GUARD_AREA template; modders can override it with a dedicated entry later.
+	m_radiusCursors[RADIUSCURSOR_GUARD_AREA].createRadiusDecal(pos, radius, controller, m_guardFromPositionHomeDecal);
+	m_guardFromPositionHomeDecal.setPosition(pos);
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::clearGuardFromPositionState()
+{
+	m_guardFromPositionHomeSet = false;
+	m_guardFromPositionHomePos.zero();
+	m_guardFromPositionHomeDecal.clear();
+}
+
+//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTemplate* specPowTempl, WeaponSlotType weaponSlot)
 {
@@ -1538,6 +1583,14 @@ void InGameUI::handleRadiusCursor()
     }
 
   }
+
+	// TheSuperHackers @feature Guard-from-position: keep the persistent home decal alive
+	// while waiting for the second click. Position is fixed; update() refreshes throb timer.
+	if (m_guardFromPositionHomeSet && !m_guardFromPositionHomeDecal.isEmpty())
+	{
+		m_guardFromPositionHomeDecal.setPosition( m_guardFromPositionHomePos );
+		m_guardFromPositionHomeDecal.update();
+	}
 }
 
 
@@ -3211,6 +3264,9 @@ void InGameUI::setGUICommand( const CommandButton *command )
 	else
 	{
 		m_mouseMode = MOUSEMODE_DEFAULT;
+		// TheSuperHackers @feature Guard-from-position: clear any pending two-click state when
+		// the command is dismissed (Esc / cancel / completion).
+		clearGuardFromPositionState();
 	}
 
 	// set the command

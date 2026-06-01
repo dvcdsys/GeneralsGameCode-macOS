@@ -2600,6 +2600,26 @@ void AIGroup::groupGuardArea( const PolygonTrigger *areaToGuard, GuardMode guard
 }
 
 /**
+ * Stand at homePos, watch and attack around watchPos.  When threat clears, return to homePos.
+ */
+void AIGroup::groupGuardPositionFromPosition( const Coord3D *homePos, const Coord3D *watchPos, GuardMode guardMode, CommandSourceType cmdSource )
+{
+	if (!homePos || !watchPos) {
+		return;
+	}
+
+	std::list<Object *>::iterator i;
+	for( i = m_memberList.begin(); i != m_memberList.end(); ++i )
+	{
+		AIUpdateInterface *ai = (*i)->getAIUpdateInterface();
+		if (ai)
+		{
+			ai->aiGuardPositionFromPosition( homePos, watchPos, guardMode, cmdSource );
+		}
+	}
+}
+
+/**
  * Attack the given area
  */
 void AIGroup::groupAttackArea( const PolygonTrigger *areaToGuard, CommandSourceType cmdSource )

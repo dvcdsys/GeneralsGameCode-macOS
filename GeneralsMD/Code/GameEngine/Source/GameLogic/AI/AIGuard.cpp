@@ -166,6 +166,7 @@ AIGuardMachine::AIGuardMachine( Object *owner ) :
 	m_guardMode(GUARDMODE_NORMAL)
 {
 	m_positionToGuard.zero();
+	m_attackFromPosition.zero();
 
 	static const StateConditionInfo attackAggressors[] =
 	{
@@ -318,7 +319,8 @@ void AIGuardMachine::crc( Xfer *xfer )
 void AIGuardMachine::xfer( Xfer *xfer )
 {
   // version
-  XferVersion currentVersion = 2;
+  // 3: TheSuperHackers @feature added m_attackFromPosition for GUARDMODE_FROM_POSITION
+  XferVersion currentVersion = 3;
   XferVersion version = currentVersion;
   xfer->xferVersion( &version, currentVersion );
 
@@ -338,6 +340,10 @@ void AIGuardMachine::xfer( Xfer *xfer )
 		if (triggerName.isNotEmpty()) {
 			m_areaToGuard = TheTerrainLogic->getTriggerAreaByName(triggerName);
 		}
+	}
+
+	if (version>=3) {
+		xfer->xferCoord3D(&m_attackFromPosition);
 	}
 
 }
@@ -517,9 +523,10 @@ AIGuardOuterState::~AIGuardOuterState()
 //--------------------------------------------------------------------------------------
 StateReturnType AIGuardOuterState::onEnter()
 {
-	if (getGuardMachine()->getGuardMode() == GUARDMODE_GUARD_WITHOUT_PURSUIT)
+	const GuardMode mode = getGuardMachine()->getGuardMode();
+	if (mode == GUARDMODE_GUARD_WITHOUT_PURSUIT || mode == GUARDMODE_FROM_POSITION)
 	{
-		// "patrol" mode does not follow targets outside the guard area.
+		// "patrol" mode and "guard-from-position" mode do not follow targets outside the guard area.
 		return STATE_SUCCESS;
 	}
 
@@ -642,12 +649,20 @@ StateReturnType AIGuardReturnState::onEnter()
 //		return STATE_FAILURE; // early termination because we found a target.
 
 	Object* targetToGuard = getGuardMachine()->findTargetToGuardByID();
-	m_goalPosition = targetToGuard ? *targetToGuard->getPosition() : *getGuardMachine()->getPositionToGuard();
-
-	const PolygonTrigger *area = getGuardMachine()->getAreaToGuard();
-	if (area)
+	if (getGuardMachine()->getGuardMode() == GUARDMODE_FROM_POSITION)
 	{
-		area->getCenterPoint(&m_goalPosition);
+		// Home position takes precedence over watched-zone center / guarded object.
+		m_goalPosition = *getGuardMachine()->getAttackFromPosition();
+	}
+	else
+	{
+		m_goalPosition = targetToGuard ? *targetToGuard->getPosition() : *getGuardMachine()->getPositionToGuard();
+
+		const PolygonTrigger *area = getGuardMachine()->getAreaToGuard();
+		if (area)
+		{
+			area->getCenterPoint(&m_goalPosition);
+		}
 	}
 	AIUpdateInterface *ai = getMachineOwner()->getAIUpdateInterface();
 	if (ai && ai->isDoingGroundMovement())

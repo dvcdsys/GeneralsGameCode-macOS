@@ -6736,6 +6736,8 @@ StateReturnType AIGuardState::onEnter()
 		case GUARDTARGET_AREA: m_guardMachine->setAreaToGuard( ai->getAreaToGuard() ); break;
 	}
 	m_guardMachine->setGuardMode(ai->getGuardMode());
+	// For GUARDMODE_FROM_POSITION the home/return position lives separately in AIUpdate.
+	m_guardMachine->setAttackFromPosition( ai->getGuardAttackFromLocation() );
 
 	// now that essential parameters are set, set the machine's initial state
 	if (m_guardMachine->initDefaultState() == STATE_FAILURE)

@@ -178,7 +178,8 @@ enum GuardMode CPP_11(: Int)
 {
 	GUARDMODE_NORMAL,
 	GUARDMODE_GUARD_WITHOUT_PURSUIT,	// no pursuit out of guard area
-	GUARDMODE_GUARD_FLYING_UNITS_ONLY	// ignore nonflyers
+	GUARDMODE_GUARD_FLYING_UNITS_ONLY,	// ignore nonflyers
+	GUARDMODE_FROM_POSITION				// stand at home pos A, watch/attack zone around pos B; return to A when threat clears
 };
 
 // ---------------------------------------------------

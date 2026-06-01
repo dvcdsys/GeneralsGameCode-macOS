@@ -255,6 +255,43 @@ static CommandStatus doGuardCommand( const CommandButton *command, GuardMode gua
 }
 
 //-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature Guard-from-position: two-click handler.
+// Click 1 stores the home position on TheInGameUI and returns COMMAND_INCOMPLETE so the
+// pending GUI command stays armed. Click 2 reads back the home pos, packs both points into
+// MSG_DO_GUARD_POSITION_FROM_POSITION and clears the state.
+//-------------------------------------------------------------------------------------------------
+static CommandStatus doGuardFromPositionCommand( const CommandButton *command, const ICoord2D *mouse )
+{
+	if( command == nullptr || mouse == nullptr )
+		return COMMAND_COMPLETE;
+
+	if( TheInGameUI->getSelectCount() == 0 )
+		return COMMAND_COMPLETE;
+
+	Coord3D world;
+	TheTacticalView->screenToTerrain( mouse, &world );
+
+	if( !TheInGameUI->hasGuardFromPositionHome() )
+	{
+		// Phase 1: capture the home position.
+		TheInGameUI->setGuardFromPositionHome( world );
+		// Stay in pending-command mode so the next click goes to phase 2.
+		return COMMAND_INCOMPLETE;
+	}
+
+	// Phase 2: emit the message and clear state.
+	const Coord3D homePos = *TheInGameUI->getGuardFromPositionHome();
+	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_DO_GUARD_POSITION_FROM_POSITION );
+	msg->appendLocationArgument( homePos );
+	msg->appendLocationArgument( world );
+	msg->appendIntegerArgument( GUARDMODE_FROM_POSITION );
+	pickAndPlayUnitVoiceResponse( TheInGameUI->getAllSelectedDrawables(), GameMessage::MSG_DO_GUARD_POSITION );
+
+	TheInGameUI->clearGuardFromPositionState();
+	return COMMAND_COMPLETE;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Do the set rally point command */
 //-------------------------------------------------------------------------------------------------
 static CommandStatus doAttackMoveCommand( const CommandButton *command, const ICoord2D *mouse )
@@ -445,6 +482,13 @@ GameMessageDisposition GUICommandTranslator::translateGameMessage(const GameMess
 					case GUI_COMMAND_GUARD_FLYING_UNITS_ONLY:
 					{
 						commandStatus = doGuardCommand( command, GUARDMODE_GUARD_FLYING_UNITS_ONLY, &mouse );
+						break;
+					}
+
+					//---------------------------------------------------------------------------------------
+					case GUI_COMMAND_GUARD_FROM_POSITION:
+					{
+						commandStatus = doGuardFromPositionCommand( command, &mouse );
 						break;
 					}
 

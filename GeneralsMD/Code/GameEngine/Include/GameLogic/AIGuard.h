@@ -98,6 +98,7 @@ private:
 	Coord3D									m_positionToGuard;
 	ObjectID								m_nemesisToAttack;
 	GuardMode								m_guardMode;
+	Coord3D									m_attackFromPosition;	// for GUARDMODE_FROM_POSITION: where to stand and return to. m_positionToGuard holds the watched zone center.
 
 protected:
 	// snapshot interface
@@ -125,6 +126,9 @@ public:
 
 	GuardMode getGuardMode() const { return m_guardMode; }
 	void setGuardMode(GuardMode guardMode) { m_guardMode = guardMode; }
+
+	const Coord3D *getAttackFromPosition() const { return &m_attackFromPosition; }
+	void setAttackFromPosition( const Coord3D *pos ) { m_attackFromPosition = *pos; }
 
 	Bool lookForInnerTarget();
 

@@ -220,6 +220,7 @@ AIUpdateInterface::AIUpdateInterface( Thing *thing, const ModuleData* moduleData
 	m_locationToGuard.zero();
 	m_objectToGuard = INVALID_ID;
 	m_areaToGuard = nullptr;
+	m_attackFromLocation.zero();
 	m_attackInfo = nullptr;
 	m_waypointCount = 0;
 	m_waypointIndex = 0;
@@ -2833,6 +2834,25 @@ void AIUpdateInterface::aiDoCommand(const AICommandParms* parms)
 			privateGuardArea(parms->m_polygon, (GuardMode)parms->m_intValue, parms->m_cmdSource);
 			break;
 		}
+		case AICMD_GUARD_POSITION_FROM_POSITION:
+		{
+			// As above: bail out of retaliate state cleanly before entering guard.
+			AIStateMachine *state = getStateMachine();
+			if( state && state->getCurrentStateID() == AI_GUARD_RETALIATE )
+			{
+				state->clear();
+			}
+
+			// Defensive: aiGuardPositionFromPosition packs m_coords[0] = home, m_pos = watch.
+			if (parms->m_coords.empty())
+			{
+				DEBUG_LOG(("AICMD_GUARD_POSITION_FROM_POSITION missing home coord; ignoring."));
+				break;
+			}
+			const Coord3D homePos = parms->m_coords[0];
+			privateGuardPositionFromPosition(&homePos, &parms->m_pos, (GuardMode)parms->m_intValue, parms->m_cmdSource);
+			break;
+		}
 		case AICMD_HACK_INTERNET:
 			privateHackInternet( parms->m_cmdSource );
 			break;
@@ -4147,6 +4167,49 @@ void AIUpdateInterface::privateGuardArea( const PolygonTrigger *areaToGuard, Gua
 }
 
 //-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/**
+ * Guard from a separate home position: stand at homePos, watch and attack around watchPos,
+ * return to homePos when the threat clears.
+ */
+void AIUpdateInterface::privateGuardPositionFromPosition( const Coord3D *homePos, const Coord3D *watchPos, GuardMode /*guardMode*/, CommandSourceType cmdSource )
+{
+	if (getObject()->isMobile() == FALSE)
+		return;
+
+	if (getObject()->isKindOf(KINDOF_PROJECTILE))
+		return;
+
+	if (m_guardTargetType[1] == GUARDTARGET_NONE) {
+		m_guardTargetType[1] = GUARDTARGET_LOCATION;
+	} else {
+		m_guardTargetType[0] = GUARDTARGET_LOCATION;
+	}
+
+	Coord3D adjWatch = *watchPos;
+	Coord3D adjHome  = *homePos;
+	if (cmdSource == CMD_FROM_PLAYER) {
+		// Clip both to playable area to match privateGuardPosition behaviour.
+		Region3D r;
+		TheTerrainLogic->getExtent(&r);
+		if (!r.isInRegionNoZ(&adjWatch))
+			adjWatch = TheTerrainLogic->findClosestEdgePoint(&adjWatch);
+		if (!r.isInRegionNoZ(&adjHome))
+			adjHome = TheTerrainLogic->findClosestEdgePoint(&adjHome);
+	}
+
+	m_locationToGuard     = adjWatch;	// the zone to scan / defend
+	m_attackFromLocation  = adjHome;	// the home stand-and-return position
+	m_objectToGuard       = INVALID_ID;
+	m_areaToGuard         = nullptr;
+	m_guardMode           = GUARDMODE_FROM_POSITION;	// always this mode for this command
+
+	getStateMachine()->clear();
+	setLastCommandSource( cmdSource );
+	getStateMachine()->setState( AI_GUARD );
+}
+
+//-------------------------------------------------------------------------------------------------
 void AIUpdateInterface::privateHackInternet( CommandSourceType cmdSource )
 {
 	// We need to be able to hack in containers
@@ -5061,6 +5124,7 @@ void AIUpdateInterface::crc( Xfer *x )
 	* 3: Removed lastFrameMoved and repulsorCountdown; removed surrender and demoralize variables
 	* 4: Read m_curLocomotorSet from ini
 	* 5: TheSuperHackers @fix Fixed out-of-bounds xfer of m_guardTargetType
+	* 6: TheSuperHackers @feature Added m_attackFromLocation for GUARDMODE_FROM_POSITION
 	*/
 // ------------------------------------------------------------------------------------------------
 void AIUpdateInterface::xfer( Xfer *xfer )
@@ -5069,7 +5133,7 @@ void AIUpdateInterface::xfer( Xfer *xfer )
 #if RETAIL_COMPATIBLE_CRC || RETAIL_COMPATIBLE_XFER_SAVE
 	const XferVersion currentVersion = 4;
 #else
-	const XferVersion currentVersion = 5;
+	const XferVersion currentVersion = 6;
 #endif
   XferVersion version = currentVersion;
   xfer->xferVersion( &version, currentVersion );
@@ -5115,6 +5179,11 @@ void AIUpdateInterface::xfer( Xfer *xfer )
 		if (triggerName.isNotEmpty()) {
 			m_areaToGuard = TheTerrainLogic->getTriggerAreaByName(triggerName);
 		}
+	}
+
+	if (version >= 6)
+	{
+		xfer->xferCoord3D(&m_attackFromLocation);
 	}
 
 	AsciiString attackName;

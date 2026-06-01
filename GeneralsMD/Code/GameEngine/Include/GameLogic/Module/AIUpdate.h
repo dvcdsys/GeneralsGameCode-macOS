@@ -279,6 +279,7 @@ protected:
 	virtual void privateGuardPosition( const Coord3D *pos, GuardMode guardMode, CommandSourceType cmdSource );			///< guard the given spot
 	virtual void privateGuardObject( Object *objectToGuard, GuardMode guardMode, CommandSourceType cmdSource );		///< guard the given object
 	virtual void privateGuardArea( const PolygonTrigger *areaToGuard, GuardMode guardMode, CommandSourceType cmdSource );	///< guard the given area
+	virtual void privateGuardPositionFromPosition( const Coord3D *homePos, const Coord3D *watchPos, GuardMode guardMode, CommandSourceType cmdSource );	///< stand at homePos, watch and attack from watchPos zone
 	virtual void privateAttackArea( const PolygonTrigger *areaToGuard, CommandSourceType cmdSource );	///< guard the given area
 	virtual void privateHackInternet( CommandSourceType cmdSource );	///< Hack money from the heavens (free money)
 	virtual void privateFaceObject( Object *target, CommandSourceType cmdSource );
@@ -361,6 +362,7 @@ public:
 	virtual GuardTargetType getGuardTargetType() const { return m_guardTargetType[1]; }
 	virtual void clearGuardTargetType() { m_guardTargetType[1] = m_guardTargetType[0]; m_guardTargetType[0] = GUARDTARGET_NONE; }
 	virtual GuardMode getGuardMode() const { return m_guardMode; }
+	virtual const Coord3D *getGuardAttackFromLocation() const { return &m_attackFromLocation; }
 
 	virtual Object* construct( const ThingTemplate *what,
 														 const Coord3D *pos, Real angle,
@@ -701,6 +703,7 @@ private:
 	Coord3D								m_locationToGuard;
 	ObjectID							m_objectToGuard;
 	const PolygonTrigger*	m_areaToGuard;
+	Coord3D								m_attackFromLocation;	// for GUARDMODE_FROM_POSITION: home position; m_locationToGuard holds the watched-zone center
 
 	// Attack Info --------------------------------------------------------------------------------------------
 	const AttackPriorityInfo*	m_attackInfo;

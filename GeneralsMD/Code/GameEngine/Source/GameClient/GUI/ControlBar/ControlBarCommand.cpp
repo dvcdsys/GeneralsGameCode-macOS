@@ -273,6 +273,26 @@ void ControlBar::populateCommand( Object *obj )
 	// get command set
 	commandSet = findCommandSet( obj->getCommandSetString() );
 
+#if defined(__APPLE__)
+	// macOS-port diagnostic: when GEN_DBG_CMDSET=1, log what CommandSet a selected
+	// unit actually resolves to, plus what button is at each slot. Lets us figure
+	// out which CWC CommandSets aren't being override-patched by our loose INI.
+	static int s_dbgCmdSet = -1;
+	if (s_dbgCmdSet < 0) s_dbgCmdSet = ::getenv("GEN_DBG_CMDSET") ? 1 : 0;
+	if (s_dbgCmdSet && commandSet)
+	{
+		DEBUG_LOG(("[cmdset-dbg] unit='%s' commandSet='%s'",
+			obj->getTemplate() ? obj->getTemplate()->getName().str() : "?",
+			obj->getCommandSetString().str()));
+		for (Int s = 0; s < MAX_COMMANDS_PER_SET; ++s) {
+			const CommandButton *btn = commandSet->getCommandButton(s);
+			if (btn) {
+				DEBUG_LOG(("[cmdset-dbg]   slot %2d = '%s'", s + 1, btn->getName().str()));
+			}
+		}
+	}
+#endif
+
 	// if no command set match is found hide all the buttons
 	if( commandSet == nullptr )
 	{

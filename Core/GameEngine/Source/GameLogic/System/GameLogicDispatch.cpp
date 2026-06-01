@@ -940,6 +940,23 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			break;
 		}
 
+#if RTS_ZEROHOUR
+		//---------------------------------------------------------------------------------------------
+		// TheSuperHackers @feature Guard-from-position: ZeroHour-only for now.
+		case GameMessage::MSG_DO_GUARD_POSITION_FROM_POSITION:
+		{
+			Coord3D homeLoc = msg->getArgument( 0 )->location;
+			Coord3D watchLoc = msg->getArgument( 1 )->location;
+			GuardMode gm = (GuardMode)msg->getArgument( 2 )->integer;
+			if (currentlySelectedGroup)
+			{
+				currentlySelectedGroup->groupGuardPositionFromPosition(&homeLoc, &watchLoc, gm, CMD_FROM_PLAYER);
+			}
+
+			break;
+		}
+#endif
+
 		//---------------------------------------------------------------------------------------------
 		case GameMessage::MSG_DO_GUARD_OBJECT:
 		{
