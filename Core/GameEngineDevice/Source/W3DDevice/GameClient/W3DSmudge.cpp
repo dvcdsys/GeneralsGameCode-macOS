@@ -202,6 +202,24 @@ error:
 
 Bool W3DSmudgeManager::testHardwareSupport()
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @fix macOS-port: disable the heat-distortion (smudge)
+	// effect. It needs a backbuffer-copy + a refraction pixel-shader pass to
+	// warp the scene behind hot exhaust. The Metal FF shim reports no
+	// pixel-shader caps, so the warp pass doesn't run and the smudge quads
+	// sampled an unpopulated/black background -> the jet-afterburner heat haze
+	// rendered as solid BLACK behind the turbines. Worse, render() does a
+	// per-frame CopyRects backbuffer readback (`_Get_DX8_Back_Buffer` +
+	// copyRect), which on the shim forces an expensive surface flush every
+	// frame any smudge is on screen -> the framerate tanked the moment jets
+	// took off. Force "no support" so W3DSmudgeManager::render() early-outs.
+	// GEN_HEAT_EFFECTS=1 opts back in for A/B testing.
+	{
+		static int s_heat = -1;
+		if (s_heat < 0) s_heat = ::getenv("GEN_HEAT_EFFECTS") ? 1 : 0;
+		if (!s_heat) { m_hardwareSupportStatus = SMUDGE_SUPPORT_NO; return FALSE; }
+	}
+#endif
 	if (m_hardwareSupportStatus == SMUDGE_SUPPORT_UNKNOWN)
 	{	//we have not done the test yet.
 
