@@ -3257,15 +3257,62 @@ void STLSpecialAlloc::deallocate(void* __p, size_t)
 }
 
 //-----------------------------------------------------------------------------
+#if defined(__APPLE__)
+// On arm64 the C/C++ ABI requires that the standard global `operator new` return
+// memory aligned to at least __STDCPP_DEFAULT_NEW_ALIGNMENT__ (16 bytes). Our
+// pool hands user data back at a fixed offset past the MemoryPoolSingleBlock
+// header (24 bytes with MPSB_DLINK), i.e. only *8*-byte aligned. That is fatal
+// here because the executable's replacement of the weak libc++ `operator new`
+// symbols is honored process-wide by dyld, so **system framework C++ code routes
+// its allocations through this pool too** — and CoreAudio's AU parameter
+// `ListenerMap` nodes use 16-byte atomic/paired accesses. An 8-aligned node
+// faults with EXC_ARM_DA_ALIGN deep inside ListenerMap::forEachBindingForEvent
+// during -[AVAudioEngine mainMixerNode] (engine bring-up), which is exactly the
+// audio-init crash. (Reproduces in vanilla too; the standalone AVAudioEngine
+// test that uses the *system* allocator does not crash — confirming alignment,
+// not an OS regression.)
+//
+// Fix: over-allocate, return a 16-byte-aligned pointer, and stash the real pool
+// pointer in the word immediately before it so delete can recover it. This is a
+// matched new/delete pair: every pointer that reaches the global operator delete
+// came from the global operator new (pool objects use class-specific new/delete
+// and STL uses STLSpecialAlloc — neither touches these), so the unwrap is safe.
+// malloc/free are NOT overridden on this build (MEMORYPOOL_OVERRIDE_MALLOC=OFF),
+// so C allocations already use the 16-aligned system allocator.
+static inline void* poolNewAligned16(size_t size, const char* tag)
+{
+	preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
+	const size_t kAlign = 16;
+	void* raw = TheDynamicMemoryAllocator->allocateBytes(size + kAlign + sizeof(void*), tag);
+	uintptr_t base = (uintptr_t)raw + sizeof(void*);
+	uintptr_t aligned = (base + (kAlign - 1)) & ~(uintptr_t)(kAlign - 1);
+	((void**)aligned)[-1] = raw;
+	return (void*)aligned;
+}
+static inline void poolDeleteAligned16(void* p)
+{
+	if (!p) return;
+	preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	TheDynamicMemoryAllocator->freeBytes(((void**)p)[-1]);
+}
+#endif // __APPLE__
+
+//-----------------------------------------------------------------------------
 /**
 	overload for global operator new; send requests to TheDynamicMemoryAllocator.
 */
 void *operator new(size_t size)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	return poolNewAligned16(size, "global operator new");
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new");
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3275,9 +3322,13 @@ void *operator new(size_t size)
 void *operator new[](size_t size)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	return poolNewAligned16(size, "global operator new[]");
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new[]");
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3287,9 +3338,13 @@ void *operator new[](size_t size)
 void operator delete(void *p)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	poolDeleteAligned16(p);
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
 	TheDynamicMemoryAllocator->freeBytes(p);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3299,9 +3354,13 @@ void operator delete(void *p)
 void operator delete[](void *p)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	poolDeleteAligned16(p);
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
 	TheDynamicMemoryAllocator->freeBytes(p);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3311,12 +3370,19 @@ void operator delete[](void *p)
 void* operator new(size_t size, const char * fname, int)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	// Must use the same 16-aligned wrapping as the plain operator new: a pointer
+	// produced here is normally released through the *plain* operator delete
+	// (the MFC-debug delete only runs if a ctor throws), which unwraps p[-1].
+	return poolNewAligned16(size, fname ? fname : "global operator new(dbg)");
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef MEMORYPOOL_DEBUG
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
+#endif
 #endif
 }
 
@@ -3327,9 +3393,13 @@ void* operator new(size_t size, const char * fname, int)
 void operator delete(void * p, const char *, int)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	poolDeleteAligned16(p);
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
 	TheDynamicMemoryAllocator->freeBytes(p);
+#endif
 }
 
 //-----------------------------------------------------------------------------
@@ -3339,12 +3409,16 @@ void operator delete(void * p, const char *, int)
 void* operator new[](size_t size, const char * fname, int)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	return poolNewAligned16(size, fname ? fname : "global operator new[](dbg)");
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef MEMORYPOOL_DEBUG
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
 	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
+#endif
 #endif
 }
 
@@ -3355,9 +3429,13 @@ void* operator new[](size_t size, const char * fname, int)
 void operator delete[](void * p, const char *, int)
 {
 	++theLinkTester;
+#if defined(__APPLE__)
+	poolDeleteAligned16(p);
+#else
 	preMainInitMemoryManager();
 	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
 	TheDynamicMemoryAllocator->freeBytes(p);
+#endif
 }
 
 //-----------------------------------------------------------------------------
