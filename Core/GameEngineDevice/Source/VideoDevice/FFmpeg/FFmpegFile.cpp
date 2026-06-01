@@ -52,7 +52,12 @@ Bool FFmpegFile::open(File *file)
 	DEBUG_ASSERTCRASH(m_file == nullptr, ("already open"));
 	DEBUG_ASSERTCRASH(file != nullptr, ("null file pointer"));
 #if LOGGING_LEVEL != LOGLEVEL_NONE
-	av_log_set_level(AV_LOG_INFO);
+	// AV_LOG_INFO logs "No accelerated colorspace conversion" once per
+	// sws_getCachedContext miss — and if the destination size oscillates,
+	// that fires every frame. Synchronous stderr writes from a terminal
+	// session tank the cutscene framerate (observed ~10 FPS on macOS).
+	// AV_LOG_ERROR keeps real errors visible without the per-frame spam.
+	av_log_set_level(AV_LOG_ERROR);
 #endif
 
 // This is required for FFmpeg older than 4.0 -> deprecated afterwards though

@@ -283,15 +283,30 @@ public:
         if (m_compressed) {
             // Texture mip level for a BC/DDS texture: staging holds tightly-packed
             // compressed blocks (DDSFileClass::Copy_Level_To_Surface memcpy's them).
-            size_t sz = 0;
-            BcLayout(fmt, w ? w : 1, h ? h : 1, m_pitch, sz);
-            m_staging.resize(sz, 0);
+            BcLayout(fmt, w ? w : 1, h ? h : 1, m_pitch, m_staging_size);
         } else {
             m_bpp   = FormatBpp(fmt);
             m_pitch = (w ? w : 1) * m_bpp;
-            m_staging.resize((size_t)m_pitch * (h ? h : 1), 0);
+            m_staging_size = (size_t)m_pitch * (h ? h : 1);
+        }
+        // Lazy: don't `resize` here. W3DSmudgeManager::render and the engine's
+        // hardware-cap probe both `_Get_DX8_Back_Buffer()` every frame and
+        // immediately `Release_Ref()` it without touching the bits in the
+        // common no-smudges case — a 2560×1440×4 (14.7 MB) value-init+free per
+        // frame was burning ~50% of CPU on macOS profiles (sample(1) showed
+        // `std::vector::__append` and `__destroy_vector` as the dominant top of
+        // stack at the main-menu idle). `ensureStaging()` allocates on first
+        // real access (Lock/Copy/flush) and `surfDataSize()` reports the
+        // logical bytes so GetDesc doesn't lie about size before alloc.
+    }
+
+    // Lazy allocator — called on first read/write access to the bits.
+    void ensureStaging() {
+        if (m_staging.empty() && m_staging_size > 0) {
+            m_staging.resize(m_staging_size, 0);
         }
     }
+    size_t surfDataSize() const { return m_staging_size; }
 
     // When this surface is a texture mip level (returned by
     // MetalTexture8::GetSurfaceLevel), it carries the owning MTLTexture so that
@@ -303,7 +318,9 @@ public:
     UINT      surfHeight() const { return m_height; }
     D3DFORMAT surfFormat() const { return m_format; }
     UINT      surfPitch()  const { return m_pitch; }
-    unsigned char*       surfBits()       { return m_staging.data(); }
+    unsigned char*       surfBits()       { ensureStaging(); return m_staging.data(); }
+    // const-version can't ensureStaging; callers that hit a never-touched
+    // surface get nullptr-equivalent and must check (CopyRects src checks).
     const unsigned char* surfBits() const { return m_staging.data(); }
     void*     uploadTexture() const { return m_uploadTexture; }
 
@@ -321,21 +338,29 @@ public:
         }
         const UINT w = m_width ? m_width : 1;
         const UINT h = m_height ? m_height : 1;
-        std::vector<unsigned char> bgra((size_t)w * h * 4);
+        // Per-surface persistent BGRA scratch — the video-cutscene path hits
+        // flushToTexture every frame for the same w*h, so a fresh `std::vector`
+        // alloc+free here was ~37% of the loadscreen sample (vector::vector
+        // + ~vector dominating). Hold the vector on the surface; it grows
+        // monotonically to max needed and lives until destroy. `resize()` only
+        // grows; for the typical equal-size case it's a single capacity check.
+        const size_t bgraNeed = (size_t)w * h * 4;
+        if (m_bgraScratch.size() < bgraNeed) m_bgraScratch.resize(bgraNeed);
+        unsigned char* bgra = m_bgraScratch.data();
         for (UINT y = 0; y < h; ++y)
             ConvertRowToBGRA8(m_format, m_staging.data() + (size_t)y * m_pitch,
-                              bgra.data() + (size_t)y * w * 4, w);
+                              bgra + (size_t)y * w * 4, w);
         static int dbg = -1; if (dbg < 0) dbg = getenv("MTL_DEBUG") ? 1 : 0;
         if (dbg) {
             static int n = 0;
             if (n++ < 40) {
                 unsigned long aSum = 0; int aMax = 0;
                 unsigned long rgbSum = 0;
-                for (size_t i = 0; i + 3 < bgra.size(); i += 4) {
+                for (size_t i = 0; i + 3 < bgraNeed; i += 4) {
                     aSum += bgra[i+3]; if (bgra[i+3] > aMax) aMax = bgra[i+3];
                     rgbSum += bgra[i] + bgra[i+1] + bgra[i+2];
                 }
-                const unsigned char* cc = bgra.data() + (((size_t)(h/2) * w) + (w/2)) * 4;
+                const unsigned char* cc = bgra + (((size_t)(h/2) * w) + (w/2)) * 4;
                 // raw 16-bit staging value at center (for A1R5G5B5 etc.)
                 unsigned rawc = 0;
                 if (m_bpp == 2) rawc = ((const unsigned short*)(m_staging.data() + (size_t)(h/2)*m_pitch))[w/2];
@@ -346,7 +371,7 @@ public:
             }
         }
         MetalContext_UploadTextureBGRA8(m_uploadTexture, (int)w, (int)h,
-                                        bgra.data(), (int)(w * 4));
+                                        bgra, (int)(w * 4));
     }
 
     // IUnknown
@@ -369,12 +394,13 @@ public:
             pDesc->Pool   = D3DPOOL_DEFAULT;
             pDesc->Width  = m_width;
             pDesc->Height = m_height;
-            pDesc->Size   = (UINT)m_staging.size();
+            pDesc->Size   = (UINT)m_staging_size;  // logical (independent of lazy alloc)
         }
         return S_OK;
     }
     STDMETHOD(LockRect)(D3DLOCKED_RECT* pLockedRect, CONST RECT*, DWORD) override
     {
+        ensureStaging();
         if (pLockedRect) {
             pLockedRect->Pitch = (INT)m_pitch;
             pLockedRect->pBits = m_staging.data();
@@ -392,7 +418,13 @@ private:
     UINT              m_pitch = 0;
     bool              m_compressed = false;
     void*             m_uploadTexture = nullptr;  // MTLTexture if this is a texture level
+    size_t            m_staging_size = 0;         // logical bytes (set in ctor; alloc is lazy)
     std::vector<unsigned char> m_staging;
+    // Persistent BGRA scratch used by flushToTexture() for the BGR0/ARGB→BGRA8
+    // upload conversion. Grows on demand to the surface's pixel count×4; never
+    // shrinks. Lives for the surface's lifetime — avoids the per-frame
+    // alloc+free that dominated the loadscreen-video profile (~37% of CPU).
+    std::vector<unsigned char> m_bgraScratch;
 };
 
 // MetalTexture8::GetSurfaceLevel — defined here because it constructs a
@@ -1396,7 +1428,19 @@ HRESULT MetalDevice8::GetDeviceCaps(D3DCAPS8* pCaps)
     pCaps->MaxActiveLights       = 8;
     pCaps->MaxUserClipPlanes     = 6;
     pCaps->MaxVertexBlendMatrices = 4;
-    pCaps->MaxPointSize          = 256.0f;
+    // TheSuperHackers @fix macOS-port: report MaxPointSize=1.0 so dx8caps.cpp's
+    //   SupportPointSprites = (Caps.MaxPointSize > 1.0f);
+    // evaluates to FALSE → W3DSnowManager::render() takes the renderAsQuads()
+    // path instead of the D3DPT_POINTLIST + D3DRS_POINTSPRITEENABLE path.
+    // The Metal shim does NOT implement point sprites: DrawPrimitive(POINTLIST)
+    // falls through to MTLPrimitiveTypeTriangle and IndexCountFor() defaults
+    // primCount*3, so each "snow point" is interpreted as part of a stretched
+    // triangle, producing the full-screen vertical streak artifact reported on
+    // CWC snow/rain maps. renderAsQuads() generates 4 explicit view-space
+    // vertices per flake and goes through the regular tri-list pipeline that
+    // the shim handles correctly. Currently this is the only caller of
+    // Support_PointSprites() in the engine.
+    pCaps->MaxPointSize          = 1.0f;
     pCaps->MaxPrimitiveCount     = 0x000FFFFF;
     pCaps->MaxVertexIndex        = 0x00FFFFFF;
     pCaps->MaxStreams            = 16;

@@ -105,7 +105,37 @@ Bool FramePacer::isActualFramesPerSecondLimitEnabled() const
 
 Int FramePacer::getActualFramesPerSecondLimit() const
 {
+#if defined(__APPLE__)
+	// macOS port: pin the render frame-rate cap at 30 FPS by default, in
+	// every game state (main menu shellmap, cutscenes, loadscreen, missions,
+	// skirmish, score screen). The original game was effectively CPU-bound
+	// at ~30 on period hardware and the cutscene/animation timings are tuned
+	// to that — running render at 60+ on Apple Silicon visibly speeds up
+	// camera moves and ambient idle anims even though logic still ticks at
+	// LOGICFRAMES_PER_SECOND=30. (Logic is decoupled from render rate;
+	// units don't move faster, but visual motion ramp does.)
+	//
+	// Without this clamp, the engine's per-state setFramesPerSecondLimit()
+	// calls swing the cap wildly (240 default → 20 during loadscreen → 240
+	// again in mission), and the engine-side gate `m_useFpsLimit` is OFF by
+	// default (Options.ini has no FPSLimit key on a fresh install). The
+	// result is uncapped render in everything outside skirmish (where the
+	// in-game Options menu surfaces the toggle), riding only on CAMetalLayer
+	// VSync — which on a 75 Hz display floats around 75 with dips when
+	// video upload spikes hit.
+	//
+	// Override with `GEN_FPS_CAP=N` env (0 / negative → uncapped). Cached
+	// on first read for the rest of the process lifetime.
+	static int s_cap = -2;
+	if (s_cap == -2) {
+		const char *e = ::getenv("GEN_FPS_CAP");
+		s_cap = (e && *e) ? atoi(e) : 30;
+	}
+	if (s_cap <= 0) return RenderFpsPreset::UncappedFpsValue;
+	return s_cap;
+#else
 	return isActualFramesPerSecondLimitEnabled() ? getFramesPerSecondLimit() : RenderFpsPreset::UncappedFpsValue;
+#endif
 }
 
 Real FramePacer::getUpdateTime()  const

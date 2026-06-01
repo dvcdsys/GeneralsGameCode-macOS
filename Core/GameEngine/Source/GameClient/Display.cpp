@@ -307,7 +307,18 @@ void Display::update()
 		{
 			m_videoStream->frameDecompress();
 			m_videoStream->frameRender( m_videoBuffer );
-			if( m_videoStream->frameIndex() != m_videoStream->frameCount() - 1)
+			// TheSuperHackers @fix Short-Bink cutscene hang. The original `!=`
+			// hangs when frameIndex() ever exceeds frameCount()-1 — happens when
+			// frameCount() truncates to 0 for sub-frame-duration movies
+			// (e.g. CWC's CWCgenEmptyMovie.bik is 0.033s @ 30fps → 0.999 → Int(0)).
+			// With frameCount()-1 == -1 the != check is always true and we spin
+			// in frameNext() forever (sws_scale + EOF), never reaching the
+			// hold-timer/stopMovie branch below. Switching to `<` makes
+			// "we've shown the final frame" cover all cases where frameIndex
+			// has caught up to or exceeded the last index. Works the same for
+			// well-formed multi-frame movies (the equality case was already
+			// the natural stop boundary).
+			if( m_videoStream->frameIndex() < m_videoStream->frameCount() - 1)
 				m_videoStream->frameNext();
 			else if( m_copyrightHoldTime >= 0 ||m_movieHoldTime >= 0 )
 			{
