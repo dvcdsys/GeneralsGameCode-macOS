@@ -172,8 +172,8 @@ class MilesAudioManager : public AudioManager
 		///< NOTE NOTE NOTE !!DO NOT USE THIS IN FOR GAMELOGIC PURPOSES!! NOTE NOTE NOTE
 		virtual Bool isCurrentlyPlaying( AudioHandle handle ) override;
 
-		virtual void notifyOfAudioCompletion( UnsignedInt audioCompleted, UnsignedInt flags ) override;
-		virtual PlayingAudio *findPlayingAudioFrom( UnsignedInt audioCompleted, UnsignedInt flags );
+		virtual void notifyOfAudioCompletion( uintptr_t audioCompleted, UnsignedInt flags ) override;
+		virtual PlayingAudio *findPlayingAudioFrom( uintptr_t audioCompleted, UnsignedInt flags );
 
 		virtual UnsignedInt getProviderCount() const override;
 		virtual AsciiString getProviderName( UnsignedInt providerNum ) const override;
@@ -351,7 +351,7 @@ class MilesAudioManagerDummy : public MilesAudioManager
 	//virtual void openDevice() override {}
 	//virtual void closeDevice() override {}
 	//virtual void* getDevice() override { return nullptr; }
-	virtual void notifyOfAudioCompletion(UnsignedInt audioCompleted, UnsignedInt flags) override {}
+	virtual void notifyOfAudioCompletion(uintptr_t audioCompleted, UnsignedInt flags) override {}
 	virtual UnsignedInt getProviderCount() const override { return 0; };
 	virtual AsciiString getProviderName(UnsignedInt providerNum) const override { return ""; }
 	virtual UnsignedInt getProviderIndex(AsciiString providerName) const override { return 0; }

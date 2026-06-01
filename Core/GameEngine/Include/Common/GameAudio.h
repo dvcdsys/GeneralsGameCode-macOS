@@ -201,7 +201,13 @@ class AudioManager : public SubsystemInterface
 		virtual void *getDevice() = 0;
 
 		// Device Dependent notification functions
-		virtual void notifyOfAudioCompletion( UnsignedInt audioCompleted, UnsignedInt flags ) = 0;
+		// NOTE: audioCompleted carries a device handle (e.g. Miles HSAMPLE), which is a
+		// pointer. It MUST be pointer-width (uintptr_t), not UnsignedInt (32-bit) — on
+		// LP64 (macOS/arm64) a 32-bit param truncates the handle, so findPlayingAudioFrom
+		// never matches the playing entry, the sample is never marked stopped, and its
+		// handle is never returned to the free pool → audio gradually goes silent as the
+		// fixed handle pool (2D first, then 3D) leaks dry. No-op on Win32 (uintptr_t=32-bit).
+		virtual void notifyOfAudioCompletion( uintptr_t audioCompleted, UnsignedInt flags ) = 0;
 
 		// Device Dependent enumerate providers functions. It is okay for there to be only 1 provider (Miles provides a maximum of 64.
 		virtual UnsignedInt getProviderCount() const = 0;

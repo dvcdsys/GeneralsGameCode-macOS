@@ -926,7 +926,7 @@ void MilesAudioManager::stopAudioEvent( AudioHandle handle )
 		if (audio->m_audioEventRTS->getPlayingHandle() == handle) {
 			// found it
 			audio->m_requestStop = true;
-			notifyOfAudioCompletion((UnsignedInt)(uintptr_t)(audio->m_stream), PAT_Stream);
+			notifyOfAudioCompletion((uintptr_t)(audio->m_stream), PAT_Stream);
 			break;
 		}
 	}
@@ -1511,7 +1511,7 @@ Bool MilesAudioManager::isCurrentlyPlaying( AudioHandle handle )
 }
 
 //-------------------------------------------------------------------------------------------------
-void MilesAudioManager::notifyOfAudioCompletion( UnsignedInt audioCompleted, UnsignedInt flags )
+void MilesAudioManager::notifyOfAudioCompletion( uintptr_t audioCompleted, UnsignedInt flags )
 {
 	PlayingAudio *playing = findPlayingAudioFrom(audioCompleted, flags);
 	if (!playing) {
@@ -1573,7 +1573,7 @@ void MilesAudioManager::notifyOfAudioCompletion( UnsignedInt audioCompleted, Uns
 }
 
 //-------------------------------------------------------------------------------------------------
-PlayingAudio *MilesAudioManager::findPlayingAudioFrom( UnsignedInt audioCompleted, UnsignedInt flags )
+PlayingAudio *MilesAudioManager::findPlayingAudioFrom( uintptr_t audioCompleted, UnsignedInt flags )
 {
 	std::list<PlayingAudio *>::iterator it;
 	PlayingAudio *playing;
@@ -3035,19 +3035,19 @@ void MilesAudioManager::friend_forcePlayAudioEventRTS(const AudioEventRTS* event
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setSampleCompleted( HSAMPLE sampleCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) sampleCompleted, PAT_Sample);
+	TheAudio->notifyOfAudioCompletion((uintptr_t)(sampleCompleted), PAT_Sample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK set3DSampleCompleted( H3DSAMPLE sample3DCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) sample3DCompleted, PAT_3DSample);
+	TheAudio->notifyOfAudioCompletion((uintptr_t)(sample3DCompleted), PAT_3DSample);
 }
 
 //-------------------------------------------------------------------------------------------------
 void AILCALLBACK setStreamCompleted( HSTREAM streamCompleted )
 {
-	TheAudio->notifyOfAudioCompletion((UnsignedInt)(uintptr_t) streamCompleted, PAT_Stream);
+	TheAudio->notifyOfAudioCompletion((uintptr_t)(streamCompleted), PAT_Stream);
 }
 
 //-------------------------------------------------------------------------------------------------
