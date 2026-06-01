@@ -40,6 +40,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/PerfTimer.h"
+#include "Common/Player.h"	// for getControllingPlayer()->getPlayerIndex() (Guard-From-Position fog filter)
 #include "Common/Team.h"
 #include "Common/Xfer.h"
 #include "Common/ThingTemplate.h"
@@ -235,6 +236,15 @@ Bool AIGuardMachine::lookForInnerTarget()
 	PartitionFilterRelationship					f5(owner, PartitionFilterRelationship::ALLOW_NEUTRAL);
 	PartitionFilterPossibleToEnter			f6(owner, CMD_FROM_AI);
 	PartitionFilterPossibleToHijack			f7(owner, CMD_FROM_AI);
+	// TheSuperHackers @bugfix Guard-From-Position must not see through fog of war.
+	// Unlike the other guard modes (which scan a radius around the unit's OWN
+	// position, where everything is already within its vision), FROM_POSITION
+	// stands at the home position A but scans the watched zone B
+	// (getPositionToGuard()), which can sit well beyond the unit's vision and
+	// under fog/shroud. Without a fog filter the scan acquires enemies the
+	// owning player can't actually see. PartitionFilterFreeOfFog accepts only
+	// targets whose ShroudedStatus is OBJECTSHROUD_CLEAR for this player.
+	PartitionFilterFreeOfFog						fFog(owner->getControllingPlayer()->getPlayerIndex());
 
 	PartitionFilter *filters[16];
 	Int count = 0;
@@ -281,6 +291,12 @@ Bool AIGuardMachine::lookForInnerTarget()
 	{
 		// only consider flying targets
 		filters[count++] = &f4;
+	}
+
+	if (getGuardMode() == GUARDMODE_FROM_POSITION)
+	{
+		// don't acquire fogged/shrouded enemies in the (possibly distant) watched zone
+		filters[count++] = &fFog;
 	}
 
 	filters[count++] = nullptr;
