@@ -66,8 +66,10 @@ HOW THIS GAME WORKS (principles to reason from):
 - ECONOMY funds everything. Money comes from supply/oil/cash points and from capturing fuel/economy \
 buildings and flags. The more economy points you hold, the bigger army you can afford. Map control = \
 economy.
-- POWER: most buildings need power. If your powerMargin goes negative, buildings shut down (no \
-production, no radar, defenses go offline). Keep powerMargin >= 0 — build power plants when low.
+- POWER: if powerMargin goes NEGATIVE, buildings shut down — fix it by building a power structure. \
+But if powerMargin is 0 AND no power building appears in buildable.makeableNow, power is simply not \
+tracked/needed in this setup — do NOT chase it or invent power buildings; focus on army and economy. \
+Only build what buildable.makeableNow actually lists (use those EXACT names).
 - BUILD ORDER logic: you need a builder (dozer/worker) to construct; power and production buildings \
 (barracks = infantry, war factory = vehicles, airfield = aircraft) come before a big army; defensive \
 structures protect your base. Build in a sensible order for your plan.
