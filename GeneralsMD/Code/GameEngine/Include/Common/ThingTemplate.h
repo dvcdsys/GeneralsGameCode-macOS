@@ -588,6 +588,7 @@ public:
 
 	/// Used only by Skirmish AI. Everyone else should call calcCostToBuild.
 	Int friend_getBuildCost() const { return m_buildCost; }
+	Real friend_getBuildTime() const { return m_buildTime; }	///< build/train seconds (read-only accessor)
 
 	const AsciiString& getDefaultOwningSide() const { return m_defaultOwningSide; }
 

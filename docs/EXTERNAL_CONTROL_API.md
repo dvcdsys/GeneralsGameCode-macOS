@@ -53,8 +53,10 @@ substring also kills a manually-run `generalszh`).
 | `/units?player=<i>&view=<j>` | GET | objects: `id, template, player, x/y/z, health, relationToLocal, category, tags[]`; `view=j` applies **synthesized fog-of-war** for player j via the `shroud` field — `clear` (in sight, live state), `cached` (building seen before, now out of sight: last-known snapshot), `undefined` (neutral landmark known from the map but never seen: position only, no state). Hidden objects (un-scouted enemies, units out of sight) are omitted. `player=i` filters by owner. |
 | `/resources?player=<i>` | GET | `money, powerProduction, powerConsumption` |
 | `/map?ds=<n>&zone=1` | GET | pathfinder grid: `cellSize, width, height`, base64 `type` (clear/water/cliff/rubble/obstacle/impassable), `heightField`, optional `zone` |
+| `/catalog?side=<faction>` | GET | static per-template stats for all buildable items: `name, displayName, side, category, tags[], cost, buildTime, refund, power, commandSet, prerequisites[]` (tech tree). `?side` optional filter |
+| `/buildable?player=<i>` | GET | what player i can build/train **now**: economy (`money`,power) + `builders[]` (each builder's options with a `canMake` reason) + flat `available[]` (`{template, how:build\|train, builderId, cost}`) |
 | `/control` | POST | `{action:"pause"|"resume"|"step"|"speed", value?}` |
-| `/command` | POST | `{player, ids[], verb, params}` — verbs: `move, attack_move, attack_target, stop, guard_zone, retreat` |
+| `/command` | POST | `{player, ids[], verb, params}`. Verbs — **move:** `move, stop, retreat`; **combat:** `attack_move, attack_target`(targetId); **defense:** `guard_zone`; **unit actions:** `capture, garrison, ungarrison`(targetId), `repair`(targetId), `sell`, `special_power`(power[,targetId\|pos]), `ability`(button[,targetId\|pos]); **production:** `train_unit`(ids[0]=factory, template[, count]), `build_structure`(ids[0]=dozer, template, pos[, angle]), `set_rally`(ids[0]=building, pos) |
 | `/commands` | POST | array of the above |
 | `/session` | GET/POST | GET: `seed, headless, replay{mode,playingBack}, outcome{localResult,decided,endFrame,players[]}`; POST `{seed}` (pre-start only, 409 once live) |
 | `/events` | WS | `unit_died, unit_produced, structure_complete, combat` batched ~30 Hz with `seq`/`frame`; global; live-only; `dropped` overflow counter |
@@ -106,9 +108,15 @@ Discover the API player as the `/players` entry with `controller=="external"`. A
 
 ## 5. Roadmap / known gaps (game side)
 
-- **`/catalog`** — static `ThingTemplate` stats per faction: cost, build time, prerequisites (tech
-  tree), power, health, armor, weapons (damage vs armor type), vision, speed, footprint.
-- **`/buildable?player=N`** — what's buildable now (`TheBuildAssistant::canMakeUnit/isPossibleToMakeUnit`).
+Done (verified live): full action vocabulary (`/command` verbs above — move/combat/defense/unit-actions/
+production), plus `/catalog` (static template stats + tech tree) and `/buildable` (what a player can
+build now). Remaining:
+
+- **`/catalog` combat stats** — current catalog is economy/tech-level (cost, time, power, prereqs,
+  side, tags, commandSet). Health/armor/weapon-damage/vision/speed/footprint live in module INI data,
+  not on `ThingTemplate`; expose them next (read from module data or a sampled instance).
+- **`/buildable` abilities** — lists build/train command buttons; could also enumerate ability buttons
+  (deploy/upgrade/power) per unit so the bot can discover `ability`/`special_power` button names.
 - **`/query/can_build` + `/query/path`** — point-wise authoritative answers (see cookbook).
 - Deferred: LAN/online slot encoding; replay-recording of external commands (direct AIGroup dispatch
   bypasses `TheRecorder` → a `.rep` of an API session desyncs); guard_zone aggression/fallback.

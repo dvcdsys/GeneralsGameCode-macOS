@@ -73,6 +73,13 @@
 #include "Common/Energy.h"
 #include "Common/Money.h"
 #include "Common/ThingTemplate.h"
+#include "Common/ThingFactory.h"		// TheThingFactory->findTemplate (build/train verbs, /catalog)
+#include "Common/BuildAssistant.h"		// TheBuildAssistant (build_structure/sell, /buildable)
+#include "Common/SpecialPower.h"		// TheSpecialPowerStore (special_power verb)
+#include "Common/ProductionPrerequisite.h"	// prereq list (/catalog tech tree)
+#include "GameLogic/Module/ProductionUpdate.h"	// ProductionUpdateInterface (train_unit)
+#include "GameLogic/Module/UpdateModule.h"		// ExitInterface::setRallyPoint (set_rally)
+#include "GameClient/ControlBar.h"				// CommandSet/CommandButton, TheControlBar (/buildable)
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
 #include "Common/ObjectStatusTypes.h"	// OBJECT_STATUS_STEALTHED/DETECTED/DISGUISED (synth fog)
@@ -112,7 +119,9 @@ enum RequestKind
 	REQ_COMMANDS,
 	REQ_SESSION,		///< GET /session: seed/outcome/replay/headless
 	REQ_SESSION_SET,	///< POST /session: set seed (pre-start only)
-	REQ_MAP				///< GET /map: pathfinder cell grid (type/height/zone)
+	REQ_MAP,			///< GET /map: pathfinder cell grid (type/height/zone)
+	REQ_CATALOG,		///< GET /catalog: static per-template stats + tech tree
+	REQ_BUILDABLE		///< GET /buildable?player=N: what player N can build/train now
 };
 
 /// One in-flight request handed from the listener thread to the engine thread and back.
@@ -203,6 +212,54 @@ const char* primaryCategory(Object* o)
 	if (o->isKindOf(KINDOF_INFANTRY) || o->isKindOf(KINDOF_VEHICLE) || o->isKindOf(KINDOF_AIRCRAFT))
 		return "unit";
 	return "prop";
+}
+
+/// Same coarse tags/category, but for a ThingTemplate (static, no live Object) — used by /catalog.
+nlohmann::json templateTags(const ThingTemplate* tt)
+{
+	nlohmann::json t = nlohmann::json::array();
+	if (tt->isKindOf(KINDOF_STRUCTURE))                    t.push_back("structure");
+	if (tt->isKindOf(KINDOF_INFANTRY))                     t.push_back("infantry");
+	if (tt->isKindOf(KINDOF_VEHICLE))                      t.push_back("vehicle");
+	if (tt->isKindOf(KINDOF_AIRCRAFT))                     t.push_back("aircraft");
+	if (tt->isKindOf(KINDOF_DOZER))                        t.push_back("dozer");
+	if (tt->isKindOf(KINDOF_HARVESTER))                    t.push_back("harvester");
+	if (tt->isKindOf(KINDOF_COMMANDCENTER))                t.push_back("command_center");
+	if (tt->isKindOf(KINDOF_GARRISONABLE_UNTIL_DESTROYED)) t.push_back("garrisonable");
+	if (tt->isKindOf(KINDOF_CAPTURABLE))                   t.push_back("capturable");
+	if (tt->isKindOf(KINDOF_TECH_BUILDING))                t.push_back("tech_building");
+	if (tt->isKindOf(KINDOF_SUPPLY_SOURCE))                t.push_back("supply_source");
+	if (tt->isKindOf(KINDOF_CASH_GENERATOR))               t.push_back("cash_generator");
+	if (tt->isKindOf(KINDOF_FS_BASE_DEFENSE) || tt->isKindOf(KINDOF_TECH_BASE_DEFENSE)) t.push_back("base_defense");
+	return t;
+}
+const char* templateCategory(const ThingTemplate* tt)
+{
+	if (tt->isKindOf(KINDOF_STRUCTURE))
+	{
+		if (tt->isKindOf(KINDOF_SUPPLY_SOURCE) || tt->isKindOf(KINDOF_CASH_GENERATOR)) return "economy";
+		if (tt->isKindOf(KINDOF_TECH_BUILDING) || tt->isKindOf(KINDOF_CAPTURABLE))     return "tech";
+		if (tt->isKindOf(KINDOF_GARRISONABLE_UNTIL_DESTROYED))                         return "garrisonable";
+		if (tt->isKindOf(KINDOF_FS_BASE_DEFENSE) || tt->isKindOf(KINDOF_TECH_BASE_DEFENSE)) return "defense";
+		return "structure";
+	}
+	if (tt->isKindOf(KINDOF_INFANTRY) || tt->isKindOf(KINDOF_VEHICLE) || tt->isKindOf(KINDOF_AIRCRAFT))
+		return "unit";
+	return "prop";
+}
+const char* canMakeName(CanMakeType c)
+{
+	switch (c)
+	{
+		case CANMAKE_OK:                  return "ok";
+		case CANMAKE_NO_PREREQ:           return "no_prereq";
+		case CANMAKE_NO_MONEY:            return "no_money";
+		case CANMAKE_FACTORY_IS_DISABLED: return "factory_disabled";
+		case CANMAKE_QUEUE_FULL:          return "queue_full";
+		case CANMAKE_PARKING_PLACES_FULL: return "parking_full";
+		case CANMAKE_MAXED_OUT_FOR_PLAYER:return "maxed_out";
+		default:                          return "unknown";
+	}
 }
 
 /// Standard base64 of a raw byte buffer (used to ship the /map grids compactly).
@@ -534,6 +591,16 @@ private:
 			pr->numArg = req.has_param("zone") ? 1.0 : 0.0;										// include zone ids?
 			respondReq(res, pr);
 		});
+		m_server.Get("/catalog", [this](const Request& req, Response& res) {
+			std::shared_ptr<PendingRequest> pr = std::make_shared<PendingRequest>();
+			pr->kind = REQ_CATALOG;
+			if (req.has_param("side")) pr->strArg = req.get_param_value("side");	// optional faction filter
+			respondReq(res, pr);
+		});
+		m_server.Get("/buildable", [this](const Request& req, Response& res) {
+			int player = req.has_param("player") ? ::atoi(req.get_param_value("player").c_str()) : -1;
+			respond(res, REQ_BUILDABLE, player);
+		});
 		m_server.Post("/session", [this](const Request& req, Response& res) {
 			std::shared_ptr<PendingRequest> pr = std::make_shared<PendingRequest>();
 			pr->kind = REQ_SESSION_SET;
@@ -674,6 +741,13 @@ private:
 			{
 				int ds = req.playerArg > 0 ? req.playerArg : 1;
 				json out = buildMap(ds, req.numArg != 0.0, req.status);
+				req.responseJson = out.dump();
+				break;
+			}
+			case REQ_CATALOG:  req.responseJson = buildCatalog(req.strArg).dump(); break;
+			case REQ_BUILDABLE:
+			{
+				json out = buildBuildable(req.playerArg, req.status);
 				req.responseJson = out.dump();
 				break;
 			}
@@ -921,6 +995,116 @@ private:
 		return o;
 	}
 
+	/// /catalog: static per-template stats for everything a player can build/train — cost, build
+	/// time, power, refund, side, category/tags, command set, and prerequisite display (tech tree).
+	/// Optional ?side=USA filters by faction. The agent uses this to plan economy + build orders.
+	json buildCatalog(const std::string& sideFilter)
+	{
+		json arr = json::array();
+		if (!TheThingFactory) return arr;
+		Player* lp = ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
+		for (const ThingTemplate* tt = TheThingFactory->firstTemplate(); tt; tt = tt->friend_getNextTemplate())
+		{
+			if (!tt->isBuildableItem()) continue;	// only things a player can actually build/train
+			std::string side = tt->getDefaultOwningSide().str();
+			if (!sideFilter.empty() && side != sideFilter) continue;
+			json e;
+			e["name"]        = tt->getName().str();
+			e["displayName"] = narrow(tt->getDisplayName());
+			e["side"]        = side;
+			e["category"]    = templateCategory(tt);
+			json tags = templateTags(tt); if (!tags.empty()) e["tags"] = tags;
+			e["cost"]        = tt->friend_getBuildCost();
+			e["buildTime"]   = tt->friend_getBuildTime();
+			e["refund"]      = tt->getRefundValue();
+			int power = tt->getEnergyProduction();
+			if (power) e["power"] = power;			// >0 produces, <0 consumes
+			e["commandSet"]  = tt->friend_getCommandSetString().str();
+			int pc = tt->getPrereqCount();
+			if (pc > 0 && lp)
+			{
+				json prereqs = json::array();
+				for (int i = 0; i < pc; ++i)
+				{
+					std::string s = narrow(tt->getNthPrereq(i)->getRequiresList(lp));
+					if (!s.empty()) prereqs.push_back(s);
+				}
+				if (!prereqs.empty()) e["prerequisites"] = prereqs;	// display text (tech tree)
+			}
+			arr.push_back(e);
+		}
+		return arr;
+	}
+
+	/// /buildable?player=N: what player N can build/train RIGHT NOW. Walks each owned builder's
+	/// command set, lists its build/train options with a live canMake status, and a flat `available`
+	/// union of everything currently makeable (with the builderId to issue build_structure/train_unit).
+	json buildBuildable(int player, int& statusOut)
+	{
+		Player* p = (player >= 0 && ThePlayerList) ? ThePlayerList->getNthPlayer(player) : nullptr;
+		if (!p) { statusOut = 404; return json{ {"error", "no such player; pass ?player=<index>"} }; }
+		json o;
+		o["player"] = player;
+		o["money"]  = p->getMoney() ? (unsigned)p->getMoney()->countMoney() : 0u;
+		if (p->getEnergy())
+		{
+			o["powerProduction"]  = (int)p->getEnergy()->getProduction();
+			o["powerConsumption"] = (int)p->getEnergy()->getConsumption();
+		}
+		json builders = json::array(), available = json::array();
+		std::set<std::string> seen;
+		if (TheGameLogic && TheControlBar && TheBuildAssistant)
+		{
+			for (Object* b = TheGameLogic->getFirstObject(); b; b = b->getNextObject())
+			{
+				if (b->getControllingPlayer() != p) continue;
+				const AsciiString csName = b->getCommandSetString();
+				if (csName.isEmpty()) continue;
+				const CommandSet* cs = TheControlBar->findCommandSet(csName);
+				if (!cs) continue;
+				json opts = json::array();
+				for (int i = 0; i < MAX_COMMANDS_PER_SET; ++i)
+				{
+					const CommandButton* cb = cs->getCommandButton(i);
+					if (!cb) continue;
+					GUICommandType gt = cb->getCommandType();
+					if (gt != GUI_COMMAND_UNIT_BUILD && gt != GUI_COMMAND_DOZER_CONSTRUCT) continue;
+					const ThingTemplate* tt = cb->getThingTemplate();
+					if (!tt) continue;
+					CanMakeType cm = TheBuildAssistant->canMakeUnit(b, (ThingTemplate*)tt);
+					const char* how = (gt == GUI_COMMAND_DOZER_CONSTRUCT) ? "build" : "train";
+					json bo;
+					bo["template"] = tt->getName().str();
+					bo["cost"]     = tt->friend_getBuildCost();
+					bo["how"]      = how;
+					bo["canMake"]  = canMakeName(cm);
+					opts.push_back(bo);
+					if (cm == CANMAKE_OK && !seen.count(tt->getName().str()))
+					{
+						seen.insert(tt->getName().str());
+						json a;
+						a["template"]  = tt->getName().str();
+						a["how"]       = how;
+						a["builderId"] = (unsigned)b->getID();
+						a["cost"]      = tt->friend_getBuildCost();
+						available.push_back(a);
+					}
+				}
+				if (!opts.empty())
+				{
+					json bd;
+					bd["id"]       = (unsigned)b->getID();
+					bd["template"] = b->getTemplate() ? b->getTemplate()->getName().str() : "";
+					bd["options"]  = opts;
+					builders.push_back(bd);
+				}
+			}
+		}
+		o["builders"]  = builders;	// per-builder option lists (with reasons)
+		o["available"] = available;	// flat: everything buildable NOW + the builderId to use
+		return o;
+	}
+
 	json buildControl(const std::string& action, double value, int& statusOut)
 	{
 		json o;
@@ -1037,8 +1221,27 @@ private:
 
 		const json params = (cmd.contains("params") && cmd["params"].is_object()) ? cmd["params"] : json::object();
 
+		// First owned object from ids[] (for single-object verbs: train_unit / build_structure / set_rally).
+		auto firstOwned = [&]() -> Object* {
+			if (cmd.contains("ids") && cmd["ids"].is_array())
+				for (const json& idv : cmd["ids"])
+					if (idv.is_number())
+					{
+						Object* o = TheGameLogic->findObjectByID((ObjectID)idv.get<unsigned>());
+						if (o && o->getControllingPlayer() == p) return o;
+					}
+			return nullptr;
+		};
+		// Any object addressed by params.targetId (target need not be owned: capture/repair/power).
+		auto targetObj = [&]() -> Object* {
+			return (params.contains("targetId") && params["targetId"].is_number())
+				? TheGameLogic->findObjectByID((ObjectID)params["targetId"].get<unsigned>()) : nullptr;
+		};
+
 		const bool needsUnits = (verb == "move" || verb == "attack_move" || verb == "attack_target"
-			|| verb == "stop" || verb == "guard_zone" || verb == "retreat");
+			|| verb == "stop" || verb == "guard_zone" || verb == "retreat"
+			|| verb == "capture" || verb == "garrison" || verb == "ungarrison" || verb == "evacuate"
+			|| verb == "repair" || verb == "sell" || verb == "special_power" || verb == "ability");
 		if (needsUnits && group->isEmpty())
 		{
 			statusOut = 400; r["accepted"] = false;
@@ -1091,10 +1294,126 @@ private:
 				warns.push_back("fallback_if accepted but not implemented (M1)");
 			if (!warns.empty()) r["warnings"] = warns;
 		}
+		// --- unit actions: capture / garrison / repair / sell / special power -----------------
+		else if (verb == "capture" || verb == "garrison")
+		{
+			Object* tgt = targetObj();
+			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (building to enter/capture)"; return r; }
+			group->groupEnter(tgt, CMD_FROM_AI);		// enter hostile bldg -> capture; civilian -> garrison
+			r["accepted"] = true;
+		}
+		else if (verb == "ungarrison" || verb == "evacuate")
+		{
+			Object* tgt = targetObj();
+			if (tgt) group->groupExit(tgt, CMD_FROM_AI);	// these passengers leave that container
+			else     group->groupEvacuate(CMD_FROM_AI);		// these containers empty themselves
+			r["accepted"] = true;
+		}
+		else if (verb == "repair")
+		{
+			Object* tgt = targetObj();
+			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (object to repair)"; return r; }
+			group->groupRepair(tgt, CMD_FROM_AI);
+			r["accepted"] = true;
+		}
+		else if (verb == "sell")
+		{
+			group->groupSell(CMD_FROM_AI);				// group = the building(s) to sell
+			r["accepted"] = true;
+		}
+		else if (verb == "special_power")
+		{
+			std::string name = params.contains("power") ? params.value("power", std::string())
+			                                            : params.value("which", std::string());
+			const SpecialPowerTemplate* sp = (TheSpecialPowerStore && !name.empty())
+				? TheSpecialPowerStore->findSpecialPowerTemplate(AsciiString(name.c_str())) : nullptr;
+			if (!sp) { statusOut = 400; r["accepted"] = false; r["error"] = "unknown special power (params.power); see /catalog"; return r; }
+			UnsignedInt spid = sp->getID();
+			Object* tgt = targetObj();
+			if (tgt)
+				group->groupDoSpecialPowerAtObject(spid, tgt, 0);
+			else if (params.contains("pos"))
+			{
+				Coord3D pos = jsonToCoord(params["pos"]);
+				group->groupDoSpecialPowerAtLocation(spid, &pos, 0.0f, nullptr, 0);
+			}
+			else
+				group->groupDoSpecialPower(spid, 0);
+			r["accepted"] = true;
+		}
+		else if (verb == "ability")
+		{
+			// Generic command-button ability (deploy, weapon toggle, upgrade, hack internet, ...).
+			std::string bn = params.contains("button") ? params.value("button", std::string())
+			                                            : params.value("which", std::string());
+			const CommandButton* cb = (TheControlBar && !bn.empty())
+				? TheControlBar->findCommandButton(AsciiString(bn.c_str())) : nullptr;
+			if (!cb) { statusOut = 400; r["accepted"] = false; r["error"] = "unknown command button (params.button)"; return r; }
+			Object* tgt = targetObj();
+			if (tgt)
+				group->groupDoCommandButtonAtObject(cb, tgt, CMD_FROM_AI);
+			else if (params.contains("pos"))
+			{
+				Coord3D pos = jsonToCoord(params["pos"]);
+				group->groupDoCommandButtonAtPosition(cb, &pos, CMD_FROM_AI);
+			}
+			else
+				group->groupDoCommandButton(cb, CMD_FROM_AI);
+			r["accepted"] = true;
+		}
+		// --- production / construction: train_unit / build_structure / set_rally ---------------
+		else if (verb == "train_unit")
+		{
+			Object* factory = firstOwned();
+			if (!factory) { statusOut = 400; r["accepted"] = false; r["error"] = "need a production building id in ids[0]"; return r; }
+			std::string tn = params.value("template", std::string());
+			const ThingTemplate* tt = (TheThingFactory && !tn.empty())
+				? TheThingFactory->findTemplate(AsciiString(tn.c_str()), FALSE) : nullptr;
+			if (!tt) { statusOut = 400; r["accepted"] = false; r["error"] = "unknown template (params.template); see /catalog or /buildable"; return r; }
+			ProductionUpdateInterface* pu = factory->getProductionUpdateInterface();
+			if (!pu) { statusOut = 400; r["accepted"] = false; r["error"] = "ids[0] is not a production building"; return r; }
+			int count = params.value("count", 1), queued = 0;
+			for (int k = 0; k < count && k < 20; ++k)
+				if (pu->queueCreateUnit(tt, pu->requestUniqueUnitID())) ++queued;
+			r["queued"] = queued;
+			r["accepted"] = (queued > 0);
+			if (queued == 0) { statusOut = 400; r["error"] = "queueCreateUnit refused (prereq / money / queue full?)"; }
+		}
+		else if (verb == "build_structure")
+		{
+			std::string tn = params.value("template", std::string());
+			const ThingTemplate* tt = (TheThingFactory && !tn.empty())
+				? TheThingFactory->findTemplate(AsciiString(tn.c_str()), FALSE) : nullptr;
+			if (!tt) { statusOut = 400; r["accepted"] = false; r["error"] = "unknown template (params.template); see /catalog"; return r; }
+			if (!params.contains("pos")) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.pos"; return r; }
+			Coord3D pos = jsonToCoord(params["pos"]);
+			Real angle = (Real)params.value("angle", 0.0);
+			Object* builder = firstOwned();				// dozer/worker; may be null for instant placement
+			if (!TheBuildAssistant) { statusOut = 503; r["accepted"] = false; r["error"] = "build assistant unavailable"; return r; }
+			LegalBuildCode lbc = TheBuildAssistant->isLocationLegalToBuild(&pos, tt, angle,
+				BuildAssistant::TERRAIN_RESTRICTIONS | BuildAssistant::NO_OBJECT_OVERLAP, builder, p);
+			if (lbc != LBC_OK) { statusOut = 400; r["accepted"] = false; r["error"] = "illegal build location"; r["code"] = (int)lbc; return r; }
+			Object* bldg = TheBuildAssistant->buildObjectNow(builder, tt, &pos, angle, p);
+			r["accepted"] = (bldg != nullptr);
+			if (bldg) r["objectId"] = (unsigned)bldg->getID();
+			else { statusOut = 400; r["error"] = "buildObjectNow failed"; }
+		}
+		else if (verb == "set_rally")
+		{
+			Object* obj = firstOwned();
+			if (!obj) { statusOut = 400; r["accepted"] = false; r["error"] = "need a building id in ids[0]"; return r; }
+			if (!params.contains("pos")) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.pos"; return r; }
+			Coord3D pos = jsonToCoord(params["pos"]);
+			ExitInterface* ei = obj->getObjectExitInterface();
+			if (!ei) { statusOut = 400; r["accepted"] = false; r["error"] = "object has no rally/exit interface"; return r; }
+			ei->setRallyPoint(&pos);
+			r["accepted"] = true;
+		}
 		else
 		{
 			statusOut = 400; r["accepted"] = false;
-			r["error"] = "unknown verb (move|attack_move|attack_target|stop|guard_zone|retreat)";
+			r["error"] = "unknown verb (move|attack_move|attack_target|stop|guard_zone|retreat|capture|"
+			             "garrison|ungarrison|repair|sell|special_power|ability|train_unit|build_structure|set_rally)";
 			return r;
 		}
 
