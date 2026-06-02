@@ -1072,6 +1072,37 @@ private:
 			int power = tt->getEnergyProduction();
 			if (power) e["power"] = power;			// >0 produces, <0 consumes
 			e["commandSet"]  = tt->friend_getCommandSetString().str();
+			// Abilities from the unit's command set, so the agent KNOWS capabilities (e.g. exactly
+			// which units can CAPTURE buildings) instead of guessing from names. canCapture is the
+			// one the economy cares about most.
+			if (TheControlBar)
+			{
+				const CommandSet* cs = TheControlBar->findCommandSet(tt->friend_getCommandSetString());
+				if (cs)
+				{
+					json abilities = json::array();
+					bool canCapture = false;
+					for (int i = 0; i < MAX_COMMANDS_PER_SET; ++i)
+					{
+						const CommandButton* cb = cs->getCommandButton(i);
+						if (!cb) continue;
+						GUICommandType gt = cb->getCommandType();
+						if (gt == GUI_COMMAND_SPECIAL_POWER || gt == GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT
+							|| gt == GUI_COMMAND_SPECIAL_POWER_CONSTRUCT)
+						{
+							const SpecialPowerTemplate* sp = cb->getSpecialPowerTemplate();
+							if (sp)
+							{
+								abilities.push_back(sp->getName().str());
+								if (sp->getSpecialPowerType() == SPECIAL_INFANTRY_CAPTURE_BUILDING)
+									canCapture = true;
+							}
+						}
+					}
+					if (!abilities.empty()) e["abilities"] = abilities;
+					if (canCapture) e["canCapture"] = true;
+				}
+			}
 			int pc = tt->getPrereqCount();
 			if (pc > 0 && lp)
 			{
