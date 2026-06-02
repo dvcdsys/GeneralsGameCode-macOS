@@ -26,7 +26,9 @@ SUMMARY_CAP = 4000  # max chars of compacted older-round memory
 # The LLM commands CONCRETELY: it picks specific unit ids and specific targets/locations. No
 # high-level "do everything" macros (those hid too much and misbehaved) — the commander issues
 # explicit orders and re-issues them as the battle changes.
-LLM_SKILLS = {"build_structure", "train_units", "hold_point", "defend_sector", "attack_area", "scout"}
+LLM_SKILLS = {"build_structure", "train_units", "hold_point", "defend_sector", "attack_area", "scout",
+              "pipeline"}
+MAX_PIPELINES = 6  # cap on concurrent multi-step plans
 
 # Task-management tools the model can call alongside the skill tools.
 MANAGEMENT_TOOLS = [
@@ -106,6 +108,14 @@ auto-assigned).
 - defend_sector(ids=[...], area={x,y}) — send THESE units to defend an area (e.g. your base).
 - attack_area(ids=[...], area={x,y}) — send THESE units to attack-move into an area (e.g. enemyBaseGuess).
 - scout(ids=[...], area={x,y}) — send a unit to scout a location.
+- pipeline(steps=[...], label) — an ORDERED PLAN where each step finishes before the next starts. Use \
+it for dependent sequences, e.g. build a barracks, THEN train infantry once it exists, THEN build a war \
+factory, THEN train tanks. steps (max 8) are objects: {do:"build",structure,area}, {do:"train",unit,count}, \
+{do:"capture",targetId,ids}, {do:"attack",area,ids}, {do:"scout",area,ids}, {do:"wait",frames|until_building|until_units}. \
+Example: pipeline(label="open", steps=[{do:"build",structure:"CWCusBarracks",area:myBaseAt}, \
+{do:"wait",until_building:"CWCusBarracks"}, {do:"train",unit:"CWCusInfAntiTank",count:4}]). You may have \
+up to 6 pipelines running. Prefer a pipeline when steps depend on each other; use the single tools above \
+for independent one-off orders.
 Pick the `ids` from myForces (each group lists its unit ids). Assign groups to jobs: some defend the \
 base, a few capture nearby points, the rest attack when strong. Orders are durable — units keep doing \
 their last order until you reassign them; re-issuing the SAME order is a harmless no-op. You manage the \
@@ -277,6 +287,11 @@ class OllamaPlanner:
         # that re-orders the same building at slightly different coords doesn't spawn 3 barracks.
         if fn == "build_structure":
             return "build_structure|structure={}".format(params.get("structure"))
+        if fn == "pipeline":   # dedup by label + the sequence of step verbs/targets
+            steps = params.get("steps") or []
+            seq = ";".join("{}:{}".format(s.get("do"), s.get("structure") or s.get("unit")
+                                          or s.get("targetId") or "") for s in steps if isinstance(s, dict))
+            return "pipeline|{}|{}".format(params.get("label", ""), seq)
         parts = [fn]
         for k in ("structure", "unit", "targetId"):
             if params.get(k) is not None:
@@ -325,8 +340,14 @@ class OllamaPlanner:
                 dup = self._duplicate_of(fn, args)
                 if dup is not None:
                     return {"tool": fn, "skipped": "duplicate", "of": dup}
+                if fn == "pipeline":  # cap concurrent multi-step plans
+                    n = sum(1 for t in self.taskmgr.active() if t["skill"] == "pipeline")
+                    if n >= MAX_PIPELINES:
+                        return {"tool": fn, "skipped": "pipeline cap ({})".format(MAX_PIPELINES)}
                 skill = self.registry.create(fn, args)
                 tid = self.taskmgr.add(skill, priority=priority, frame=frame)
+                if tid is None:
+                    return {"tool": fn, "skipped": "task cap"}
                 return {"tool": fn, "created": tid, "params": args}
             return {"tool": fn, "error": "unknown tool"}
         except Exception as e:  # noqa: BLE001

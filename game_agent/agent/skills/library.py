@@ -673,6 +673,89 @@ class CapturePointsSkill(Skill):
         self.detail = "capture force {}/{} committed; awaiting reachable points".format(len(force), budget)
 
 
+class PipelineSkill(Skill):
+    name = "pipeline"
+    description = ("Run an ORDERED multi-step plan: each step finishes before the next begins. Use it to "
+                   "sequence dependent actions, e.g. build a barracks, THEN (once it's up) train infantry, "
+                   "THEN build a war factory, THEN train tanks. steps = ordered list (max 8) of: "
+                   "{do:'build',structure,area} | {do:'train',unit,count} | {do:'capture',targetId,ids} | "
+                   "{do:'attack',area,ids} | {do:'scout',area,ids} | {do:'wait',frames|until_building|until_units}. "
+                   "Each step uses EXACT template names / point ids from the brief.")
+    param_schema = {
+        "type": "object",
+        "properties": {
+            "steps": {"type": "array", "items": {"type": "object"},
+                      "description": "ordered step objects (max 8); each has a 'do' field"},
+            "label": {"type": "string", "description": "short name for this plan"},
+        },
+        "required": ["steps"],
+    }
+    HORIZON = 8
+
+    def _make_sub(self, step):
+        do = step.get("do")
+        if do == "build":
+            return BuildStructureSkill({"structure": step.get("structure"), "area": step.get("area")})
+        if do == "train":
+            return TrainUnitsSkill({"unit": step.get("unit"), "count": step.get("count", 1)})
+        if do == "capture":
+            return HoldPointSkill({"targetId": step.get("targetId"), "ids": step.get("ids"),
+                                   "pos": step.get("pos")})
+        if do == "attack":
+            return AttackAreaSkill({"area": step.get("area"), "ids": step.get("ids")})
+        if do == "scout":
+            return ScoutSkill({"area": step.get("area"), "ids": step.get("ids")})
+        return None  # 'wait' (and unknown) handled inline
+
+    def tick(self, ctx):
+        self._begin(ctx)
+        steps = (self.params.get("steps") or [])[:self.HORIZON]
+        if not hasattr(self, "_i"):
+            self._i, self._sub, self._wait_from = 0, None, None
+        if self._i >= len(steps):
+            self.status, self.detail = DONE, "pipeline complete ({} steps)".format(len(steps))
+            return
+        step = steps[self._i] if isinstance(steps[self._i], dict) else {}
+        do = step.get("do")
+        tag = "step {}/{}".format(self._i + 1, len(steps))
+
+        # WAIT step: time delay and/or a condition (a building appears / army reaches a size)
+        if do == "wait":
+            if self._wait_from is None:
+                self._wait_from = ctx.frame
+            ok = ctx.frame - self._wait_from >= int(step.get("frames", 150))
+            ub = step.get("until_building")
+            if ub:
+                ok = any(ub.lower() in (u.get("template") or "").lower() and not u.get("constructing")
+                         for u in my_buildings(ctx))
+            uu = step.get("until_units")
+            if uu is not None:
+                ok = len(select_combat_units(ctx)) >= int(uu)
+            self.status, self.detail = RUNNING, "{}: wait".format(tag)
+            if ok:
+                self._i += 1
+                self._wait_from = None
+            return
+
+        # ACTION step: run the matching primitive until it completes, then advance.
+        if self._sub is None:
+            self._sub = self._make_sub(step)
+            if self._sub is None:
+                self._i += 1   # unknown step — skip
+                return
+        self._sub.tick(ctx)
+        self.status = RUNNING
+        self.detail = "{}: {} [{}]".format(tag, do, self._sub.status_line())
+        done = self._sub.status in (DONE, FAILED)
+        if do == "capture":   # capture completes when the point is actually ours
+            tgt = find_object(ctx.world, step.get("targetId"))
+            if tgt is not None and tgt.get("relationToLocal") in ("self", "ally"):
+                done = True
+        if done:
+            self._i += 1
+            self._sub = None
+
+
 ALL_SKILLS = [
     # macros (preferred — encode doctrine)
     BuildBaseSkill,
@@ -687,4 +770,5 @@ ALL_SKILLS = [
     AttackAreaSkill,
     HoldPointSkill,
     ScoutSkill,
+    PipelineSkill,
 ]
