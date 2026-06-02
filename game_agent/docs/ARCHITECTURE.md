@@ -61,7 +61,8 @@ In-memory model built from one `/map` + one `/units` snapshot (`genapi/world.py`
   `economy_points()` (oil/supply capture targets), `garrisonable()` (bunkers). Geometry helpers
   `centroid(objs)`, `nearest(objs,x,y)`.
 - Each object carries `id, template, player, x/y/z, health, maxHealth, relationToLocal, category,
-  tags[]` and — under a fog view — a `shroud` (see §4).
+  tags[]`, dynamic state when non-default (`veterancy`, `experience`, `visionRange`, `contains`), and
+  — under a fog view — a `shroud` (see §4). Static per-template stats come from `/catalog`.
 
 ### `genapi.ws.stream_events` — event stream
 Pure-stdlib RFC6455 client (`genapi/ws.py`): handshake + frame decode + ping/pong, yields decoded

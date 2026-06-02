@@ -79,6 +79,8 @@
 #include "Common/ProductionPrerequisite.h"	// prereq list (/catalog tech tree)
 #include "GameLogic/Module/ProductionUpdate.h"	// ProductionUpdateInterface (train_unit)
 #include "GameLogic/Module/UpdateModule.h"		// ExitInterface::setRallyPoint (set_rally)
+#include "GameLogic/Module/ContainModule.h"		// getContain()->getContainCount (/units passengers)
+#include "GameLogic/ExperienceTracker.h"		// veterancy / experience (/units)
 #include "GameClient/ControlBar.h"				// CommandSet/CommandButton, TheControlBar (/buildable)
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
@@ -246,6 +248,16 @@ const char* templateCategory(const ThingTemplate* tt)
 	if (tt->isKindOf(KINDOF_INFANTRY) || tt->isKindOf(KINDOF_VEHICLE) || tt->isKindOf(KINDOF_AIRCRAFT))
 		return "unit";
 	return "prop";
+}
+const char* veterancyName(VeterancyLevel v)
+{
+	switch (v)
+	{
+		case LEVEL_VETERAN: return "veteran";
+		case LEVEL_ELITE:   return "elite";
+		case LEVEL_HEROIC:  return "heroic";
+		default:            return "regular";
+	}
 }
 const char* canMakeName(CanMakeType c)
 {
@@ -871,6 +883,21 @@ private:
 				{
 					u["health"]    = body->getHealth();
 					u["maxHealth"] = body->getMaxHealth();
+				}
+				// Dynamic combat-relevant state (lean: only when non-default).
+				VeterancyLevel vet = obj->getVeterancyLevel();
+				if (vet != LEVEL_REGULAR) u["veterancy"] = veterancyName(vet);	// promoted ranks
+				if (const ExperienceTracker* xt = obj->getExperienceTracker())
+				{
+					int xp = xt->getCurrentExperience();
+					if (xp > 0) u["experience"] = xp;
+				}
+				Real vis = obj->getVisionRange();
+				if (vis > 0.0f) u["visionRange"] = (double)vis;
+				if (ContainModuleInterface* c = obj->getContain())
+				{
+					int n = (int)c->getContainCount();
+					if (n > 0) u["contains"] = n;					// passengers garrisoned/loaded
 				}
 				return u;
 			};
