@@ -23,12 +23,10 @@ LLM_LOG = "/tmp/gen_agent_llm.jsonl"
 KEEP_ROUNDS = 20
 SUMMARY_CAP = 4000  # max chars of compacted older-round memory
 
-# Only these HIGH-LEVEL skills are exposed to the LLM. The low-level primitives (build_structure,
-# train_units, assemble_group, hold_point, defend_sector) are used INTERNALLY by the macros and the
-# orchestrator — a small model misuses them badly (it placed a hallucinated building forward at the
-# enemy base and re-commanded the lone dozer every tick, so nothing ever finished). The commander
-# orchestrates macros; the macros handle construction/training correctly.
-LLM_SKILLS = {"build_base", "maintain_army", "capture_points", "defend_base", "attack_area", "scout"}
+# The LLM commands CONCRETELY: it picks specific unit ids and specific targets/locations. No
+# high-level "do everything" macros (those hid too much and misbehaved) — the commander issues
+# explicit orders and re-issues them as the battle changes.
+LLM_SKILLS = {"build_structure", "train_units", "hold_point", "defend_sector", "attack_area", "scout"}
 
 # Task-management tools the model can call alongside the skill tools.
 MANAGEMENT_TOOLS = [
@@ -98,10 +96,20 @@ seen, else the opposite corner).
 So defense and offense both matter — but a pure turtle never wins, and an over-commit that strips your \
 defense gets your base destroyed while your army is away. Balance is the skill.
 
-YOUR TOOLS: you are given a set of function tools (build/train/capture/scout/defend/attack and base/army \
-macros). Each tool's description says what it does. Choose and combine them to execute YOUR strategy. \
-Tasks are durable — once running they keep working; don't re-issue an identical active task (no-op). \
-Cancel tasks that no longer fit your plan.
+YOU COMMAND CONCRETELY — issue explicit orders to specific units and targets (no auto-pilot). Your tools:
+- build_structure(structure, area={x,y}) — build ONE named structure (exact name from \
+buildable.makeableNow) near a location (use area≈myBaseAt; a legal spot is found for you, a dozer is \
+auto-assigned).
+- train_units(unit, count) — train N of a unit (exact trainable name from buildable.makeableNow).
+- hold_point(ids=[...], targetId=N) — send THESE units to CAPTURE point N (from `points`: oil/fuel/flag \
+— use its id). Or hold_point(ids, pos={x,y}) to make them hold/guard a spot.
+- defend_sector(ids=[...], area={x,y}) — send THESE units to defend an area (e.g. your base).
+- attack_area(ids=[...], area={x,y}) — send THESE units to attack-move into an area (e.g. enemyBaseGuess).
+- scout(ids=[...], area={x,y}) — send a unit to scout a location.
+Pick the `ids` from myForces (each group lists its unit ids). Assign groups to jobs: some defend the \
+base, a few capture nearby points, the rest attack when strong. Orders are durable — units keep doing \
+their last order until you reassign them; re-issuing the SAME order is a harmless no-op. You manage the \
+whole economy+army yourself: each round check counts and issue build_structure / train_units as needed.
 
 MEMORY: the brief carries your history — recentEvents (what just happened), threats (who's attacking \
 whom), your own notes, and currentStrategy (your last strategy). Reason over this; learn within the \
@@ -110,10 +118,11 @@ won't re-derive (enemy intent, what worked/failed, where you're expanding).
 
 EACH ROUND:
 1. Read the brief and the human directive.
-2. set_strategy(situation, plan): your OWN one-line read of the situation and one-line plan right now. \
-This is your evolving strategy and memory — revise it honestly as the battle develops.
-3. Issue the tool calls that execute your plan (you can call several at once). If your current plan is \
-working and nothing needs changing, call no tools.
+2. set_strategy(situation, plan): your OWN one-line read of the situation and one-line plan right now.
+3. Issue concrete tool calls (several at once). A typical early round: build_structure the next building \
+you need; train_units some infantry; hold_point a couple of units onto the nearest capturable point id; \
+defend_sector the rest at myBaseAt. Later: attack_area a strong group toward enemyBaseGuess. Only re-issue \
+an order if you're changing it.
 
 The human commander's DIRECTIVE in the brief is your standing mission — it outranks your preferences. \
 Pursue it. Within it, the strategy and the timing are YOURS to decide.
@@ -241,24 +250,28 @@ class OllamaPlanner:
         except Exception:  # noqa: BLE001 — logging must never break planning
             pass
 
-    # Identifying param per skill — a new task whose identity matches an active one is a no-op
-    # (stops the planner re-issuing the same build/train every plan round and draining resources).
-    _IDENTITY = {"build_structure": "structure", "train_units": "unit",
-                 "assemble_group": None, "hold_point": "targetId",
-                 # singleton macros — only one of each makes sense at a time
-                 "build_base": None, "maintain_army": None, "defend_base": None,
-                 "capture_points": None, "attack_area": None}
+    @staticmethod
+    def _signature(fn, params):
+        """A normalized fingerprint of a concrete order. Re-issuing the SAME order (same skill, target,
+        location bucket, unit ids) is treated as a no-op so the LLM can safely repeat its intent each
+        round without piling up duplicate tasks; a DIFFERENT order (other ids/target/place) is new."""
+        parts = [fn]
+        for k in ("structure", "unit", "targetId"):
+            if params.get(k) is not None:
+                parts.append("{}={}".format(k, params[k]))
+        for k in ("area", "pos"):
+            p = params.get(k)
+            if isinstance(p, dict) and "x" in p:
+                parts.append("{}={},{}".format(k, round(p["x"] / 150), round(p["y"] / 150)))  # ~150u bucket
+        ids = params.get("ids")
+        if ids:
+            parts.append("ids=" + ",".join(str(i) for i in sorted(ids)))
+        return "|".join(parts)
 
     def _duplicate_of(self, fn, args):
-        if fn not in self._IDENTITY:
-            return None
-        key = self._IDENTITY[fn]
-        want = args.get(key) if key else True  # None key => one-of-this-skill is enough to dedupe
+        sig = self._signature(fn, args)
         for t in self.taskmgr.active():
-            if t["skill"] != fn:
-                continue
-            have = t["params"].get(key) if key else True
-            if have == want:
+            if t["skill"] == fn and self._signature(fn, t["params"]) == sig:
                 return t["id"]
         return None
 

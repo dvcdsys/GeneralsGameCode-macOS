@@ -23,30 +23,10 @@ import time
 
 from agent.brief import compose_brief
 from agent.skills.base import SkillContext
-from agent.skills.library import (BuildBaseSkill, MaintainArmySkill,
-                                  CapturePointsSkill, DefendBaseSkill)
 from genapi.world import WorldModel
 
 STATE_PATH = "/tmp/gen_agent_state.json"
 DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
-
-
-def _seed_opening(taskmgr, frame, verbose=False):
-    """Kick off a sensible standing opening the INSTANT the match begins so the bot isn't idle while
-    the first (cold-loaded) LLM plan is still computing — the harness complained about 'first steps
-    very late'. These are just the default standing tasks (build a base, keep an army, take economy
-    points, defend) that any opening needs; the LLM is the commander and immediately re-plans on top —
-    it can cancel or re-prioritise these, and identical re-issues dedupe. It does NOT script strategy
-    (no attack timing, no build order beyond the macro's own) — that is the LLM's job."""
-    have = {t["skill"] for t in taskmgr.active()}
-    opening = [BuildBaseSkill, MaintainArmySkill, CapturePointsSkill, DefendBaseSkill]
-    seeded = []
-    for cls in opening:
-        if cls.name not in have:
-            taskmgr.add(cls({}), priority=5, frame=frame)
-            seeded.append(cls.name)
-    if verbose and seeded:
-        print("[orch] seeded opening @f{}: {}".format(frame, ", ".join(seeded)), flush=True)
 
 
 def _atomic_write(path, obj):
@@ -89,7 +69,6 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
         threading.Thread(target=_warm, name="llm-warmup", daemon=True).start()
 
     map_cache = None
-    seeded = False
     last_dir_ts = None
     directive = ""
     # the planner runs on a background thread so the LLM's seconds of thinking never freeze the
@@ -101,7 +80,6 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             _atomic_write(state_path, {"inGame": False, "tasks": taskmgr.snapshot(),
                                        "notes": notes.lines() if notes else [], "directive": directive})
             map_cache = None
-            seeded = False  # re-seed the opening when a new match begins
             if verbose:
                 print("[orch] waiting for in-game ...")
             time.sleep(1.0)
@@ -120,11 +98,6 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             frame = (client.healthz() or {}).get("frame", 0)
             ctx = SkillContext(world, me, client, threats=threats, journal=journal, frame=frame,
                                taskmgr=taskmgr)
-
-            # --- instant opening (deterministic, before the slow first LLM plan) ---
-            if not seeded:
-                _seed_opening(taskmgr, frame, verbose=verbose)
-                seeded = True
 
             # --- human directive (force a re-plan when it changes) -------------
             d_text, d_ts = _read_directive(directive_path)
