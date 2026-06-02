@@ -12,6 +12,7 @@ from agent.skills.base import (
     Skill, PENDING, RUNNING, DONE, FAILED, BLOCKED,
     my_units, my_buildings, find_object, find_dozers, find_producer,
     select_combat_units, resolve_point, find_build_spot, obj_pos,
+    is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -237,13 +238,16 @@ class DefendSectorSkill(Skill):
 
 class AttackAreaSkill(Skill):
     name = "attack_area"
-    description = ("Send a group to attack-move into an area, engaging anything on the way. Completes "
-                   "when no enemies remain near the target. Optionally restrict to specific unit ids.")
+    description = ("Send your army to attack-move into an area, engaging anything on the way. WAITS "
+                   "(blocked) until you have at least min_units combat units — never attacks with a "
+                   "lone unit. Completes when no enemies remain near the target.")
     param_schema = {
         "type": "object",
         "properties": {
             "area": dict(_POINT, description="target area to assault"),
             "radius": {"type": "number", "default": 200},
+            "min_units": {"type": "integer", "default": 6,
+                          "description": "don't attack until you have at least this many combat units"},
             "ids": {"type": "array", "items": {"type": "integer"}},
         },
         "required": ["area"],
@@ -254,9 +258,11 @@ class AttackAreaSkill(Skill):
         self._begin(ctx)
         ax, ay = resolve_point(ctx, self.params)
         radius = float(self.params.get("radius", 200))
+        min_units = int(self.params.get("min_units", 6))
         units = select_combat_units(ctx, ids=self.params.get("ids"))
-        if not units:
-            self.status, self.detail = FAILED, "no units to attack with"
+        if len(units) < min_units:
+            self.status = BLOCKED
+            self.detail = "army too small to attack ({}/{})".format(len(units), min_units)
             return
         ids = [u["id"] for u in units]
         self.status = RUNNING
@@ -327,7 +333,15 @@ class ScoutSkill(Skill):
     def tick(self, ctx):
         self._begin(ctx)
         ax, ay = resolve_point(ctx, self.params)
-        units = select_combat_units(ctx, ids=self.params.get("ids"))
+        ids = self.params.get("ids")
+        if ids:
+            idset = set(ids)
+            units = [u for u in my_units(ctx) if u.get("id") in idset]
+        else:
+            # any mobile non-builder unit can scout; prefer a recon drone if present
+            units = [u for u in my_units(ctx) if not is_dozerish(u)]
+            drones = [u for u in units if "drone" in (u.get("template") or "").lower()]
+            units = drones or units
         if not units:
             self.status, self.detail = FAILED, "no unit to scout with"
             return
@@ -346,7 +360,152 @@ class ScoutSkill(Skill):
         self.detail = "scouting {:.0f},{:.0f}".format(ax, ay)
 
 
+# ------------------------------------------------------------------------------
+# Macro skills — encode RTS doctrine so the planner just sequences a few high-level orders
+# ------------------------------------------------------------------------------
+class BuildBaseSkill(Skill):
+    name = "build_base"
+    description = ("Build up your base in a sensible ORDER, ONE structure at a time (finish each "
+                   "before starting the next), skipping anything you already have enough of. Trains a "
+                   "dozer first if you have none. Omit 'plan' for a solid economy-first opening, or "
+                   "give an ordered list of structure templates. Use this instead of many separate "
+                   "build_structure calls.")
+    param_schema = {
+        "type": "object",
+        "properties": {
+            "plan": {"type": "array", "items": {"type": "string"},
+                     "description": "ordered structure templates; omit for the default opening"},
+        },
+        "required": [],
+    }
+    # default opening: power, infantry, vehicles, more power (templates from /buildable; CWC Russia)
+    DEFAULT_PLAN = ["CWCruSmallFuelDepot", "CWCruBarracks", "CWCruWarFactory", "CWCruSmallFuelDepot"]
+    DOZER_RETRAIN = 300
+
+    def _enough(self, ctx, plan, i):
+        t = plan[i]
+        want = sum(1 for j in range(i + 1) if plan[j] == t)
+        have = sum(1 for u in my_buildings(ctx) if u.get("template") == t)
+        return have >= want
+
+    def tick(self, ctx):
+        self._begin(ctx)
+        plan = self.params.get("plan") or self.DEFAULT_PLAN
+        if not hasattr(self, "_i"):
+            self._i, self._sub, self._dz_frame = 0, None, None
+        # 1) need a dozer to build at all
+        if not find_dozers(ctx):
+            dz = find_trainable_dozer(ctx)
+            if dz and ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN:
+                ctx.client.command(ctx.player, [dz[1]], "train_unit", {"template": dz[0], "count": 1})
+                self._dz_frame = ctx.frame
+            self.status = RUNNING if dz else BLOCKED
+            self.detail = "training a dozer first" if dz else "no dozer and none trainable"
+            return
+        # 2) advance past steps already satisfied
+        while self._i < len(plan) and self._sub is None and self._enough(ctx, plan, self._i):
+            self._i += 1
+        if self._i >= len(plan):
+            self.status, self.detail = DONE, "base plan complete"
+            return
+        # 3) build the current step (one at a time)
+        target = plan[self._i]
+        if self._sub is None:
+            self._sub = BuildStructureSkill({"structure": target})
+        self._sub.tick(ctx)
+        self.status = RUNNING
+        self.detail = "[{}/{}] {}".format(self._i + 1, len(plan), self._sub.status_line())
+        if self._sub.status in (DONE, FAILED):
+            self._i += 1
+            self._sub = None
+
+
+class MaintainArmySkill(Skill):
+    name = "maintain_army"
+    description = ("Continuously build and reinforce a standing army up to a target size, training "
+                   "whatever combat units your factories can make now (rotating types), and rallying "
+                   "them to your base. Standing order — runs until cancelled. Start this early so you "
+                   "always have a force.")
+    param_schema = {
+        "type": "object",
+        "properties": {
+            "target": {"type": "integer", "default": 8, "description": "desired number of combat units"},
+        },
+        "required": [],
+    }
+    PERIOD = 75
+
+    def tick(self, ctx):
+        self._begin(ctx)
+        self.status = RUNNING
+        target = int(self.params.get("target", 8))
+        army = [u for u in my_units(ctx) if is_combat_unit(u)]
+        if len(army) >= target:
+            self.detail = "army {}/{} (full)".format(len(army), target)
+            return
+        trainable = find_trainable_combat(ctx)
+        if not trainable:
+            self.detail = "army {}/{} (no factory/units yet)".format(len(army), target)
+            return
+        if ctx.frame - getattr(self, "_last", -10 ** 9) >= self.PERIOD:
+            k = getattr(self, "_k", 0)
+            tmpl, builder, _cost, _e = trainable[k % len(trainable)]
+            self._k = k + 1
+            if builder:
+                ctx.client.command(ctx.player, [builder], "train_unit", {"template": tmpl, "count": 1})
+                base = ctx.world.centroid(my_buildings(ctx))
+                if base:
+                    ctx.client.command(ctx.player, [builder], "set_rally",
+                                       {"pos": {"x": base[0], "y": base[1]}})
+            self._last = ctx.frame
+        self.detail = "army {}/{} (training {})".format(len(army), target, trainable[0][0])
+
+
+class DefendBaseSkill(Skill):
+    name = "defend_base"
+    description = ("Keep your whole army guarding your base and counter-attack anything that attacks "
+                   "you there. Standing order — runs until cancelled. Pair with maintain_army.")
+    param_schema = {
+        "type": "object",
+        "properties": {"radius": {"type": "number", "default": 350}},
+        "required": [],
+    }
+    REISSUE = 120
+
+    def tick(self, ctx):
+        self._begin(ctx)
+        self.status = RUNNING
+        base = ctx.world.centroid(my_buildings(ctx)) or ctx.world.centroid(my_units(ctx))
+        if not base:
+            self.detail = "no base to defend"
+            return
+        ax, ay = base
+        units = select_combat_units(ctx)
+        if not units:
+            self.detail = "no army yet (will guard once trained)"
+            return
+        ids = [u["id"] for u in units]
+        if ctx.threats:
+            for t in ctx.threats.threats(ctx.frame):
+                atk = find_object(ctx.world, t.get("topAttacker"))
+                if atk:
+                    ctx.client.command(ctx.player, ids, "attack_target", {"targetId": atk["id"]})
+                    self._last = ctx.frame
+                    self.detail = "countering attacker {}".format(atk["id"])
+                    return
+        if ctx.frame - getattr(self, "_last", -10 ** 9) >= self.REISSUE:
+            ctx.client.command(ctx.player, ids, "guard_zone",
+                               {"anchor": {"x": ax, "y": ay}, "engage": {"x": ax, "y": ay}})
+            self._last = ctx.frame
+        self.detail = "defending base with {} units".format(len(ids))
+
+
 ALL_SKILLS = [
+    # macros (preferred — encode doctrine)
+    BuildBaseSkill,
+    MaintainArmySkill,
+    DefendBaseSkill,
+    # primitives
     BuildStructureSkill,
     TrainUnitsSkill,
     AssembleGroupSkill,

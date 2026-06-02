@@ -89,8 +89,10 @@ def obj_pos(u):
 
 
 def is_building(u):
+    # NB: in the CWC mod many production buildings report category "garrisonable" (you can garrison
+    # them), and oil/supply report "economy" — they are all immobile structures, so count them.
     cat = u.get("category")
-    if cat in ("structure", "building"):
+    if cat in ("structure", "building", "garrisonable", "economy"):
         return True
     tags = u.get("tags", [])
     return ("structure" in tags) or ("building" in tags)
@@ -131,6 +133,18 @@ def is_dozerish(u):
     tags = [str(x).lower() for x in u.get("tags", [])]
     return ("dozer" in t or "worker" in t or "construction" in t
             or "dozer" in tags or "worker" in tags)
+
+
+# Templates that are units but NOT front-line fighters — never send these to attack/defend.
+_NONCOMBAT_HINTS = ("dozer", "worker", "construction", "drone", "drop", "supply",
+                    "ambulance", "tractor", "crawler", "spy", "medic")
+
+
+def is_combat_unit(u):
+    if u.get("category") != "unit":
+        return False
+    t = (u.get("template") or "").lower()
+    return not any(h in t for h in _NONCOMBAT_HINTS)
 
 
 def find_dozers(ctx):
@@ -183,19 +197,44 @@ def find_producer(ctx, template):
     return None, None
 
 
-def select_combat_units(ctx, ids=None, near=None, radius=None, exclude_dozers=True):
-    """Pick a working set of units: explicit `ids` if given, else my units (optionally those within
-    `radius` of `near`), excluding dozers by default."""
+def select_combat_units(ctx, ids=None, near=None, radius=None):
+    """Pick a working set of FIGHTING units: explicit `ids` if given (filtered to combat units), else
+    all my combat units (optionally those within `radius` of `near`). Excludes dozers, drones, supply,
+    etc. so we never 'attack' with a builder or a recon drone."""
     if ids:
         idset = set(ids)
-        return [u for u in my_units(ctx) if u.get("id") in idset]
-    pool = my_units(ctx)
-    if exclude_dozers:
-        pool = [u for u in pool if not is_dozerish(u)]
+        return [u for u in my_units(ctx) if u.get("id") in idset and is_combat_unit(u)]
+    pool = [u for u in my_units(ctx) if is_combat_unit(u)]
     if near is not None and radius is not None:
         nx, ny = near
         pool = [u for u in pool if math.hypot(u.get("x", 0) - nx, u.get("y", 0) - ny) <= radius]
     return pool
+
+
+def find_trainable(ctx, predicate):
+    """All currently-trainable/buildable items matching predicate(template_lower, entry) ->
+    list of (template, builderId, cost, entry)."""
+    bd = buildable_now(ctx)
+    avail = bd.get("available") or bd.get("items") or []
+    out = []
+    for e in avail:
+        t = _entry_name(e)
+        if t and predicate(t.lower(), e):
+            out.append((t, _entry_builder(e), e.get("cost", 0), e))
+    return out
+
+
+def find_trainable_combat(ctx):
+    """Combat units producible right now (cheapest first)."""
+    r = find_trainable(ctx, lambda tl, e: e.get("how") == "train"
+                        and not any(h in tl for h in _NONCOMBAT_HINTS))
+    return sorted(r, key=lambda x: x[2])
+
+
+def find_trainable_dozer(ctx):
+    r = find_trainable(ctx, lambda tl, e: e.get("how") == "train"
+                       and ("dozer" in tl or "worker" in tl))
+    return r[0] if r else None
 
 
 def resolve_point(ctx, params, default=None):

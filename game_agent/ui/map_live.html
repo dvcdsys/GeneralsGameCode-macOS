@@ -67,7 +67,7 @@
 
     <h2>Counts</h2>
     <div id="counts" class="num"></div>
-    <div class="muted" style="margin-top:10px">faded = cached/undefined (last-known, not in sight)<br>wheel = zoom · drag = pan · hover = inspect</div>
+    <div class="muted" style="margin-top:10px">faded = cached/undefined (last-known, not in sight)<br><span style="color:#ffe14d">●</span> gold pips on a unit = rank (veteran/elite/heroic)<br>wheel = zoom · drag = pan · hover = inspect</div>
   </div>
 
   <div id="stage">
@@ -177,7 +177,8 @@ function draw(){
     const col=REL[u.relationToLocal]||REL.neutral;
     octx.globalAlpha = (u.shroud==='cached'||u.shroud==='undefined') ? 0.38 : 1;   // not-live (out of sight) drawn faded
     octx.lineWidth=1.5;
-    if(k==='unit'){ octx.fillStyle=col; octx.beginPath(); octx.arc(sx,sy,2.4,0,7); octx.fill(); }
+    if(k==='unit'){ octx.fillStyle=col; octx.beginPath(); octx.arc(sx,sy,2.4,0,7); octx.fill();
+      const vp={veteran:1,elite:2,heroic:3}[u.veterancy]; if(vp){ octx.fillStyle='#ffe14d'; octx.strokeStyle='#000'; octx.lineWidth=0.5; for(let p=0;p<vp;p++){ octx.beginPath(); octx.arc(sx-1.8+p*1.8, sy-5, 1.0, 0, 7); octx.fill(); octx.stroke(); } } }
     else if(k==='struct'){ octx.fillStyle=col; octx.fillRect(sx-3,sy-3,6,6); octx.strokeStyle='#000'; octx.strokeRect(sx-3,sy-3,6,6); }
     else if(k==='neutral_b'){ octx.fillStyle='#8a93a3'; octx.fillRect(sx-3,sy-3,6,6); }
     else if(k==='econ'){ octx.fillStyle='#ffd23f'; octx.beginPath(); octx.moveTo(sx,sy-5);octx.lineTo(sx+5,sy);octx.lineTo(sx,sy+5);octx.lineTo(sx-5,sy);octx.closePath(); octx.fill(); octx.strokeStyle='#000';octx.stroke(); }
@@ -192,7 +193,10 @@ function draw(){
       octx.strokeStyle='#fff'; octx.lineWidth=1; octx.beginPath(); octx.arc(sx,sy,7,0,7); octx.stroke();
       tip.style.display='block'; tip.style.left=(mouse.x+12)+'px'; tip.style.top=(mouse.y+12)+'px';
       tip.textContent=`${hit.template}\n${hit.relationToLocal} · ${hit.category}`+(hit.shroud?` · ${hit.shroud}`:'')+(hit.tags?'\n['+hit.tags.join(',')+']':'')+
-        (hit.health!==undefined?`\nhp ${Math.round(hit.health)}/${Math.round(hit.maxHealth)}`:'')+`\nid ${hit.id} player ${hit.player}`;
+        (hit.health!==undefined?`\nhp ${Math.round(hit.health)}/${Math.round(hit.maxHealth)}`:'')+
+        (hit.veterancy?`\n★ rank: ${hit.veterancy}`+(hit.experience?` (xp ${hit.experience})`:''):'')+
+        (hit.visionRange?`\nvision ${Math.round(hit.visionRange)}`:'')+(hit.contains?`\ncontains ${hit.contains}`:'')+
+        `\nid ${hit.id} player ${hit.player}`;
   } else tip.style.display='none'; } else tip.style.display='none';
 
   const order=['unit','struct','neutral_b','econ','tech','garr','prop'];

@@ -41,39 +41,42 @@ MANAGEMENT_TOOLS = [
 ]
 
 SYSTEM_PROMPT = """You are the COMMANDER of the external player in a Command & Conquer: Generals \
-Zero Hour skirmish. You play at the STRATEGIC level — you plan and orchestrate; you do NOT micro units.
+Zero Hour skirmish. Your goal is to WIN: build an economy, raise an army, defend, then destroy the \
+enemy. You play at the STRATEGIC level — you set high-level TASKS; a fast deterministic executor \
+carries them out over many ticks. You are called only every several seconds, so set DURABLE intent \
+and check progress next round.
 
-How control works:
-- You issue high-level TASKS by calling the provided tools (skills). A fast deterministic executor \
-carries each task out over many game ticks, so a single tool call ("build a power plant in the north", \
-"assemble 4 rangers at the ridge") expands into all the low-level orders automatically.
-- You are called only occasionally (every several seconds). Between your calls the executor keeps \
-working. So: set durable intent, then check progress next round. Do NOT re-issue a task that is \
-already active and progressing.
+PREFER THE MACRO SKILLS — they encode good play so you don't have to micromanage:
+- build_base    : builds an economy-first base IN ORDER, one structure at a time (trains a dozer first \
+if needed). Use this ONCE — not many separate build_structure calls.
+- maintain_army  : continuously trains & reinforces a standing army to a target size and rallies it \
+home. Start it EARLY so you always have a force.
+- defend_base    : keeps your whole army guarding your base and counters attackers. Standing.
+- attack_area    : sends the army to assault a location; it WAITS until you have enough units, so it \
+never suicides a lone unit. Use it to finish the enemy once your army is strong.
 
-Each round you receive a JSON brief:
-- me: your money, power, unit/building counts.
-- myForces / myBuildings: your stuff grouped by template (with ids + rough location `at`).
-- buildable.makeableNow: exactly what you can build/train RIGHT NOW (use these template names).
-- enemyContacts: visible enemies; `shroud` = clear (live) / cached (last-known, may be stale) / \
-undefined (known location, unknown state). Reward scouting unknowns; never assume cached still stands.
-- points: economy/capture/garrison locations (always known) with fog status.
-- threats: your units currently under attack (victim/attacker ids).
-- tasks: your ACTIVE tasks with status — running/blocked/pending. Manage these.
-- recentEvents + notes: short battlefield history and your own memory.
-- directive: the human commander's STANDING INTENT — obey it. It outranks your own preferences.
+WINNING SEQUENCE (do this):
+1. FIRST round: start build_base AND maintain_army (target ~8-10) AND defend_base — all three. This \
+sets up economy, army production, and defense at once.
+2. Then each round just MONITOR the tasks list. Don't re-issue tasks that already exist and are \
+running/blocked (it does nothing). A 'blocked' build/army task usually means low money/power — be \
+patient or fix the cause, don't pile on duplicates.
+3. Scout the map to find the enemy base (scout). When your army is large (8+ combat units), launch \
+attack_area on the enemy base/contacts to destroy them.
+4. Keep power non-negative and keep maintain_army running so losses are replaced.
 
-Rules:
-- Build economy and power before armies; keep power positive.
-- Use template names exactly as they appear in buildable.makeableNow / the brief.
-- Keep a handful of tasks at a time, not dozens. Cancel tasks that are stuck (blocked) or obsolete.
-- Each dozer builds one structure at a time: don't start more simultaneous constructions than you have \
-dozers (count them in myForces). Re-issuing a task that already exists does nothing.
-- You NEED a dozer to build structures. If myForces shows no dozer (e.g. CWCruDozer), train one first \
-(train_units) — it is produced at the Command Center — before any build_structure task.
-- Scout before committing to attacks. Defend your base and honour the directive.
-- Prefer calling tools over talking. If nothing needs changing this round, call no tools.
-Respond by calling tools. Keep any text brief."""
+Each round you get a JSON brief:
+- me: money, powerMargin (keep >= 0), unit/building counts.
+- myForces / myBuildings: your stuff grouped by template (ids + rough location `at`). A dozer is a \
+builder, not a fighter; drones are recon, not fighters.
+- buildable.makeableNow: what you can build/train RIGHT NOW (exact template names).
+- enemyContacts: visible enemies; shroud = clear/cached(maybe stale)/undefined(scout it).
+- points, threats, tasks (your ACTIVE tasks + status), recentEvents, notes.
+- directive: the human commander's STANDING INTENT — it OUTRANKS your preferences. Obey it.
+
+Rules: prefer macros over primitives; don't duplicate active tasks; cancel stuck/obsolete ones; use \
+exact template names; keep text brief and respond by CALLING TOOLS. If nothing needs changing, call \
+no tools."""
 
 
 class OllamaPlanner:
@@ -139,7 +142,9 @@ class OllamaPlanner:
     # Identifying param per skill — a new task whose identity matches an active one is a no-op
     # (stops the planner re-issuing the same build/train every plan round and draining resources).
     _IDENTITY = {"build_structure": "structure", "train_units": "unit",
-                 "assemble_group": None, "hold_point": "targetId"}
+                 "assemble_group": None, "hold_point": "targetId",
+                 # singleton macros — only one of each makes sense at a time
+                 "build_base": None, "maintain_army": None, "defend_base": None}
 
     def _duplicate_of(self, fn, args):
         if fn not in self._IDENTITY:
