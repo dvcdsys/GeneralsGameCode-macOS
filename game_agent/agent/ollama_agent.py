@@ -12,8 +12,16 @@ by the skill or by /command and surfaces as a FAILED task, never a crash.
 
 import json
 import time
+from collections import deque
 
 LLM_LOG = "/tmp/gen_agent_llm.jsonl"
+
+# Rolling-memory ("infinity chat") settings: the planner is one continuous conversation. The last
+# KEEP_ROUNDS rounds of the model's OWN reasoning (thinking + plan + actions) stay verbatim so it sees
+# what it was thinking recently; everything older is folded into a bounded running summary so the chat
+# can run forever without the context growing without bound.
+KEEP_ROUNDS = 20
+SUMMARY_CAP = 4000  # max chars of compacted older-round memory
 
 # Task-management tools the model can call alongside the skill tools.
 MANAGEMENT_TOOLS = [
@@ -110,17 +118,50 @@ class OllamaPlanner:
         self.notes = notes
         self.log_path = log_path
         self._tools = self.registry.skill_tools() + MANAGEMENT_TOOLS
+        self.chat.think = True              # let it reason; thinking is kept in the rolling memory
+        self.reasoning = deque()            # one entry per round: {"frame","text"} (kept verbatim)
+        self.summary = ""                   # compacted memory of rounds older than KEEP_ROUNDS
+
+    def _build_messages(self, brief):
+        """Assemble the continuous ('infinity') conversation: system principles, a compacted memory of
+        older rounds, the last KEEP_ROUNDS rounds of the model's own reasoning verbatim, then the fresh
+        brief. The model thus sees its recent thinking and decisions and can build on them."""
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if self.summary:
+            messages.append({"role": "user",
+                             "content": "MEMORY of earlier rounds (compacted):\n" + self.summary})
+        for r in self.reasoning:  # the model's own prior reasoning, kept verbatim (last KEEP_ROUNDS)
+            messages.append({"role": "assistant", "content": r["text"]})
+        messages.append({"role": "user", "content": json.dumps(brief, separators=(",", ":"))})
+        return messages
+
+    def _record_round(self, frame, thinking, rationale, applied):
+        """Append this round's reasoning to the rolling window; fold anything beyond KEEP_ROUNDS into
+        the bounded running summary (so the chat is effectively infinite)."""
+        reason = (thinking or "").strip() or (rationale or "").strip()
+        acts = []
+        for a in applied or []:
+            if a.get("created") is not None:
+                acts.append("{}#{}".format(a.get("tool"), a.get("created")))
+            elif a.get("tool") in ("set_strategy", "note", "cancel_task", "set_priority"):
+                acts.append(a.get("tool"))
+        text = "[f{}] {}".format(frame, reason[:700])
+        if acts:
+            text += "\nACTIONS: " + ", ".join(acts)
+        self.reasoning.append({"frame": frame, "text": text})
+        while len(self.reasoning) > KEEP_ROUNDS:
+            old = self.reasoning.popleft()
+            # compaction: keep the most recent SUMMARY_CAP chars of dropped reasoning one-liners
+            first_line = old["text"].splitlines()[0] if old["text"] else ""
+            self.summary = (self.summary + "\n" + first_line).strip()[-SUMMARY_CAP:]
 
     def plan(self, brief, frame=0, max_steps=4):
-        """One planning round = an agentic tool-use loop: the model calls tools, we apply them and
-        feed the results back, and it can call MORE — up to max_steps — so it issues many actions per
-        round and reacts to what happened, instead of one action per round."""
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(brief, separators=(",", ":"))},
-        ]
+        """One planning round = an agentic tool-use loop over the CONTINUOUS conversation: the model
+        sees its recent reasoning + the fresh brief, calls tools, we apply them and feed results back,
+        and it can call MORE — up to max_steps. After the round we fold its reasoning into memory."""
+        messages = self._build_messages(brief)
         t0 = time.time()
-        applied_all, total_calls, rationale, last_msg = [], 0, "", None
+        applied_all, total_calls, rationale, thinking, last_msg = [], 0, "", "", None
         for _step in range(max_steps):
             msg = self.chat.chat(messages, tools=self._tools)
             last_msg = msg
@@ -131,6 +172,8 @@ class OllamaPlanner:
                         "calls": total_calls, "latencyMs": latency_ms}
             if msg.get("content"):
                 rationale = msg["content"].strip()
+            if msg.get("thinking"):
+                thinking = msg["thinking"].strip()
             calls = msg.get("tool_calls") or []
             if not calls:
                 break
@@ -144,13 +187,16 @@ class OllamaPlanner:
                                  "tool_name": (c.get("function") or {}).get("name", ""),
                                  "content": json.dumps(res)})
         latency_ms = int((time.time() - t0) * 1000)
+        # fold this round's reasoning into the rolling memory (infinity chat)
+        self._record_round(frame, thinking, rationale, applied_all)
         result = {
             "rationale": rationale,
             "applied": applied_all,
             "calls": total_calls,
             "latencyMs": latency_ms,
+            "memoryRounds": len(self.reasoning),
             "response": {"content": (last_msg or {}).get("content", ""),
-                         "thinking": (last_msg or {}).get("thinking"),
+                         "thinking": (last_msg or {}).get("thinking") or thinking,
                          "tool_calls": (last_msg or {}).get("tool_calls") or []},
         }
         self._log(frame, messages, last_msg or {}, applied_all, latency_ms)
