@@ -430,8 +430,10 @@ class BuildBaseSkill(Skill):
             self.status, self.detail = DONE, "base plan complete"
             return
         role = roles[self._i]
-        # 3) power emergency: inject a power plant if out of power (without consuming a role)
-        if self._sub is None and power_margin(ctx) <= 0:
+        # 3) power emergency: inject power ONLY if power is genuinely NEGATIVE. (Some mods/factions —
+        # e.g. CWC USA — don't track power at all and report margin 0; <=0 here used to loop forever
+        # building fuel depots and never advance to the war factory, leaving the bot infantry-only.)
+        if self._sub is None and power_margin(ctx) < 0:
             pwr = find_power_buildable(ctx)
             if pwr:
                 self._sub = BuildStructureSkill({"structure": pwr})
