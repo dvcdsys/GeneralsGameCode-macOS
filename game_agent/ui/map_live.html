@@ -85,6 +85,9 @@
     <textarea id="directive" placeholder="e.g. Defend my base in the north. Hold the central oil. Don't over-extend."></textarea>
     <div class="row" style="margin-top:4px"><button id="sendDirective">send directive</button><span id="dirstatus" class="muted"></span></div>
 
+    <h2>Agent strategy (self)</h2>
+    <div id="strategy" class="muted">—</div>
+
     <h2>Tasks</h2>
     <div id="tasks" class="muted">—</div>
 
@@ -261,6 +264,10 @@ async function pollAgent(){
   const stat = document.getElementById('agentstatus');
   if(!s || s.inGame===false){ stat.textContent='agent idle / not in game'; }
   else { stat.innerHTML = `frame ${s.frame??'?'} · $${(s.me&&s.me.money)??'?'} · power ${(s.me&&s.me.power)??'?'}`; }
+  const st=s.strategy;
+  document.getElementById('strategy').innerHTML = (st && (st.situation||st.plan))
+    ? (`<div class="line"><b>situation:</b> ${escAg(st.situation)}</div><div class="line"><b>plan:</b> ${escAg(st.plan)}</div>`)
+    : '<span class="muted">— (model hasn\'t set one yet)</span>';
   const tasks=(s.tasks&&s.tasks.active)||[];
   document.getElementById('tasks').innerHTML = tasks.length? tasks.map(renderTask).join('') : '<span class="muted">no active tasks</span>';
   const hist=(s.tasks&&s.tasks.history)||[];

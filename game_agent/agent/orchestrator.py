@@ -129,6 +129,7 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
                 "me": {"player": me["index"], "side": me.get("side"), "money": me.get("money"),
                        "power": (me.get("powerProduction", 0) or 0) - (me.get("powerConsumption", 0) or 0)},
                 "directive": directive,
+                "strategy": (notes.strategy if notes else None),
                 "tasks": taskmgr.snapshot(),
                 "notes": notes.lines() if notes else [],
                 "events": journal.digest(16) if journal else [],

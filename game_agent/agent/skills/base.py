@@ -88,9 +88,24 @@ def obj_pos(u):
     return (u.get("x", 0.0), u.get("y", 0.0))
 
 
+# Non-entities that pollute /units: AI nav markers, sensors, projectiles in flight, decoy/"fake"
+# units, and visual effects. These must never count as my buildings, my army, or enemy contacts —
+# and especially never as buildings (they corrupt the base-centroid math).
+_JUNK_HINTS = ("marker", "waypoint", "aisensor", "sensor", "shell", "bullet", "projectile",
+               "fake", "decoy", "treeson", "onfire", "blood", "rubble", "debris", "smoke",
+               "explosion", "flare", "spark", "casing")
+
+
+def is_junk(u):
+    t = (u.get("template") or "").lower()
+    return any(h in t for h in _JUNK_HINTS)
+
+
 def is_building(u):
     # NB: in the CWC mod many production buildings report category "garrisonable" (you can garrison
     # them), and oil/supply report "economy" — they are all immobile structures, so count them.
+    if is_junk(u):
+        return False
     cat = u.get("category")
     if cat in ("structure", "building", "garrisonable", "economy"):
         return True
@@ -141,7 +156,7 @@ _NONCOMBAT_HINTS = ("dozer", "worker", "construction", "drone", "drop", "supply"
 
 
 def is_combat_unit(u):
-    if u.get("category") != "unit":
+    if u.get("category") != "unit" or is_junk(u):
         return False
     t = (u.get("template") or "").lower()
     return not any(h in t for h in _NONCOMBAT_HINTS)

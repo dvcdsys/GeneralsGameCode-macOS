@@ -31,6 +31,14 @@ MANAGEMENT_TOOLS = [
                                       "priority": {"type": "integer"}},
                        "required": ["task_id", "priority"]}}},
     {"type": "function", "function": {
+        "name": "set_strategy",
+        "description": ("Record/UPDATE your current strategy in plain text: a one-line read of the "
+                        "SITUATION and your one-line PLAN. Call this FIRST every round and revise it "
+                        "as the game changes — it is your persistent memory and is shown to the human."),
+        "parameters": {"type": "object",
+                       "properties": {"situation": {"type": "string"}, "plan": {"type": "string"}},
+                       "required": ["situation", "plan"]}}},
+    {"type": "function", "function": {
         "name": "note",
         "description": ("Record a short strategic note to your own memory (persists across planning "
                         "rounds). Use for observations the world snapshot won't re-derive: enemy "
@@ -59,6 +67,10 @@ This is how you out-economy the enemy — START IT EARLY and keep it running.
 - attack_area    : sends the army to assault a location; it WAITS until you have enough units, so it \
 never suicides a lone unit. Use it to finish the enemy once your army is strong.
 
+EVERY ROUND, FIRST call set_strategy(situation, plan): one line on what's happening and one line on \
+what you intend to do now. This is your memory (currentStrategy in the brief shows your last one) and \
+the human reads it. Revise it as the game changes — then call your action tools.
+
 WINNING SEQUENCE (do this):
 1. FIRST round: start build_base AND maintain_army (target ~12) AND capture_points AND defend_base — \
 all of them. You CAN and SHOULD call several tools in one turn. This sets up economy, army production, \
@@ -83,7 +95,7 @@ Each round you get a JSON brief:
 builder, not a fighter; drones are recon, not fighters.
 - buildable.makeableNow: what you can build/train RIGHT NOW (exact template names).
 - enemyContacts: visible enemies; shroud = clear/cached(maybe stale)/undefined(scout it).
-- points, threats, tasks (your ACTIVE tasks + status), recentEvents, notes.
+- points, threats, tasks (your ACTIVE tasks + status), recentEvents, notes, currentStrategy (your last).
 - directive: the human commander's STANDING INTENT — it OUTRANKS your preferences. Obey it.
 
 Rules: prefer macros over primitives; don't duplicate active tasks; cancel stuck/obsolete ones; use \
@@ -206,6 +218,10 @@ class OllamaPlanner:
             if fn == "set_priority":
                 ok = self.taskmgr.set_priority(int(args.get("task_id")), int(args.get("priority", 5)))
                 return {"tool": fn, "task_id": args.get("task_id"), "ok": ok}
+            if fn == "set_strategy":
+                self.notes.set_strategy(args.get("situation", ""), args.get("plan", ""), frame)
+                return {"tool": fn, "situation": args.get("situation", "")[:90],
+                        "plan": args.get("plan", "")[:90]}
             if fn == "note":
                 self.notes.add(args.get("text", ""), frame)
                 return {"tool": fn, "text": args.get("text", "")[:80]}

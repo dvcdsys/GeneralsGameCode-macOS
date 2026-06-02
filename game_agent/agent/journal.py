@@ -100,6 +100,16 @@ class AgentNotes:
 
     def __init__(self, cap=20):
         self._notes = deque(maxlen=cap)
+        # the model's evolving plain-text strategy (current read of the situation + its plan); this is
+        # persistent memory it reads back each round and the human sees in the UI
+        self.strategy = {"situation": "", "plan": "", "frame": 0}
+        self.strategy_history = deque(maxlen=10)
+
+    def set_strategy(self, situation, plan, frame=0):
+        situation, plan = (situation or "").strip(), (plan or "").strip()
+        if situation or plan:
+            self.strategy = {"situation": situation, "plan": plan, "frame": frame}
+            self.strategy_history.append(self.strategy)
 
     def add(self, text, frame=0):
         text = (text or "").strip()

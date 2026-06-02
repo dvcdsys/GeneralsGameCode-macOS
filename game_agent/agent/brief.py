@@ -9,6 +9,8 @@ directive. Everything is JSON-serialisable and intentionally terse (~1-3 KB).
 
 import math
 
+from agent.skills.base import is_building, is_junk
+
 
 def _group_by_template(objs):
     groups = {}
@@ -32,7 +34,7 @@ def _group_by_template(objs):
 
 
 def _enemy_contacts(world):
-    enemies = world.enemies()
+    enemies = [u for u in world.enemies() if not is_junk(u)]  # drop shells/sensors/decoys/markers
     groups = {}
     for u in enemies:
         key = (u.get("template", "?"), u.get("shroud", "clear"))
@@ -97,9 +99,9 @@ def _buildable(client, player):
 def compose_brief(ctx, taskmgr, notes, directive=""):
     world, me = ctx.world, ctx.me
     p = ctx.player
-    mine = [u for u in world.units if u.get("player") == p]
+    mine = [u for u in world.units if u.get("player") == p and not is_junk(u)]
     my_units = [u for u in mine if u.get("category") == "unit"]
-    my_blds = [u for u in mine if u.get("category") != "unit"]
+    my_blds = [u for u in mine if is_building(u)]
 
     threats = ctx.threats.threats(ctx.frame) if ctx.threats else []
     brief = {
@@ -122,6 +124,7 @@ def compose_brief(ctx, taskmgr, notes, directive=""):
         "tasks": taskmgr.summary(),
         "recentEvents": ctx.journal.digest(16) if ctx.journal else [],
         "notes": notes.lines() if notes else [],
+        "currentStrategy": (notes.strategy if notes else None),
         "directive": directive or "",
     }
     return brief
