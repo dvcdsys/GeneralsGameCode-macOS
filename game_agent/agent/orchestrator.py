@@ -21,28 +21,23 @@ import os
 import threading
 import time
 
-from agent.brief import compose_brief, _enemy_base_guess
-from agent.skills.base import SkillContext, select_combat_units, base_under_attack, my_buildings, my_units
-from agent.skills.library import (AttackAreaSkill, BuildBaseSkill, MaintainArmySkill,
+from agent.brief import compose_brief
+from agent.skills.base import SkillContext
+from agent.skills.library import (BuildBaseSkill, MaintainArmySkill,
                                   CapturePointsSkill, DefendBaseSkill)
 from genapi.world import WorldModel
 
 STATE_PATH = "/tmp/gen_agent_state.json"
 DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
 
-# Autonomous-offense safety net: a small LLM sometimes turtles forever and never orders the attack
-# even when it has a winning army. To actually BEAT the AI we guarantee offense — if the army is
-# strong, the base is safe, the enemy location is known/estimable, and no attack is already running,
-# we inject one toward the enemy base. The LLM is still the commander (its own attack_area dedupes
-# this); this only fires when it has failed to push.
-AUTO_ATTACK_ARMY = 16  # combat units before the safety-net attack triggers
-
 
 def _seed_opening(taskmgr, frame, verbose=False):
-    """Start the standing macros the INSTANT the match begins, without waiting for the first LLM
-    plan. The first Ollama call pays a 30-70s model-load and the planner runs async, so without this
-    the bot sits idle for the whole opening ('first steps very late'). The LLM still runs right after
-    and can re-prioritise; its duplicate macro calls are deduped by the planner (singletons)."""
+    """Kick off a sensible standing opening the INSTANT the match begins so the bot isn't idle while
+    the first (cold-loaded) LLM plan is still computing — the harness complained about 'first steps
+    very late'. These are just the default standing tasks (build a base, keep an army, take economy
+    points, defend) that any opening needs; the LLM is the commander and immediately re-plans on top —
+    it can cancel or re-prioritise these, and identical re-issues dedupe. It does NOT script strategy
+    (no attack timing, no build order beyond the macro's own) — that is the LLM's job."""
     have = {t["skill"] for t in taskmgr.active()}
     opening = [BuildBaseSkill, MaintainArmySkill, CapturePointsSkill, DefendBaseSkill]
     seeded = []
@@ -52,25 +47,6 @@ def _seed_opening(taskmgr, frame, verbose=False):
             seeded.append(cls.name)
     if verbose and seeded:
         print("[orch] seeded opening @f{}: {}".format(frame, ", ".join(seeded)), flush=True)
-
-
-def _maybe_autonomous_attack(ctx, taskmgr, verbose=False):
-    # NOTE: no base_under_attack veto. The easy AI harasses the base almost continuously, which used
-    # to pin the whole army home and produce an endless stalemate. attack_area keeps an 8-unit home
-    # guard (and defend_base masses it), so once the army is solidly large we push out regardless.
-    if any(t["skill"] == "attack_area" for t in taskmgr.active()):
-        return  # an attack is already planned/running (LLM's or ours)
-    army = select_combat_units(ctx)
-    if len(army) < AUTO_ATTACK_ARMY:
-        return
-    guess = _enemy_base_guess(ctx.world, my_buildings(ctx), my_units(ctx))
-    if not guess:
-        return
-    skill = AttackAreaSkill({"area": {"x": guess["x"], "y": guess["y"]}})
-    taskmgr.add(skill, priority=4, frame=ctx.frame)
-    if verbose:
-        print("[orch] AUTO-ATTACK injected toward {} ({})".format(
-            (guess["x"], guess["y"]), guess.get("source")), flush=True)
 
 
 def _atomic_write(path, obj):
@@ -181,9 +157,6 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
                 t = threading.Thread(target=_run, name="planner", daemon=True)
                 t.start()
                 plan_box["thread"] = t
-
-            # --- autonomous offense safety net (guarantees the bot pushes to win) --
-            _maybe_autonomous_attack(ctx, taskmgr, verbose=verbose)
 
             # --- reactive/executive tier (fast — never blocked by planning) ----
             taskmgr.tick(ctx)

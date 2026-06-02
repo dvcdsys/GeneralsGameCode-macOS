@@ -22,8 +22,8 @@ class OllamaChat:
         if not host.startswith("http"):
             host = "http://" + host
         self.base = host.rstrip("/")
-        # qwen3.5:9b — tools + vision + thinking, 256K ctx (vision opens feeding a minimap render later)
-        self.model = model or os.environ.get("GEN_OLLAMA_MODEL", "qwen3.5:9b")
+        # qwen3.5:4b — smaller/faster than 9b, snappier strategic cadence; tools + thinking
+        self.model = model or os.environ.get("GEN_OLLAMA_MODEL", "qwen3.5:4b")
         self.timeout = timeout
         self.temperature = temperature
         self.think = think
