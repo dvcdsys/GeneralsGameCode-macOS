@@ -14,6 +14,7 @@ from agent.skills.base import (
     select_combat_units, resolve_point, find_build_spot, obj_pos,
     is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
     capturable_points, power_margin, find_power_buildable,
+    find_buildable_by_role, have_role,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -384,36 +385,21 @@ class ScoutSkill(Skill):
 # ------------------------------------------------------------------------------
 class BuildBaseSkill(Skill):
     name = "build_base"
-    description = ("Build up your base in a sensible ORDER, ONE structure at a time (finish each "
-                   "before starting the next), skipping anything you already have enough of. Trains a "
-                   "dozer first if you have none. Omit 'plan' for a solid economy-first opening, or "
-                   "give an ordered list of structure templates. Use this instead of many separate "
-                   "build_structure calls.")
-    param_schema = {
-        "type": "object",
-        "properties": {
-            "plan": {"type": "array", "items": {"type": "string"},
-                     "description": "ordered structure templates; omit for the default opening"},
-        },
-        "required": [],
-    }
-    # default opening (CWC Russia templates from /buildable): power, infantry, base defense, vehicles,
-    # more power, more defense. Economy + army first, with static defenses to survive early pressure.
-    DEFAULT_PLAN = ["CWCruSmallFuelDepot", "CWCruBarracks", "CWCruFortInf", "CWCruWarFactory",
-                    "CWCruSmallFuelDepot", "CWCruFortTank", "CWCruFortInf"]
+    description = ("Build up your base in a sensible ORDER, ONE structure at a time, skipping roles you "
+                   "already have. Trains a dozer first if needed and auto-builds power when low. "
+                   "Faction-agnostic (works as any side). Call with NO arguments — it picks the right "
+                   "structures from what you can build. Use this instead of many build_structure calls.")
+    param_schema = {"type": "object", "properties": {}, "required": []}
+    # role order (resolved per-faction from /buildable): power -> infantry -> defense -> vehicles
+    DEFAULT_ROLES = ["power", "barracks", "defense", "warfactory", "defense"]
     DOZER_RETRAIN = 300
-
-    def _enough(self, ctx, plan, i):
-        t = plan[i]
-        want = sum(1 for j in range(i + 1) if plan[j] == t)
-        have = sum(1 for u in my_buildings(ctx) if u.get("template") == t)
-        return have >= want
+    ROLE_WAIT = 1200  # frames to wait for an unbuildable role before skipping it
 
     def tick(self, ctx):
         self._begin(ctx)
-        plan = self.params.get("plan") or self.DEFAULT_PLAN
+        roles = self.DEFAULT_ROLES
         if not hasattr(self, "_i"):
-            self._i, self._sub, self._dz_frame = 0, None, None
+            self._i, self._sub, self._dz_frame, self._power_insert, self._wait = 0, None, None, False, None
         # 1) need a dozer to build at all
         if not find_dozers(ctx):
             dz = find_trainable_dozer(ctx)
@@ -423,28 +409,43 @@ class BuildBaseSkill(Skill):
             self.status = RUNNING if dz else BLOCKED
             self.detail = "training a dozer first" if dz else "no dozer and none trainable"
             return
-        # 2) advance past steps already satisfied
-        while self._i < len(plan) and self._sub is None and self._enough(ctx, plan, self._i):
+        # 2) skip roles already satisfied
+        while self._i < len(roles) and self._sub is None and have_role(ctx, roles[self._i]):
             self._i += 1
-        if self._i >= len(plan):
+            self._wait = None
+        if self._i >= len(roles):
             self.status, self.detail = DONE, "base plan complete"
             return
-        # 3) build the current step (one at a time). Power emergency takes priority: if we're out of
-        #    power, inject a power-plant build WITHOUT consuming a plan step.
+        role = roles[self._i]
+        # 3) power emergency: inject a power plant if out of power (without consuming a role)
         if self._sub is None and power_margin(ctx) <= 0:
             pwr = find_power_buildable(ctx)
             if pwr:
                 self._sub = BuildStructureSkill({"structure": pwr})
                 self._power_insert = True
+        # 4) resolve the current role to a concrete buildable template
         if self._sub is None:
-            self._sub = BuildStructureSkill({"structure": plan[self._i]})
+            tmpl = find_buildable_by_role(ctx, role)
+            if not tmpl:
+                if self._wait is None:
+                    self._wait = ctx.frame
+                if ctx.frame - self._wait > self.ROLE_WAIT:    # give up on this role, move on
+                    self._i += 1
+                    self._wait = None
+                    self.status, self.detail = RUNNING, "skip {} (not buildable)".format(role)
+                else:
+                    self.status, self.detail = BLOCKED, "waiting to build {} (prereq/money)".format(role)
+                return
+            self._sub = BuildStructureSkill({"structure": tmpl})
             self._power_insert = False
+            self._wait = None
+        # 5) drive the sub-build
         self._sub.tick(ctx)
         self.status = RUNNING
-        label = "power!" if getattr(self, "_power_insert", False) else "[{}/{}]".format(self._i + 1, len(plan))
+        label = "power!" if self._power_insert else "[{}/{} {}]".format(self._i + 1, len(roles), role)
         self.detail = "{} {}".format(label, self._sub.status_line())
         if self._sub.status in (DONE, FAILED):
-            if not getattr(self, "_power_insert", False):
+            if not self._power_insert:
                 self._i += 1
             self._sub = None
             self._power_insert = False

@@ -263,6 +263,30 @@ def find_power_buildable(ctx):
     return r[0][0] if r else None
 
 
+# Build roles by template keyword — faction-agnostic (the bot is randomly USA/Russia/etc per game),
+# so we never hardcode template names; we resolve roles against what /buildable offers right now.
+_ROLE_HINTS = {
+    "power": ("fuel", "power", "reactor", "generator"),
+    "barracks": ("barrack",),
+    "warfactory": ("warfactory", "war_factory", "warfact", "vehicle"),
+    "defense": ("fort", "turret", "bunker", "defens", "tower", "sam", "sa6", "patriot", "gun", "pillbox"),
+    "airfield": ("airfield", "helipad", "airport", "strategycenter"),
+}
+
+
+def find_buildable_by_role(ctx, role):
+    """The cheapest buildable STRUCTURE matching a role, from what's makeable right now (any faction)."""
+    hints = _ROLE_HINTS.get(role, ())
+    r = find_trainable(ctx, lambda tl, e: e.get("how") == "build" and any(h in tl for h in hints))
+    return sorted(r, key=lambda x: x[2])[0][0] if r else None
+
+
+def have_role(ctx, role):
+    """Do I already own a building serving this role?"""
+    hints = _ROLE_HINTS.get(role, ())
+    return any(any(h in (u.get("template") or "").lower() for h in hints) for u in my_buildings(ctx))
+
+
 def capturable_points(ctx):
     """Neutral/enemy economy + tech points worth capturing (oil/supply/cash/tech/capturable flags),
     not already mine. These give economy and map control — capture them early."""
