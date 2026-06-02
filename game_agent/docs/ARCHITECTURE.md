@@ -69,6 +69,14 @@ Pure-stdlib RFC6455 client (`genapi/ws.py`): handshake + frame decode + ping/pon
 `/events` payloads (`unit_died`, `unit_produced`, `structure_complete`, `combat`). Used for reactive
 logic and run analysis; the decision loop itself is poll-based.
 
+### `genapi.threats.ThreatTracker` — reactive layer
+A daemon thread over the `combat` event stream (`genapi/threats.py`). "My unit is under attack" needs a
+faster reaction than the low-Hz `decide()` tick, so this aggregates `combat` events for a given player
+into a live, cheap-to-read threat picture — per victim: `topAttacker`/`attackers`, cumulative `damage`,
+`hits`, `lastFrame` — with stale entries expiring after a window. `decide()` (or a human panel) reads
+`tt.threats(now_frame)` without blocking on the socket. Combat events are ground truth, so a fog-aware
+agent should cross-check `topAttacker` against its `view=N` units before treating it as a target.
+
 ### `agent.Agent` + `agent.run` — the decision loop
 `agent/base.py` defines the contract and the driver:
 
@@ -228,9 +236,11 @@ return [{ids, verb, params}]  ──▶  run() dispatches via /command (already 
    invents IDs.
 4. **Authority stays on the game side.** The LLM only emits documented verbs; verb→engine mapping
    (AIGroup dispatch) is the game's job. Anything illegal is rejected by `/command` and logged.
-5. **Cadence vs latency.** A 7B decision takes ~hundreds of ms–seconds; that fits `hz≈0.2–0.5`. The loop
-   already tolerates this; long calls just lower the effective tick rate. Consider running the model
-   call off the critical path later if needed.
+5. **Cadence vs latency + reactive layer.** A 7B decision takes ~hundreds of ms–seconds; that fits
+   `hz≈0.2–0.5`. The loop tolerates this; long calls just lower the tick rate. For things that can't
+   wait for the next strategic tick (a unit being attacked), attach a `ThreatTracker` in `on_start()`
+   and fold its `threats(now_frame)` into the brief — cheap reflexes (retreat/counter) without blocking
+   the model call.
 6. **Determinism & eval (M4).** Fix RNG via `POST /session {seed}` pre-start, read `GET /session`
    outcome, and score from the action log + outcome. Same launch + seed ⇒ repeatable game for A/B-ing
    prompts/models. The action log (`/tmp/gen_api_actions.jsonl`) is the dataset for eval and later

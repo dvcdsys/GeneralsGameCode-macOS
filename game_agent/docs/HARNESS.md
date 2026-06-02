@@ -29,6 +29,7 @@ make agent      # run the harness agent (scripted baseline)
 make viewer     # interactive browser world-view → http://localhost:8088/map_live.html
 make demo       # read→pause→move→resume DoD loop
 make events     # live WS event stream
+make threats    # live "my units under attack" view (ThreatTracker over combat events)
 make map        # render the world to /tmp/gen_world.png
 make session    # seed / replay / outcome
 make log        # tail the bot-action log
@@ -52,6 +53,8 @@ game_agent/
     client.py         GameClient — REST + WS wrapper (the single HTTP path)
     ws.py             minimal RFC6455 WS client (stream_events generator)
     world.py          WorldModel — decodes /map + classifies /units into agent state
+    threats.py        ThreatTracker — background WS listener; aggregates 'combat' events into a
+                      live "my units under attack" picture (reactive layer for the agent)
   agent/
     base.py           Agent interface (decide) + run() driver loop
     scripted.py       NO-LLM baseline (rally to nearest capture point)

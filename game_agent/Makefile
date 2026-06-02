@@ -46,6 +46,7 @@ help:
 	@echo "  make map            render world PNG -> /tmp/gen_world.png"
 	@echo "  make demo           read->pause->move->resume DoD loop"
 	@echo "  make events         live WS event stream"
+	@echo "  make threats        live attacks-on-my-units view (ThreatTracker)"
 	@echo "  make session        print /session (seed/replay/outcome)"
 	@echo "  make smoke-read     live state+units table"
 	@echo "  make smoke-control  pause/step/resume tempo test"
@@ -92,6 +93,9 @@ demo:
 
 events:
 	@GEN_API_PORT=$(PORT) $(PY) "$(TOOLS)/events_listen.py"
+
+threats:
+	@GEN_API_PORT=$(PORT) $(PY) "$(TOOLS)/threats_watch.py"
 
 session:
 	@GEN_API_PORT=$(PORT) $(PY) "$(TOOLS)/session.py"
