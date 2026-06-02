@@ -111,6 +111,12 @@ base, a few capture nearby points, the rest attack when strong. Orders are durab
 their last order until you reassign them; re-issuing the SAME order is a harmless no-op. You manage the \
 whole economy+army yourself: each round check counts and issue build_structure / train_units as needed.
 
+ALWAYS pass a short `reason` with every order (e.g. "capture oil for income", "hold the east flank", \
+"siege enemy base"). YOUR ORDER LEDGER: the brief's `tasks` lists every order you currently have out — \
+the units it commands, its target, your recorded reason, and its status. THIS IS YOUR ACTION MEMORY: \
+read it first each round to remember which units are already assigned and why, so you don't double-assign \
+a unit or forget a job. Units NOT shown in any order are idle — give them something to do.
+
 MEMORY: the brief carries your history — recentEvents (what just happened), threats (who's attacking \
 whom), your own notes, and currentStrategy (your last strategy). Reason over this; learn within the \
 game (e.g. if an attack failed, note why and adapt). Use note(text) to remember things the snapshot \
@@ -143,7 +149,16 @@ class OllamaPlanner:
         self.notes = notes
         self.log_path = log_path
         self._tools = [t for t in self.registry.skill_tools()
-                       if (t.get("function") or {}).get("name") in LLM_SKILLS] + MANAGEMENT_TOOLS
+                       if (t.get("function") or {}).get("name") in LLM_SKILLS]
+        # Every order carries a short `reason` — the LLM's note of WHY it sent these units here. It is
+        # stored on the task and replayed in the brief's order ledger, so the commander keeps the
+        # context of its own actions (which units it assigned where and why).
+        for t in self._tools:
+            props = ((t.get("function") or {}).get("parameters") or {}).get("properties")
+            if isinstance(props, dict):
+                props["reason"] = {"type": "string",
+                                   "description": "short WHY for this order (kept in your order ledger)"}
+        self._tools += MANAGEMENT_TOOLS
         self.chat.think = True              # let it reason; thinking is kept in the rolling memory
         self.reasoning = deque()            # one entry per round: {"frame","text"} (kept verbatim)
         self.summary = ""                   # compacted memory of rounds older than KEEP_ROUNDS

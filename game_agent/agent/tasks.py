@@ -109,6 +109,23 @@ class TaskManager:
         return {"active": self.active(), "history": self.history()}
 
     def summary(self):
-        """One-line-per-task compaction for the LLM brief."""
-        return [{"id": s["id"], "skill": s["skill"], "status": s["status"],
-                 "detail": s["detail"], "priority": s["priority"]} for s in self.active()]
+        """Order ledger for the LLM brief: each active order with the units it commands, its target,
+        and the WHY the commander recorded — so the LLM keeps context of its own assignments."""
+        out = []
+        for s in self.active():
+            p = s.get("params") or {}
+            tgt = None
+            if p.get("targetId") is not None:
+                tgt = "point/obj {}".format(p["targetId"])
+            elif isinstance(p.get("area"), dict):
+                tgt = "area {},{}".format(round(p["area"].get("x", 0)), round(p["area"].get("y", 0)))
+            elif isinstance(p.get("pos"), dict):
+                tgt = "pos {},{}".format(round(p["pos"].get("x", 0)), round(p["pos"].get("y", 0)))
+            elif p.get("structure"):
+                tgt = p["structure"]
+            elif p.get("unit"):
+                tgt = "{}x{}".format(p.get("count", 1), p["unit"])
+            out.append({"id": s["id"], "skill": s["skill"], "status": s["status"],
+                        "units": p.get("ids"), "target": tgt, "why": p.get("reason"),
+                        "detail": s["detail"]})
+        return out
