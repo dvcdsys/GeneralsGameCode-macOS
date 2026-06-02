@@ -34,7 +34,7 @@ class BuildStructureSkill(Skill):
     param_schema = {
         "type": "object",
         "properties": {
-            "structure": {"type": "string", "description": "template name, e.g. AmericaPowerPlant"},
+            "structure": {"type": "string", "description": "exact template name from buildable.makeableNow"},
             "area": dict(_POINT, description="approximate build location (world coords)"),
         },
         "required": ["structure"],

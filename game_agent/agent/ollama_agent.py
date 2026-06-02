@@ -23,6 +23,13 @@ LLM_LOG = "/tmp/gen_agent_llm.jsonl"
 KEEP_ROUNDS = 20
 SUMMARY_CAP = 4000  # max chars of compacted older-round memory
 
+# Only these HIGH-LEVEL skills are exposed to the LLM. The low-level primitives (build_structure,
+# train_units, assemble_group, hold_point, defend_sector) are used INTERNALLY by the macros and the
+# orchestrator — a small model misuses them badly (it placed a hallucinated building forward at the
+# enemy base and re-commanded the lone dozer every tick, so nothing ever finished). The commander
+# orchestrates macros; the macros handle construction/training correctly.
+LLM_SKILLS = {"build_base", "maintain_army", "capture_points", "defend_base", "attack_area", "scout"}
+
 # Task-management tools the model can call alongside the skill tools.
 MANAGEMENT_TOOLS = [
     {"type": "function", "function": {
@@ -126,7 +133,8 @@ class OllamaPlanner:
         self.taskmgr = taskmgr
         self.notes = notes
         self.log_path = log_path
-        self._tools = self.registry.skill_tools() + MANAGEMENT_TOOLS
+        self._tools = [t for t in self.registry.skill_tools()
+                       if (t.get("function") or {}).get("name") in LLM_SKILLS] + MANAGEMENT_TOOLS
         self.chat.think = True              # let it reason; thinking is kept in the rolling memory
         self.reasoning = deque()            # one entry per round: {"frame","text"} (kept verbatim)
         self.summary = ""                   # compacted memory of rounds older than KEEP_ROUNDS
