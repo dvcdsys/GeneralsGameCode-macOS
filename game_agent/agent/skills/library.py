@@ -16,7 +16,7 @@ from agent.skills.base import (
     capturable_points, power_margin, find_power_buildable,
     find_buildable_by_role, have_role,
     enemy_units_near, base_under_attack, alive_ids, force_claimed_by_siblings,
-    capture_capable_units, incoming_attack_ids,
+    capture_capable_units, incoming_attack_ids, role_in_progress,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -422,14 +422,19 @@ class BuildBaseSkill(Skill):
             self.status = RUNNING if dz else BLOCKED
             self.detail = "training a dozer first" if dz else "no dozer and none trainable"
             return
-        # 2) skip roles already satisfied
-        while self._i < len(roles) and self._sub is None and have_role(ctx, roles[self._i]):
+        # 2) skip roles already satisfied (built OR currently under construction — don't duplicate)
+        while (self._i < len(roles) and self._sub is None
+               and (have_role(ctx, roles[self._i]) or role_in_progress(ctx, roles[self._i]))):
             self._i += 1
             self._wait = None
         if self._i >= len(roles):
             self.status, self.detail = DONE, "base plan complete"
             return
         role = roles[self._i]
+        # if the current role's building is mid-construction, wait for it rather than start another
+        if self._sub is None and role_in_progress(ctx, role):
+            self.status, self.detail = RUNNING, "{} under construction — waiting".format(role)
+            return
         # 3) power emergency: inject power ONLY if power is genuinely NEGATIVE. (Some mods/factions —
         # e.g. CWC USA — don't track power at all and report margin 0; <=0 here used to loop forever
         # building fuel depots and never advance to the war factory, leaving the bot infantry-only.)

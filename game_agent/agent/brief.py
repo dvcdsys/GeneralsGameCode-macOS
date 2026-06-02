@@ -16,18 +16,23 @@ def _group_by_template(objs):
     groups = {}
     for u in objs:
         t = u.get("template", "?")
-        g = groups.setdefault(t, {"template": t, "count": 0, "ids": [], "xs": [], "ys": []})
+        g = groups.setdefault(t, {"template": t, "count": 0, "ids": [], "xs": [], "ys": [], "_building": []})
         g["count"] += 1
         if len(g["ids"]) < 24:
             g["ids"].append(u.get("id"))
+        if u.get("constructing"):
+            g["_building"].append(round(u.get("constructionPercent", 0)))
         if "x" in u:
             g["xs"].append(u["x"])
             g["ys"].append(u["y"])
     out = []
     for g in groups.values():
         xs, ys = g.pop("xs"), g.pop("ys")
+        bld = g.pop("_building")
         if xs:
             g["at"] = {"x": round(sum(xs) / len(xs)), "y": round(sum(ys) / len(ys))}
+        if bld:  # some of these are still going up — show the commander so it doesn't duplicate
+            g["constructing"] = "{} building ({}%)".format(len(bld), ",".join(str(p) for p in bld))
         out.append(g)
     out.sort(key=lambda g: -g["count"])
     return out

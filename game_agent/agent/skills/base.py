@@ -162,6 +162,22 @@ def is_combat_unit(u):
     return not any(h in t for h in _NONCOMBAT_HINTS)
 
 
+def is_constructing(u):
+    """True if this building is still going up (engine OBJECT_STATUS_UNDER_CONSTRUCTION)."""
+    return bool(u.get("constructing"))
+
+
+def constructing_buildings(ctx):
+    return [u for u in my_buildings(ctx) if is_constructing(u)]
+
+
+def role_in_progress(ctx, role):
+    """Is a building serving this role already UNDER CONSTRUCTION? (so we don't start a duplicate)."""
+    hints = _ROLE_HINTS.get(role, ())
+    return any(is_constructing(u) and any(h in (u.get("template") or "").lower() for h in hints)
+              for u in my_buildings(ctx))
+
+
 def is_infantry(u):
     """A foot soldier. Only infantry can ENTER (and thus capture) tech/oil buildings — the engine's
     'capture' verb is groupEnter, which vehicles/aircraft cannot perform. (CWC names infantry CWC..Inf..;

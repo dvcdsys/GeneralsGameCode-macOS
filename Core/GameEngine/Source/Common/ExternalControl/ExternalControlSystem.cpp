@@ -884,6 +884,14 @@ private:
 					u["health"]    = body->getHealth();
 					u["maxHealth"] = body->getMaxHealth();
 				}
+				// Construction status: a building still going up reads health < maxHealth just like a
+				// damaged one, so expose an explicit flag + percent. Lets the agent SEE unfinished
+				// buildings (don't start a duplicate; wait for it; track it to completion).
+				if (obj->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION))
+				{
+					u["constructing"] = true;
+					u["constructionPercent"] = (double)obj->getConstructionPercent();
+				}
 				// Dynamic combat-relevant state (lean: only when non-default).
 				VeterancyLevel vet = obj->getVeterancyLevel();
 				if (vet != LEVEL_REGULAR) u["veterancy"] = veterancyName(vet);	// promoted ranks
