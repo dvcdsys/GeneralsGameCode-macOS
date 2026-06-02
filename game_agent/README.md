@@ -29,6 +29,7 @@ make            # full target list
 
 ## Docs
 
-- [`docs/HARNESS.md`](docs/HARNESS.md) — harness architecture, client-lib usage, the agent loop, run-log analysis.
-- [`docs/AGENT.md`](docs/AGENT.md) — LLM agent design (Ollama qwen/gemma 7B) + human-control UI.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — **start here**: components, the observe→decide→act loop, the action/fog contracts, and the planned Ollama/Qwen agent design.
+- [`docs/HARNESS.md`](docs/HARNESS.md) — usage: Makefile, layout, client-lib examples, run-log analysis.
+- [`docs/AGENT.md`](docs/AGENT.md) — agent design detail (Ollama qwen/gemma 7B) + human-control UI.
 - [`../docs/EXTERNAL_CONTROL_API.md`](../docs/EXTERNAL_CONTROL_API.md) — the **game's** API reference + how to extend the engine.

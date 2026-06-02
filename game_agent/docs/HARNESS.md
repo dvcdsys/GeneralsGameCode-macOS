@@ -1,4 +1,8 @@
-# game_agent — harness architecture & usage
+# game_agent — harness usage
+
+> Architecture overview (components, data flow, contracts, the Ollama agent design) lives in
+> [`ARCHITECTURE.md`](ARCHITECTURE.md). This doc is the practical usage reference.
+
 
 `game_agent/` is the **harness**: a Python project that drives a `PLAYER_EXTERNAL` player inside the
 game through the game's external-control API. The API is part of the **game** (engine modification —
