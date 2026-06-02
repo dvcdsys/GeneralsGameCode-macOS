@@ -46,9 +46,13 @@ class TaskManager:
         # the planner mutates the queue from a background thread while the executor ticks it
         self._lock = threading.RLock()
 
+    MAX_ACTIVE = 100  # hard cap on concurrent tasks (they all run in parallel every tick)
+
     # --- mutation (planner-facing) --------------------------------------------
     def add(self, skill, priority=5, frame=0):
         with self._lock:
+            if len(self._tasks) >= self.MAX_ACTIVE:
+                return None  # at the parallel-task cap; caller treats None as "not created"
             tid = self._next_id
             self._next_id += 1
             self._tasks[tid] = Task(tid, skill, priority=priority, created_frame=frame)
