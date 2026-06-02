@@ -15,6 +15,7 @@ from agent.skills.base import (
     is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
     capturable_points, power_margin, find_power_buildable,
     find_buildable_by_role, have_role,
+    enemy_units_near, base_under_attack, alive_ids, force_claimed_by_siblings,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -511,30 +512,40 @@ class DefendBaseSkill(Skill):
             self.detail = "no base to defend"
             return
         ax, ay = base
-        # units committed to an active attack are off-limits (no defend/attack tug-of-war)
-        claimed = set()
-        if ctx.taskmgr:
-            for t in ctx.taskmgr.active():
-                if t["skill"] == "attack_area":
-                    claimed.update(t["params"].get("_force", []))
-        units = [u for u in select_combat_units(ctx) if u.get("id") not in claimed]
+        under_attack = bool(enemy_units_near(ctx, base, 700.0))
+        # The dedicated strike force (attack_area) is always off-limits. When the base is UNDER
+        # ATTACK we recall everyone else — including units out capturing — and mass on the threat.
+        # When calm, capture units stay out (we exclude them) so we don't yank them off-objective.
+        off_limits = force_claimed_by_siblings(ctx, {"attack_area"})
+        if not under_attack:
+            off_limits |= force_claimed_by_siblings(ctx, {"capture_points"})
+        units = [u for u in select_combat_units(ctx) if u.get("id") not in off_limits]
         if not units:
-            self.detail = "no home-guard units (all committed to attack)"
+            self.detail = "no home-guard units (all committed elsewhere)"
             return
         ids = [u["id"] for u in units]
-        if ctx.threats:
-            for t in ctx.threats.threats(ctx.frame):
-                atk = find_object(ctx.world, t.get("topAttacker"))
-                if atk:
-                    ctx.client.command(ctx.player, ids, "attack_target", {"targetId": atk["id"]})
-                    self._last = ctx.frame
-                    self.detail = "countering attacker {}".format(atk["id"])
-                    return
+        if under_attack:
+            # Focus-fire the nearest enemy to the base; mass the whole home army on it.
+            foes = sorted(enemy_units_near(ctx, base, 1200.0),
+                          key=lambda e: math.hypot(e.get("x", 0) - ax, e.get("y", 0) - ay))
+            target = None
+            if ctx.threats:  # prefer something actively shooting us, if known
+                for t in ctx.threats.threats(ctx.frame):
+                    atk = find_object(ctx.world, t.get("topAttacker"))
+                    if atk and not (atk.get("relationToLocal") in (None, "self", "ally")):
+                        target = atk
+                        break
+            target = target or (foes[0] if foes else None)
+            if target is not None:
+                ctx.client.command(ctx.player, ids, "attack_target", {"targetId": target["id"]})
+                self._last = ctx.frame
+                self.detail = "UNDER ATTACK — {} units massing on enemy {}".format(len(ids), target["id"])
+                return
         if ctx.frame - getattr(self, "_last", -10 ** 9) >= self.REISSUE:
             ctx.client.command(ctx.player, ids, "guard_zone",
                                {"anchor": {"x": ax, "y": ay}, "engage": {"x": ax, "y": ay}})
             self._last = ctx.frame
-        self.detail = "defending base with {} units".format(len(ids))
+        self.detail = "guarding base with {} units".format(len(ids))
 
 
 class CapturePointsSkill(Skill):
@@ -547,6 +558,10 @@ class CapturePointsSkill(Skill):
         "type": "object",
         "properties": {
             "units_per": {"type": "integer", "default": 1, "description": "units to send per point"},
+            "home_guard": {"type": "integer", "default": 6,
+                           "description": "combat units kept home (never sent capturing)"},
+            "max_out": {"type": "integer", "default": 4,
+                        "description": "max units committed to capturing at once"},
         },
         "required": [],
     }
@@ -557,27 +572,58 @@ class CapturePointsSkill(Skill):
         self.status = RUNNING
         if not hasattr(self, "_sent"):
             self._sent = {}
+        # Keep our committed-units list (params["_capture_force"]) pruned to live units so defend_base
+        # can see exactly which units we own — this is what stops the per-tick defend/capture tug-of-war.
+        force = alive_ids(ctx, self.params.get("_capture_force", []))
+        self.params["_capture_force"] = force
+
+        # If the base is under attack, capturing is suicide and a distraction: release everyone so
+        # defend_base masses the whole army at home.
+        if base_under_attack(ctx, 700.0):
+            self.params["_capture_force"] = []
+            self.detail = "base under attack — yielding capture units to defense"
+            return
+
+        army = select_combat_units(ctx)
+        if not army:
+            self.detail = "no units to capture with yet"
+            return
         caps = capturable_points(ctx)
         if not caps:
             self.detail = "no capturable points in sight (scout to find them)"
             return
-        units = select_combat_units(ctx)
-        if not units:
-            self.detail = "no units to capture with yet"
+
+        home_guard = max(0, int(self.params.get("home_guard", 6)))
+        max_out = max(1, int(self.params.get("max_out", 4)))
+        # Only commit the SURPLUS beyond the home guard, capped — never strip the defending army.
+        budget = min(max_out, max(0, len(army) - home_guard))
+        if len(force) >= budget:
+            self.detail = "capturing with {}/{} units (home guard {})".format(len(force), budget, home_guard)
             return
-        per = max(1, int(self.params.get("units_per", 1)))
-        base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(units[0])
+
+        # Recruit free units (not already capturing, not in any other force) up to budget.
+        reserved = set(force) | force_claimed_by_siblings(ctx, {"attack_area"}, exclude=None)
+        free = [u for u in army if u.get("id") not in reserved]
+        if not free:
+            self.detail = "no free units to expand capture"
+            return
+        base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(army[0])
         caps.sort(key=lambda u: math.hypot(u["x"] - base[0], u["y"] - base[1]))
+        per = max(1, int(self.params.get("units_per", 1)))
         for tgt in caps:
             if ctx.frame - self._sent.get(tgt["id"], -10 ** 9) < self.RETRY:
                 continue
-            units.sort(key=lambda u: math.hypot(u.get("x", 0) - tgt["x"], u.get("y", 0) - tgt["y"]))
-            grp = [u["id"] for u in units[:per]]
+            free.sort(key=lambda u: math.hypot(u.get("x", 0) - tgt["x"], u.get("y", 0) - tgt["y"]))
+            take = free[:per]
+            if not take:
+                break
+            grp = [u["id"] for u in take]
             ctx.client.command(ctx.player, grp, "capture", {"targetId": tgt["id"]})
             self._sent[tgt["id"]] = ctx.frame
-            self.detail = "capturing point {} ({} total known)".format(tgt["id"], len(caps))
+            self.params["_capture_force"] = force + grp
+            self.detail = "capturing point {} with {} ({} pts known)".format(tgt["id"], len(grp), len(caps))
             return
-        self.detail = "all {} known points dispatched".format(len(caps))
+        self.detail = "capture force {}/{} committed; awaiting reachable points".format(len(force), budget)
 
 
 ALL_SKILLS = [

@@ -303,6 +303,50 @@ def capturable_points(ctx):
     return out
 
 
+def enemy_units_near(ctx, center, radius):
+    """Live (non-junk) enemy objects within `radius` of `center`. Used to tell when the base is
+    actually under attack so defenders mass and capturers yield, instead of the whole army wandering
+    the map on capture duty while the base burns."""
+    if not center:
+        return []
+    cx, cy = center
+    out = []
+    for u in ctx.world.enemies():
+        if is_junk(u) or "x" not in u:
+            continue
+        if math.hypot(u.get("x", 0) - cx, u.get("y", 0) - cy) <= radius:
+            out.append(u)
+    return out
+
+
+def base_under_attack(ctx, radius=650.0):
+    """True if live enemy units are inside `radius` of my base centroid (home is threatened)."""
+    base = ctx.world.centroid(my_buildings(ctx)) or ctx.world.centroid(my_units(ctx))
+    return bool(base) and len(enemy_units_near(ctx, base, radius)) > 0
+
+
+def alive_ids(ctx, ids):
+    """Subset of `ids` that still exist as my units this tick."""
+    if not ids:
+        return []
+    mine = {u.get("id") for u in my_units(ctx)}
+    return [i for i in ids if i in mine]
+
+
+def force_claimed_by_siblings(ctx, skills, exclude=None):
+    """Union of unit ids reserved by sibling tasks under the given skill names (via their params
+    force lists). Lets one skill avoid commanding units another skill already owns."""
+    claimed = set()
+    if not ctx.taskmgr:
+        return claimed
+    keymap = {"attack_area": "_force", "capture_points": "_capture_force"}
+    for t in ctx.taskmgr.active():
+        if t is exclude or t["skill"] not in skills:
+            continue
+        claimed.update(t["params"].get(keymap.get(t["skill"], "_force"), []))
+    return claimed
+
+
 def resolve_point(ctx, params, default=None):
     """Resolve a target point from params: explicit `pos`, then `area`, then `default`, then base
     centroid, then map centre."""

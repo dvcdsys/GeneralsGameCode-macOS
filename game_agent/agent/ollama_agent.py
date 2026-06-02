@@ -100,7 +100,15 @@ builder, not a fighter; drones are recon, not fighters.
 
 Rules: prefer macros over primitives; don't duplicate active tasks; cancel stuck/obsolete ones; use \
 exact template names; keep text brief and respond by CALLING TOOLS. If nothing needs changing, call \
-no tools."""
+no tools.
+DO NOT call build_structure yourself while build_base is running — build_base already constructs the \
+whole base in the right order and budget. Spamming build_structure drains your money to zero and \
+starves army production. Trust build_base.
+OFFENSE WINS: once maintain_army shows ~14+ units and your base is not under attack, issue ONE \
+attack_area toward the enemy (the `at` of the largest enemyContacts group, or the unexplored corner \
+your scout is probing). It auto-keeps a home guard, so attacking does NOT undefend your base. Keep it \
+running and re-target after 'area clear'. A bot that only turtles never wins — you must march out and \
+level their buildings."""
 
 
 class OllamaPlanner:
