@@ -23,7 +23,8 @@ import time
 
 from agent.brief import compose_brief, _enemy_base_guess
 from agent.skills.base import SkillContext, select_combat_units, base_under_attack, my_buildings, my_units
-from agent.skills.library import AttackAreaSkill
+from agent.skills.library import (AttackAreaSkill, BuildBaseSkill, MaintainArmySkill,
+                                  CapturePointsSkill, DefendBaseSkill)
 from genapi.world import WorldModel
 
 STATE_PATH = "/tmp/gen_agent_state.json"
@@ -35,6 +36,22 @@ DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
 # we inject one toward the enemy base. The LLM is still the commander (its own attack_area dedupes
 # this); this only fires when it has failed to push.
 AUTO_ATTACK_ARMY = 14  # combat units before the safety-net attack triggers
+
+
+def _seed_opening(taskmgr, frame, verbose=False):
+    """Start the standing macros the INSTANT the match begins, without waiting for the first LLM
+    plan. The first Ollama call pays a 30-70s model-load and the planner runs async, so without this
+    the bot sits idle for the whole opening ('first steps very late'). The LLM still runs right after
+    and can re-prioritise; its duplicate macro calls are deduped by the planner (singletons)."""
+    have = {t["skill"] for t in taskmgr.active()}
+    opening = [BuildBaseSkill, MaintainArmySkill, CapturePointsSkill, DefendBaseSkill]
+    seeded = []
+    for cls in opening:
+        if cls.name not in have:
+            taskmgr.add(cls({}), priority=5, frame=frame)
+            seeded.append(cls.name)
+    if verbose and seeded:
+        print("[orch] seeded opening @f{}: {}".format(frame, ", ".join(seeded)), flush=True)
 
 
 def _maybe_autonomous_attack(ctx, taskmgr, verbose=False):
@@ -82,7 +99,20 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
     if threats:
         threats.start()
 
+    # Warm the LLM (preload it into VRAM) on a background thread while the map loads, so the first
+    # real plan doesn't eat the 30-70s cold-load. The deterministic opening seed plays meanwhile.
+    if planner and getattr(planner, "chat", None):
+        def _warm():
+            try:
+                planner.chat.chat([{"role": "user", "content": "ready? reply OK"}])
+                if verbose:
+                    print("[orch] LLM warmed", flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+        threading.Thread(target=_warm, name="llm-warmup", daemon=True).start()
+
     map_cache = None
+    seeded = False
     last_dir_ts = None
     directive = ""
     # the planner runs on a background thread so the LLM's seconds of thinking never freeze the
@@ -94,6 +124,7 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             _atomic_write(state_path, {"inGame": False, "tasks": taskmgr.snapshot(),
                                        "notes": notes.lines() if notes else [], "directive": directive})
             map_cache = None
+            seeded = False  # re-seed the opening when a new match begins
             if verbose:
                 print("[orch] waiting for in-game ...")
             time.sleep(1.0)
@@ -112,6 +143,11 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             frame = (client.healthz() or {}).get("frame", 0)
             ctx = SkillContext(world, me, client, threats=threats, journal=journal, frame=frame,
                                taskmgr=taskmgr)
+
+            # --- instant opening (deterministic, before the slow first LLM plan) ---
+            if not seeded:
+                _seed_opening(taskmgr, frame, verbose=verbose)
+                seeded = True
 
             # --- human directive (force a re-plan when it changes) -------------
             d_text, d_ts = _read_directive(directive_path)
