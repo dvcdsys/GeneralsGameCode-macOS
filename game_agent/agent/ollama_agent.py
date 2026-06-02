@@ -48,7 +48,9 @@ and check progress next round.
 
 PREFER THE MACRO SKILLS — they encode good play so you don't have to micromanage:
 - build_base    : builds an economy-first base IN ORDER, one structure at a time (trains a dozer first \
-if needed). Use this ONCE — not many separate build_structure calls.
+if needed, and auto-builds power whenever you run low). Call it with NO arguments — its default opening \
+(power, barracks, defense, war factory, more power/defense) is strong; do NOT pass your own 'plan'. \
+Use this ONCE — not many separate build_structure calls.
 - maintain_army  : continuously trains & reinforces a standing army to a target size and rallies it \
 home. Start it EARLY so you always have a force.
 - capture_points : sends units to capture ALL oil/supply/tech/flag points (economy + map control). \

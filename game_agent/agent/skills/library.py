@@ -13,7 +13,7 @@ from agent.skills.base import (
     my_units, my_buildings, find_object, find_dozers, find_producer,
     select_combat_units, resolve_point, find_build_spot, obj_pos,
     is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
-    capturable_points,
+    capturable_points, power_margin, find_power_buildable,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -411,16 +411,25 @@ class BuildBaseSkill(Skill):
         if self._i >= len(plan):
             self.status, self.detail = DONE, "base plan complete"
             return
-        # 3) build the current step (one at a time)
-        target = plan[self._i]
+        # 3) build the current step (one at a time). Power emergency takes priority: if we're out of
+        #    power, inject a power-plant build WITHOUT consuming a plan step.
+        if self._sub is None and power_margin(ctx) <= 0:
+            pwr = find_power_buildable(ctx)
+            if pwr:
+                self._sub = BuildStructureSkill({"structure": pwr})
+                self._power_insert = True
         if self._sub is None:
-            self._sub = BuildStructureSkill({"structure": target})
+            self._sub = BuildStructureSkill({"structure": plan[self._i]})
+            self._power_insert = False
         self._sub.tick(ctx)
         self.status = RUNNING
-        self.detail = "[{}/{}] {}".format(self._i + 1, len(plan), self._sub.status_line())
+        label = "power!" if getattr(self, "_power_insert", False) else "[{}/{}]".format(self._i + 1, len(plan))
+        self.detail = "{} {}".format(label, self._sub.status_line())
         if self._sub.status in (DONE, FAILED):
-            self._i += 1
+            if not getattr(self, "_power_insert", False):
+                self._i += 1
             self._sub = None
+            self._power_insert = False
 
 
 class MaintainArmySkill(Skill):

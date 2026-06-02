@@ -237,6 +237,17 @@ def find_trainable_dozer(ctx):
     return r[0] if r else None
 
 
+def power_margin(ctx):
+    return (ctx.me.get("powerProduction", 0) or 0) - (ctx.me.get("powerConsumption", 0) or 0)
+
+
+def find_power_buildable(ctx):
+    """A buildable structure that provides power (fuel depot / power plant / reactor)."""
+    r = find_trainable(ctx, lambda tl, e: e.get("how") == "build"
+                       and any(k in tl for k in ("fuel", "power", "reactor", "generator")))
+    return r[0][0] if r else None
+
+
 def capturable_points(ctx):
     """Neutral/enemy economy + tech points worth capturing (oil/supply/cash/tech/capturable flags),
     not already mine. These give economy and map control — capture them early."""
