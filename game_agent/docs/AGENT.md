@@ -64,6 +64,10 @@ can't drain resources); management calls mutate the queue / write a note. No new
   call pays a one-time model-load (~tens of s).
 - **System prompt:** role = strategic commander; explains the two-tier control, the brief fields, fog
   semantics (clear/cached/undefined), and that the human **directive outranks** its own preferences.
+- **Observability:** every planning round is logged to `/tmp/gen_agent_llm.jsonl` — the full decision
+  cycle (`request:{system,brief,tools}` + `response:{content,thinking,tool_calls}` + `applied` +
+  `latencyMs`). `make llmlog` tails it; the Agent panel shows the latest reply. This is how you see
+  *why* the agent acted.
 
 ## Memory under a finite context (`agent/journal.py`)
 
@@ -113,6 +117,11 @@ GEN_OLLAMA_HOST=192.168.1.168:11434 python3 run_agent.py --agent ollama --plan-p
 
 ## Known limitations / next refinements
 
+- **Build placement:** the engine rejects `illegal build location` for spots too close to the base even
+  on clear terrain (empirically a structure must sit ~200+ world-units from existing buildings).
+  `find_build_spot` now starts at `min_radius=200` and varies per attempt; a proper game-side
+  `/query/can_build` would remove the guessing. Also: you need a dozer to build — the planner trains
+  one (from the Command Center) when it has none.
 - **Dozer contention:** with one dozer, a second `build_structure` correctly goes `blocked` until the
   dozer frees; a stalled foundation isn't auto-resumed (no resume-construction verb yet).
 - **Strategy quality** is prompt/skill-tuning, not framework: the model can over-commit while low on

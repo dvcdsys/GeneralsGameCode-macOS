@@ -213,19 +213,42 @@ def resolve_point(ctx, params, default=None):
     return (ctx.world.width * ctx.world.cell / 2.0, ctx.world.height * ctx.world.cell / 2.0)
 
 
-def find_build_spot(ctx, cx, cy, max_radius=400.0, step=24.0):
-    """Spiral outward from (cx,cy) for a coarsely-buildable cell. Final legality is validated
-    game-side by build_structure (isLocationLegalToBuild); we just avoid obviously bad cells."""
+def find_build_spot(ctx, cx, cy, attempt=0, min_radius=200.0, max_radius=900.0,
+                    step=60.0, clearance=190.0):
+    """Find a placement cell near (cx,cy) that is terrain-buildable AND far enough from existing
+    buildings. The engine rejects 'illegal build location' for cells too close to the base even when
+    the terrain is clear — empirically a structure must sit ~200+ world-units from existing buildings,
+    not just on clear ground. So we start the search at `min_radius` and require `clearance` from every
+    known building, rather than hugging the base.
+
+    `attempt` rotates the search so each retry probes a *different* sector — without this, a rejected
+    spot is re-picked identically and every retry fails the same way. Final legality is still validated
+    game-side (isLocationLegalToBuild); this keeps candidates inside the usually-legal envelope and
+    keeps retries moving."""
     w = ctx.world
-    if w.buildable(cx, cy):
-        return (cx, cy)
-    r = step
+    blds = [(u.get("x", 0.0), u.get("y", 0.0)) for u in ctx.world.units if is_building(u)]
+
+    def clear_of_buildings(x, y):
+        return all(math.hypot(x - bx, y - by) >= clearance for bx, by in blds)
+
+    base_ang = attempt * 1.7  # irrational-ish step so successive attempts spread around the circle
+    # pass 1: buildable terrain AND clear of building footprints
+    r = min_radius
     while r <= max_radius:
         steps = max(8, int(2 * math.pi * r / step))
         for k in range(steps):
-            a = 2 * math.pi * k / steps
-            x = cx + r * math.cos(a)
-            y = cy + r * math.sin(a)
+            a = base_ang + 2 * math.pi * k / steps
+            x, y = cx + r * math.cos(a), cy + r * math.sin(a)
+            if w.buildable(x, y) and clear_of_buildings(x, y):
+                return (x, y)
+        r += step
+    # pass 2: relax the footprint check, just need buildable terrain
+    r = min_radius
+    while r <= max_radius:
+        steps = max(8, int(2 * math.pi * r / step))
+        for k in range(steps):
+            a = base_ang + 2 * math.pi * k / steps
+            x, y = cx + r * math.cos(a), cy + r * math.sin(a)
             if w.buildable(x, y):
                 return (x, y)
         r += step

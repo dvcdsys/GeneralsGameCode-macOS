@@ -34,7 +34,7 @@ class BuildStructureSkill(Skill):
         },
         "required": ["structure"],
     }
-    MAX_ATTEMPTS = 6
+    MAX_ATTEMPTS = 12
 
     def tick(self, ctx):
         self._begin(ctx)
@@ -58,7 +58,7 @@ class BuildStructureSkill(Skill):
             dozer = free[0]
             self.params["_dozer"] = dozer["id"]
             cx, cy = resolve_point(ctx, self.params)
-            sx, sy = find_build_spot(ctx, cx, cy)
+            sx, sy = find_build_spot(ctx, cx, cy, attempt=self._attempts)
             res = ctx.client.command(ctx.player, [dozer["id"]], "build_structure",
                                      {"template": structure, "pos": {"x": sx, "y": sy}})
             if res and res.get("accepted"):

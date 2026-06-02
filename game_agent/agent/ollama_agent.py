@@ -11,6 +11,9 @@ by the skill or by /command and surfaces as a FAILED task, never a crash.
 """
 
 import json
+import time
+
+LLM_LOG = "/tmp/gen_agent_llm.jsonl"
 
 # Task-management tools the model can call alongside the skill tools.
 MANAGEMENT_TOOLS = [
@@ -66,6 +69,8 @@ Rules:
 - Keep a handful of tasks at a time, not dozens. Cancel tasks that are stuck (blocked) or obsolete.
 - Each dozer builds one structure at a time: don't start more simultaneous constructions than you have \
 dozers (count them in myForces). Re-issuing a task that already exists does nothing.
+- You NEED a dozer to build structures. If myForces shows no dozer (e.g. CWCruDozer), train one first \
+(train_units) — it is produced at the Command Center — before any build_structure task.
 - Scout before committing to attacks. Defend your base and honour the directive.
 - Prefer calling tools over talking. If nothing needs changing this round, call no tools.
 Respond by calling tools. Keep any text brief."""
@@ -74,11 +79,12 @@ Respond by calling tools. Keep any text brief."""
 class OllamaPlanner:
     name = "ollama"
 
-    def __init__(self, registry, chat, taskmgr, notes):
+    def __init__(self, registry, chat, taskmgr, notes, log_path=LLM_LOG):
         self.registry = registry
         self.chat = chat
         self.taskmgr = taskmgr
         self.notes = notes
+        self.log_path = log_path
         self._tools = self.registry.skill_tools() + MANAGEMENT_TOOLS
 
     def plan(self, brief, frame=0):
@@ -86,13 +92,49 @@ class OllamaPlanner:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(brief, separators=(",", ":"))},
         ]
+        t0 = time.time()
         msg = self.chat.chat(messages, tools=self._tools)
+        latency_ms = int((time.time() - t0) * 1000)
         if not msg or msg.get("error"):
-            return {"error": (msg or {}).get("error", "no response"), "applied": []}
+            result = {"error": (msg or {}).get("error", "no response"), "applied": [],
+                      "latencyMs": latency_ms}
+            self._log(frame, messages, msg or {}, [], latency_ms)
+            return result
         calls = msg.get("tool_calls") or []
         applied = [self._apply(c, frame) for c in calls]
-        return {"rationale": (msg.get("content") or "").strip(), "applied": applied,
-                "calls": len(calls)}
+        result = {
+            "rationale": (msg.get("content") or "").strip(),
+            "applied": applied,
+            "calls": len(calls),
+            "latencyMs": latency_ms,
+            # the model's raw decision, surfaced for the UI / state file
+            "response": {"content": msg.get("content", ""), "thinking": msg.get("thinking"),
+                         "tool_calls": calls},
+        }
+        self._log(frame, messages, msg, applied, latency_ms)
+        return result
+
+    def _log(self, frame, messages, msg, applied, latency_ms):
+        """Append the full LLM decision exchange (what we sent + what the model replied) to a JSONL
+        log — the observable battlefield decision cycle. One line per planning round."""
+        if not self.log_path:
+            return
+        try:
+            brief = json.loads(messages[1]["content"]) if len(messages) > 1 else None
+            entry = {
+                "t": time.time(),
+                "frame": frame,
+                "model": self.chat.model,
+                "latencyMs": latency_ms,
+                "request": {"system": messages[0]["content"], "brief": brief, "tools": self.registry.names()},
+                "response": {"content": msg.get("content", ""), "thinking": msg.get("thinking"),
+                             "tool_calls": msg.get("tool_calls") or [], "error": msg.get("error")},
+                "applied": applied,
+            }
+            with open(self.log_path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:  # noqa: BLE001 — logging must never break planning
+            pass
 
     # Identifying param per skill — a new task whose identity matches an active one is a no-op
     # (stops the planner re-issuing the same build/train every plan round and draining resources).

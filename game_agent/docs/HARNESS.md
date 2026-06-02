@@ -32,7 +32,8 @@ make events     # live WS event stream
 make threats    # live "my units under attack" view (ThreatTracker over combat events)
 make map        # render the world to /tmp/gen_world.png
 make session    # seed / replay / outcome
-make log        # tail the bot-action log
+make log        # tail the bot-action log (every mutating API call)
+make llmlog     # tail the LLM decision cycle (brief in → tool-calls out, per round)
 make stop       # stop the API game + viewer (never your own generalszh)
 ```
 
@@ -119,6 +120,20 @@ markers. This is the primary artifact for iterating on agents:
 make log                                                          # live tail
 jq 'select(.type=="command") | {frame, verb:.request.verb, ok:.result.accepted}' /tmp/gen_api_actions.jsonl
 jq -s 'group_by(.type) | map({(.[0].type): length}) | add' /tmp/gen_api_actions.jsonl   # action histogram
+```
+
+### LLM decision cycle (the planner's reasoning)
+
+The Ollama planner records every planning round to `/tmp/gen_agent_llm.jsonl` — the **observable
+decision cycle**: exactly what was sent to the model and what it replied. One object per round:
+`{t, frame, model, latencyMs, request:{system, brief, tools}, response:{content, thinking, tool_calls},
+applied}`. `make llmlog` pretty-tails it; the viewer's **Agent panel** also shows the latest reply
+(thinking + each tool call + latency). Use it to see *why* the agent did what it did:
+
+```bash
+make llmlog                                                                   # live, readable
+jq -c '{frame, dir:.request.brief.directive, calls:[.response.tool_calls[].function.name]}' /tmp/gen_agent_llm.jsonl
+jq '.response.thinking' /tmp/gen_agent_llm.jsonl | tail -1                     # last chain-of-thought
 ```
 
 ## Notes

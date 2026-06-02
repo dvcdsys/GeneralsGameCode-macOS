@@ -262,7 +262,19 @@ async function pollAgent(){
   const hist=(s.tasks&&s.tasks.history)||[];
   document.getElementById('history').innerHTML = hist.length? hist.slice(-12).reverse().map(renderTask).join('') : '<span class="muted">—</span>';
   const lp=s.lastPlan;
-  document.getElementById('rationale').innerHTML = lp? (escAg(lp.rationale||'(no text)')+ (lp.error?`<br><span class="st-failed pill">err</span> ${escAg(lp.error)}`:'') + `<br><span class="muted">tool calls: ${lp.calls??(lp.applied?lp.applied.length:0)}</span>`) : '<span class="muted">—</span>';
+  (function(){
+    const el=document.getElementById('rationale');
+    if(!lp){ el.innerHTML='<span class="muted">—</span>'; return; }
+    let h='';
+    if(lp.error){ h+=`<span class="pill st-failed">err</span> ${escAg(lp.error)}<br>`; }
+    const think=lp.response&&lp.response.thinking;
+    if(think){ h+=`<div class="muted" style="font-size:11px;white-space:pre-wrap">🧠 ${escAg(String(think).slice(0,500))}</div>`; }
+    if(lp.rationale){ h+=`<div>${escAg(lp.rationale)}</div>`; }
+    const tc=(lp.response&&lp.response.tool_calls)||[];
+    if(tc.length){ h+=tc.map(c=>{const f=c.function||{};let a=f.arguments;try{a=typeof a==='string'?a:JSON.stringify(a);}catch(e){a='';}return `<div class="line">▶ <b>${escAg(f.name)}</b>(${escAg(a)})</div>`;}).join(''); }
+    h+=`<div class="muted" style="margin-top:3px">tool calls: ${lp.calls??tc.length}${lp.latencyMs!=null?' · '+lp.latencyMs+'ms':''}</div>`;
+    el.innerHTML=h;
+  })();
   document.getElementById('notes').innerHTML = (s.notes&&s.notes.length)? s.notes.map(n=>`<div class="line">${escAg(n)}</div>`).join('') : '<span class="muted">—</span>';
   document.getElementById('events').innerHTML = (s.events&&s.events.length)? s.events.slice(-12).reverse().map(e=>`<div class="line">${escAg(e)}</div>`).join('') : '<span class="muted">—</span>';
 }

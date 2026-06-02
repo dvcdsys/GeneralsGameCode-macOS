@@ -53,6 +53,7 @@ help:
 	@echo "  make smoke-read     live state+units table"
 	@echo "  make smoke-control  pause/step/resume tempo test"
 	@echo "  make log            tail the bot-action log ($(LOG))"
+	@echo "  make llmlog         tail the LLM decision cycle (brief in / tool-calls out)"
 	@echo "  make status         quick /healthz + /players"
 	@echo "  make stop           stop API game + viewer (NOT your own generalszh)"
 	@echo "  make clean          remove generated PNGs"
@@ -116,6 +117,13 @@ map:
 
 log:
 	@touch "$(LOG)"; echo "tailing $(LOG) (Ctrl-C to stop)"; tail -f "$(LOG)"
+
+# Live view of the LLM decision cycle: what the brief sent + the model's tool-call reply, per round.
+LLMLOG ?= /tmp/gen_agent_llm.jsonl
+llmlog:
+	@touch "$(LLMLOG)"; echo "tailing LLM decisions $(LLMLOG) (Ctrl-C to stop)"; \
+	tail -f "$(LLMLOG)" | $(PY) -c 'import sys,json;\
+[print("\n── f{} {}ms {} ──\nDIRECTIVE: {}\nRESP: {}\nCALLS: {}".format(d.get("frame"),d.get("latencyMs"),d.get("model"),(d.get("request",{}).get("brief") or {}).get("directive",""),(d.get("response",{}).get("content") or d.get("response",{}).get("thinking") or "")[:300],[ (c.get("function") or {}).get("name") for c in d.get("response",{}).get("tool_calls") or [] ])) for d in (json.loads(l) for l in sys.stdin if l.strip())]'
 
 status:
 	@echo "healthz:"; curl -s --max-time 4 http://127.0.0.1:$(PORT)/healthz; echo; \
