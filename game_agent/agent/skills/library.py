@@ -239,16 +239,19 @@ class DefendSectorSkill(Skill):
 
 class AttackAreaSkill(Skill):
     name = "attack_area"
-    description = ("Send your army to attack-move into an area, engaging anything on the way. WAITS "
-                   "(blocked) until you have at least min_units combat units — never attacks with a "
-                   "lone unit. Completes when no enemies remain near the target.")
+    description = ("Send a STRIKE FORCE to attack-move into an area, engaging on the way. Leaves a home "
+                   "guard for defense (keep_home) and WAITS (blocked) until enough units are free — "
+                   "never all-ins or sends a lone unit. Completes when no enemies remain near the "
+                   "target. Only one attack runs at a time; re-target after it finishes.")
     param_schema = {
         "type": "object",
         "properties": {
             "area": dict(_POINT, description="target area to assault"),
             "radius": {"type": "number", "default": 200},
-            "min_units": {"type": "integer", "default": 6,
-                          "description": "don't attack until you have at least this many combat units"},
+            "min_units": {"type": "integer", "default": 8,
+                          "description": "don't attack until the strike force has at least this many"},
+            "keep_home": {"type": "integer", "default": 8,
+                          "description": "combat units to leave behind defending the base"},
             "ids": {"type": "array", "items": {"type": "integer"}},
         },
         "required": ["area"],
@@ -259,11 +262,26 @@ class AttackAreaSkill(Skill):
         self._begin(ctx)
         ax, ay = resolve_point(ctx, self.params)
         radius = float(self.params.get("radius", 200))
-        min_units = int(self.params.get("min_units", 6))
-        units = select_combat_units(ctx, ids=self.params.get("ids"))
+        min_units = int(self.params.get("min_units", 8))
+        keep_home = int(self.params.get("keep_home", 8))
+        if self.params.get("ids"):
+            units = select_combat_units(ctx, ids=self.params.get("ids"))
+        else:
+            # commit only the surplus beyond the home guard; lock the strike force so defend_base
+            # leaves them alone (avoids defend/attack whipsawing the same units)
+            all_army = select_combat_units(ctx)
+            force_ids = set(self.params.get("_force", []))
+            alive = [u for u in all_army if u.get("id") in force_ids]
+            if len(alive) < min_units and len(all_army) - keep_home >= min_units:
+                # (re)form the strike force from the units farthest from base sense — just take surplus
+                surplus = all_army[keep_home:]
+                self.params["_force"] = [u["id"] for u in surplus]
+                alive = surplus
+            units = alive
         if len(units) < min_units:
             self.status = BLOCKED
-            self.detail = "army too small to attack ({}/{})".format(len(units), min_units)
+            self.detail = "waiting for strike force ({}/{}, keep {} home)".format(
+                len(units), min_units, keep_home)
             return
         ids = [u["id"] for u in units]
         self.status = RUNNING
@@ -492,9 +510,15 @@ class DefendBaseSkill(Skill):
             self.detail = "no base to defend"
             return
         ax, ay = base
-        units = select_combat_units(ctx)
+        # units committed to an active attack are off-limits (no defend/attack tug-of-war)
+        claimed = set()
+        if ctx.taskmgr:
+            for t in ctx.taskmgr.active():
+                if t["skill"] == "attack_area":
+                    claimed.update(t["params"].get("_force", []))
+        units = [u for u in select_combat_units(ctx) if u.get("id") not in claimed]
         if not units:
-            self.detail = "no army yet (will guard once trained)"
+            self.detail = "no home-guard units (all committed to attack)"
             return
         ids = [u["id"] for u in units]
         if ctx.threats:

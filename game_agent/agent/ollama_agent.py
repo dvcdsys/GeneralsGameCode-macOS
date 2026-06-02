@@ -69,10 +69,12 @@ running/blocked (it does nothing). A 'blocked' build/army task usually means low
 patient, don't pile on duplicates.
 3. Scout ONCE or twice to locate the enemy base (scout) — do NOT scout every round. The enemyContacts \
 in the brief already show where enemies are.
-4. ATTACK to win — turtling loses. As soon as your army reaches ~10+ combat units, launch attack_area \
-on the enemy base or their main contact cluster (use the `at` coordinate of the biggest enemyContacts \
-group). Keep maintain_army running so the army is replaced, and re-launch attack_area after it clears \
-an area. You must destroy the enemy's buildings to win — go on the offensive once you have a force.
+4. ATTACK to win — turtling loses, but do NOT all-in. Once your army reaches ~16+, launch ONE \
+attack_area toward the enemy (use the `at` of the biggest enemyContacts group, or scout toward the \
+unexplored corner to find their base). attack_area automatically sends only a strike force and keeps a \
+home guard, so your base stays defended. Keep maintain_army running to replace losses; the enemy base \
+is usually in the opposite corner of the map — push toward it in waves, scouting as you advance. You \
+win by destroying their buildings.
 5. Keep power non-negative; if buildings are being lost, you are too passive — push out and attack.
 
 Each round you get a JSON brief:
@@ -173,7 +175,7 @@ class OllamaPlanner:
                  "assemble_group": None, "hold_point": "targetId",
                  # singleton macros — only one of each makes sense at a time
                  "build_base": None, "maintain_army": None, "defend_base": None,
-                 "capture_points": None}
+                 "capture_points": None, "attack_area": None}
 
     def _duplicate_of(self, fn, args):
         if fn not in self._IDENTITY:
