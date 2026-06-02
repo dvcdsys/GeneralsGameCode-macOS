@@ -196,10 +196,12 @@ class OllamaPlanner:
             first_line = old["text"].splitlines()[0] if old["text"] else ""
             self.summary = (self.summary + "\n" + first_line).strip()[-SUMMARY_CAP:]
 
-    def plan(self, brief, frame=0, max_steps=4):
-        """One planning round = an agentic tool-use loop over the CONTINUOUS conversation: the model
-        sees its recent reasoning + the fresh brief, calls tools, we apply them and feed results back,
-        and it can call MORE — up to max_steps. After the round we fold its reasoning into memory."""
+    def plan(self, brief, frame=0, max_steps=2):
+        """One planning round over the CONTINUOUS conversation: the model sees its recent reasoning +
+        the fresh brief and emits its orders (usually all at once). max_steps is kept LOW — concrete
+        orders are independent, so we don't need to feed tool results back across many slow thinking
+        steps (that made each round ~38s); the model re-plans next cycle on a fresh brief instead."""
+        system = SYSTEM_PROMPT
         messages = self._build_messages(brief)
         t0 = time.time()
         applied_all, total_calls, rationale, thinking, last_msg = [], 0, "", "", None
@@ -208,7 +210,7 @@ class OllamaPlanner:
             last_msg = msg
             if not msg or msg.get("error"):
                 latency_ms = int((time.time() - t0) * 1000)
-                self._log(frame, messages, msg or {}, applied_all, latency_ms)
+                self._log(frame, brief, msg or {}, applied_all, latency_ms, system)
                 return {"error": (msg or {}).get("error", "no response"), "applied": applied_all,
                         "calls": total_calls, "latencyMs": latency_ms}
             if msg.get("content"):
@@ -240,22 +242,23 @@ class OllamaPlanner:
                          "thinking": (last_msg or {}).get("thinking") or thinking,
                          "tool_calls": (last_msg or {}).get("tool_calls") or []},
         }
-        self._log(frame, messages, last_msg or {}, applied_all, latency_ms)
+        self._log(frame, brief, last_msg or {}, applied_all, latency_ms, system)
         return result
 
-    def _log(self, frame, messages, msg, applied, latency_ms):
+    def _log(self, frame, brief, msg, applied, latency_ms, system=""):
         """Append the full LLM decision exchange (what we sent + what the model replied) to a JSONL
-        log — the observable battlefield decision cycle. One line per planning round."""
+        log — the observable battlefield decision cycle. One line per planning round. The brief is
+        passed in directly (in the rolling-memory conversation it is the LAST message, not messages[1],
+        so re-parsing from the message list silently broke logging after round 1)."""
         if not self.log_path:
             return
         try:
-            brief = json.loads(messages[1]["content"]) if len(messages) > 1 else None
             entry = {
                 "t": time.time(),
                 "frame": frame,
                 "model": self.chat.model,
                 "latencyMs": latency_ms,
-                "request": {"system": messages[0]["content"], "brief": brief, "tools": self.registry.names()},
+                "request": {"system": system, "brief": brief, "tools": self.registry.names()},
                 "response": {"content": msg.get("content", ""), "thinking": msg.get("thinking"),
                              "tool_calls": msg.get("tool_calls") or [], "error": msg.get("error")},
                 "applied": applied,
@@ -270,6 +273,10 @@ class OllamaPlanner:
         """A normalized fingerprint of a concrete order. Re-issuing the SAME order (same skill, target,
         location bucket, unit ids) is treated as a no-op so the LLM can safely repeat its intent each
         round without piling up duplicate tasks; a DIFFERENT order (other ids/target/place) is new."""
+        # build_structure dedups by the STRUCTURE alone (ignore the jittered area) so a small model
+        # that re-orders the same building at slightly different coords doesn't spawn 3 barracks.
+        if fn == "build_structure":
+            return "build_structure|structure={}".format(params.get("structure"))
         parts = [fn]
         for k in ("structure", "unit", "targetId"):
             if params.get(k) is not None:
