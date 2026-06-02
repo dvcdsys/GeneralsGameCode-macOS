@@ -563,9 +563,10 @@ class DefendBaseSkill(Skill):
         # The dedicated strike force (attack_area) is always off-limits. When the base is UNDER
         # ATTACK we recall everyone else — including units out capturing — and mass on the threat.
         # When calm, capture units stay out (we exclude them) so we don't yank them off-objective.
-        off_limits = force_claimed_by_siblings(ctx, {"attack_area"})
-        if not under_attack:
-            off_limits |= force_claimed_by_siblings(ctx, {"capture_points"})
+        # Always leave the attack strike force AND the (small, engineer-led) capture force alone, even
+        # under attack — recalling capturers mid-trip is why captures never completed. The home-guard
+        # accounting in capture_points already caps how many leave, so defense isn't thinned.
+        off_limits = force_claimed_by_siblings(ctx, {"attack_area", "capture_points"})
         units = [u for u in select_combat_units(ctx) if u.get("id") not in off_limits]
         if not units:
             self.detail = "no home-guard units (all committed elsewhere)"
@@ -622,14 +623,11 @@ class CapturePointsSkill(Skill):
         # can see exactly which units we own — this is what stops the per-tick defend/capture tug-of-war.
         force = alive_ids(ctx, self.params.get("_capture_force", []))
         self.params["_capture_force"] = force
-
-        # If the base is under attack, capturing is suicide and a distraction: release everyone so
-        # defend_base masses the whole army at home.
-        if base_under_attack(ctx, 700.0):
-            self.params["_capture_force"] = []
-            self.detail = "base under attack — yielding capture units to defense"
-            return
-
+        # NOTE: we no longer abandon captures when the base is harassed. The capturers are engineers/
+        # spare infantry (capped, kept beyond the home guard), and defend_base always leaves the
+        # capture force alone — so a dispatched capturer actually completes the trip instead of being
+        # recalled every time an enemy pokes the base (which is near-constant, so capture never
+        # finished and the same point was re-sent forever).
         total_combat = len(select_combat_units(ctx))
         # Only INFANTRY can capture (the engine 'capture' = groupEnter, which vehicles can't do). Using
         # combat units indiscriminately sent tanks that just drove onto the point and did nothing.
