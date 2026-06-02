@@ -35,7 +35,7 @@ DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
 # strong, the base is safe, the enemy location is known/estimable, and no attack is already running,
 # we inject one toward the enemy base. The LLM is still the commander (its own attack_area dedupes
 # this); this only fires when it has failed to push.
-AUTO_ATTACK_ARMY = 14  # combat units before the safety-net attack triggers
+AUTO_ATTACK_ARMY = 16  # combat units before the safety-net attack triggers
 
 
 def _seed_opening(taskmgr, frame, verbose=False):
@@ -55,8 +55,9 @@ def _seed_opening(taskmgr, frame, verbose=False):
 
 
 def _maybe_autonomous_attack(ctx, taskmgr, verbose=False):
-    if base_under_attack(ctx, 700.0):
-        return  # defend first; attack_area would keep a home guard anyway, but don't split under siege
+    # NOTE: no base_under_attack veto. The easy AI harasses the base almost continuously, which used
+    # to pin the whole army home and produce an endless stalemate. attack_area keeps an 8-unit home
+    # guard (and defend_base masses it), so once the army is solidly large we push out regardless.
     if any(t["skill"] == "attack_area" for t in taskmgr.active()):
         return  # an attack is already planned/running (LLM's or ours)
     army = select_combat_units(ctx)

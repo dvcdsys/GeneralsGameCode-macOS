@@ -245,44 +245,46 @@ class AttackAreaSkill(Skill):
                    "guard for defense (keep_home) and WAITS (blocked) until enough units are free — "
                    "never all-ins or sends a lone unit. Completes when no enemies remain near the "
                    "target. Only one attack runs at a time; re-target after it finishes.")
+    # Only `area` is exposed: the small LLM kept passing broken numbers (min_units=0, keep_home=0)
+    # that disabled the strike force. Tactical sizing is doctrine, kept internal.
     param_schema = {
         "type": "object",
         "properties": {
-            "area": dict(_POINT, description="target area to assault"),
-            "radius": {"type": "number", "default": 200},
-            "min_units": {"type": "integer", "default": 8,
-                          "description": "don't attack until the strike force has at least this many"},
-            "keep_home": {"type": "integer", "default": 6,
-                          "description": "combat units to leave behind defending the base"},
-            "ids": {"type": "array", "items": {"type": "integer"}},
+            "area": dict(_POINT, description="target area to assault (e.g. the brief's enemyBaseGuess)"),
+            "ids": {"type": "array", "items": {"type": "integer"},
+                    "description": "optional explicit unit ids; normally omit and let it pick a strike force"},
         },
         "required": ["area"],
     }
     REISSUE = 150
+    RADIUS = 220       # 'area clear' proximity
+    MIN_UNITS = 8      # don't launch until the strike force has at least this many
+    KEEP_HOME = 8      # combat units left behind for base defense
 
     def tick(self, ctx):
         self._begin(ctx)
         ax, ay = resolve_point(ctx, self.params)
-        radius = float(self.params.get("radius", 200))
-        min_units = int(self.params.get("min_units", 8))
-        keep_home = int(self.params.get("keep_home", 6))
+        radius = self.RADIUS
+        min_units = self.MIN_UNITS
+        keep_home = self.KEEP_HOME
         if self.params.get("ids"):
             units = select_combat_units(ctx, ids=self.params.get("ids"))
         else:
-            # commit only the surplus beyond the home guard; lock the strike force so defend_base
-            # leaves them alone (avoids defend/attack whipsawing the same units)
+            # Maintain a locked strike force of the surplus beyond the home guard. Lock it in _force so
+            # defend_base/capture_points leave these units alone — they keep marching on the enemy even
+            # while the base is harassed (that harassment used to pin the whole army home forever).
             all_army = select_combat_units(ctx)
-            force_ids = set(self.params.get("_force", []))
-            alive = [u for u in all_army if u.get("id") in force_ids]
-            if len(alive) < min_units and len(all_army) - keep_home >= min_units:
-                # (re)form the strike force from the units farthest from base sense — just take surplus
-                surplus = all_army[keep_home:]
-                self.params["_force"] = [u["id"] for u in surplus]
-                alive = surplus
-            units = alive
+            force = alive_ids(ctx, self.params.get("_force", []))
+            desired = max(0, len(all_army) - keep_home)
+            if len(force) < desired:
+                taken = set(force) | force_claimed_by_siblings(ctx, {"capture_points"})
+                free = [u["id"] for u in all_army if u.get("id") not in taken]
+                force = force + free[:desired - len(force)]
+            self.params["_force"] = force
+            units = [u for u in all_army if u.get("id") in set(force)]
         if len(units) < min_units:
             self.status = BLOCKED
-            self.detail = "waiting for strike force ({}/{}, keep {} home)".format(
+            self.detail = "massing strike force ({}/{}, keep {} home)".format(
                 len(units), min_units, keep_home)
             return
         ids = [u["id"] for u in units]
