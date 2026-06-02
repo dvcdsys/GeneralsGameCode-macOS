@@ -16,7 +16,7 @@ from agent.skills.base import (
     capturable_points, power_margin, find_power_buildable,
     find_buildable_by_role, have_role,
     enemy_units_near, base_under_attack, alive_ids, force_claimed_by_siblings,
-    capture_capable_units,
+    capture_capable_units, incoming_attack_ids,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -525,7 +525,10 @@ class DefendBaseSkill(Skill):
             self.detail = "no base to defend"
             return
         ax, ay = base
-        under_attack = bool(enemy_units_near(ctx, base, 700.0))
+        incoming = incoming_attack_ids(ctx)            # fog-BLIND: who is hitting us, even from fog
+        foes = sorted(enemy_units_near(ctx, base, 1200.0),
+                      key=lambda e: math.hypot(e.get("x", 0) - ax, e.get("y", 0) - ay))
+        under_attack = bool(foes) or bool(incoming)
         # The dedicated strike force (attack_area) is always off-limits. When the base is UNDER
         # ATTACK we recall everyone else — including units out capturing — and mass on the threat.
         # When calm, capture units stay out (we exclude them) so we don't yank them off-objective.
@@ -537,23 +540,26 @@ class DefendBaseSkill(Skill):
             self.detail = "no home-guard units (all committed elsewhere)"
             return
         ids = [u["id"] for u in units]
-        if under_attack:
-            # Focus-fire the nearest enemy to the base; mass the whole home army on it.
-            foes = sorted(enemy_units_near(ctx, base, 1200.0),
-                          key=lambda e: math.hypot(e.get("x", 0) - ax, e.get("y", 0) - ay))
-            target = None
-            if ctx.threats:  # prefer something actively shooting us, if known
-                for t in ctx.threats.threats(ctx.frame):
-                    atk = find_object(ctx.world, t.get("topAttacker"))
-                    if atk and not (atk.get("relationToLocal") in (None, "self", "ally")):
-                        target = atk
-                        break
-            target = target or (foes[0] if foes else None)
-            if target is not None:
-                ctx.client.command(ctx.player, ids, "attack_target", {"targetId": target["id"]})
-                self._last = ctx.frame
-                self.detail = "UNDER ATTACK — {} units massing on enemy {}".format(len(ids), target["id"])
-                return
+        if foes:
+            # Visible enemy AT the base — mass the whole home army on the nearest one.
+            ctx.client.command(ctx.player, ids, "attack_target", {"targetId": foes[0]["id"]})
+            self._last = ctx.frame
+            self.detail = "UNDER ATTACK — {} units massing on enemy {}".format(len(ids), foes[0]["id"])
+            return
+        if incoming:
+            # Hit from the FOG (no visible attacker). Don't stand idle and don't send the whole army
+            # chasing a ghost: dispatch a RESPONSE GROUP to attack_target the attacker id (paths in to
+            # uncover + engage it), and keep the rest guarding the base.
+            n_resp = max(4, len(ids) // 3)
+            resp, rest = ids[:n_resp], ids[n_resp:]
+            ctx.client.command(ctx.player, resp, "attack_target", {"targetId": incoming[0]})
+            if rest:
+                ctx.client.command(ctx.player, rest, "guard_zone",
+                                   {"anchor": {"x": ax, "y": ay}, "engage": {"x": ax, "y": ay}})
+            self._last = ctx.frame
+            self.detail = "ATTACKED FROM FOG — {} uncovering attacker {}, {} guarding".format(
+                len(resp), incoming[0], len(rest))
+            return
         if ctx.frame - getattr(self, "_last", -10 ** 9) >= self.REISSUE:
             ctx.client.command(ctx.player, ids, "guard_zone",
                                {"anchor": {"x": ax, "y": ay}, "engage": {"x": ax, "y": ay}})

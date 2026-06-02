@@ -339,10 +339,29 @@ def enemy_units_near(ctx, center, radius):
     return out
 
 
-def base_under_attack(ctx, radius=650.0):
-    """True if live enemy units are inside `radius` of my base centroid (home is threatened)."""
+def incoming_attack_ids(ctx):
+    """Attacker ObjectIDs currently hitting MY units/buildings, from the combat-event ThreatTracker.
+    This is fog-BLIND ground truth: it knows who is shooting us even if the shooter sits in fog (where
+    the fog-aware world snapshot shows nothing). Lets the bot react to attacks from the fog instead of
+    standing there — we attack_target the id, which paths units in to uncover and engage the attacker."""
+    out = []
+    tt = getattr(ctx, "threats", None)
+    if not tt:
+        return out
+    mine = {u.get("id") for u in my_units(ctx)} | {u.get("id") for u in my_buildings(ctx)}
+    for t in tt.threats(ctx.frame):
+        if t.get("victimId") in mine and t.get("topAttacker"):
+            out.append(t["topAttacker"])
+    return out
+
+
+def base_under_attack(ctx, radius=700.0):
+    """True if my base is threatened — either a live enemy is near my base centroid, OR something is
+    actively damaging my units/buildings (even from fog, via the combat-event tracker)."""
     base = ctx.world.centroid(my_buildings(ctx)) or ctx.world.centroid(my_units(ctx))
-    return bool(base) and len(enemy_units_near(ctx, base, radius)) > 0
+    if base and enemy_units_near(ctx, base, radius):
+        return True
+    return bool(incoming_attack_ids(ctx))
 
 
 def alive_ids(ctx, ids):
