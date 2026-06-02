@@ -162,6 +162,26 @@ def is_combat_unit(u):
     return not any(h in t for h in _NONCOMBAT_HINTS)
 
 
+def is_infantry(u):
+    """A foot soldier. Only infantry can ENTER (and thus capture) tech/oil buildings — the engine's
+    'capture' verb is groupEnter, which vehicles/aircraft cannot perform. (CWC names infantry CWC..Inf..;
+    we also accept an explicit 'infantry' tag.)"""
+    if u.get("category") != "unit" or is_junk(u):
+        return False
+    t = (u.get("template") or "").lower()
+    tags = [str(x).lower() for x in u.get("tags", [])]
+    return ("infantry" in tags) or ("inf" in t and not any(h in t for h in _NONCOMBAT_HINTS))
+
+
+def capture_capable_units(ctx):
+    """My units that can actually capture (infantry), engineers first — used so capture_points never
+    sends a tank that just drives over the point and does nothing."""
+    inf = [u for u in my_units(ctx) if is_infantry(u)]
+    eng = [u for u in inf if "engineer" in (u.get("template") or "").lower()]
+    rest = [u for u in inf if u not in eng]
+    return eng + rest
+
+
 def find_dozers(ctx):
     """Construction units (dozers / workers) owned by me."""
     return [u for u in my_units(ctx) if is_dozerish(u)]

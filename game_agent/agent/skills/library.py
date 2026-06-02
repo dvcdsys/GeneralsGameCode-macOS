@@ -16,6 +16,7 @@ from agent.skills.base import (
     capturable_points, power_margin, find_power_buildable,
     find_buildable_by_role, have_role,
     enemy_units_near, base_under_attack, alive_ids, force_claimed_by_siblings,
+    capture_capable_units,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -258,33 +259,38 @@ class AttackAreaSkill(Skill):
     }
     REISSUE = 150
     RADIUS = 220       # 'area clear' proximity
-    MIN_UNITS = 8      # don't launch until the strike force has at least this many
-    KEEP_HOME = 8      # combat units left behind for base defense
+    MIN_UNITS = 10     # never launch a strike force smaller than this
+    KEEP_HOME_MIN = 12 # always keep at least this many home for defense
 
     def tick(self, ctx):
         self._begin(ctx)
         ax, ay = resolve_point(ctx, self.params)
         radius = self.RADIUS
         min_units = self.MIN_UNITS
-        keep_home = self.KEEP_HOME
         if self.params.get("ids"):
             units = select_combat_units(ctx, ids=self.params.get("ids"))
+            keep_home = self.KEEP_HOME_MIN
         else:
-            # Maintain a locked strike force of the surplus beyond the home guard. Lock it in _force so
-            # defend_base/capture_points leave these units alone — they keep marching on the enemy even
-            # while the base is harassed (that harassment used to pin the whole army home forever).
             all_army = select_combat_units(ctx)
+            # DEFENSE-AWARE home guard: keep enough home to face whatever the enemy has near our base
+            # (the AI harasses with a real army — over-committing loses the base). We only ever send the
+            # genuine SURPLUS as a strike force, and lock it in _force so defend/capture leave it alone.
+            base = ctx.world.centroid(my_buildings(ctx)) or ctx.world.centroid(my_units(ctx))
+            threat = len(enemy_units_near(ctx, base, 1100.0)) if base else 0
+            keep_home = max(self.KEEP_HOME_MIN, threat + 6)
             force = alive_ids(ctx, self.params.get("_force", []))
             desired = max(0, len(all_army) - keep_home)
             if len(force) < desired:
                 taken = set(force) | force_claimed_by_siblings(ctx, {"capture_points"})
                 free = [u["id"] for u in all_army if u.get("id") not in taken]
                 force = force + free[:desired - len(force)]
+            elif len(force) > desired:  # threat rose — shrink the strike force, send units back to defend
+                force = force[:desired]
             self.params["_force"] = force
             units = [u for u in all_army if u.get("id") in set(force)]
         if len(units) < min_units:
             self.status = BLOCKED
-            self.detail = "massing strike force ({}/{}, keep {} home)".format(
+            self.detail = "massing strike force ({}/{}, keep {}+ home vs threat)".format(
                 len(units), min_units, keep_home)
             return
         ids = [u["id"] for u in units]
@@ -467,8 +473,8 @@ class MaintainArmySkill(Skill):
     param_schema = {
         "type": "object",
         "properties": {
-            "target": {"type": "integer", "default": 18,
-                       "description": "desired number of combat units (keep high: defense + capture + a strike force)"},
+            "target": {"type": "integer", "default": 26,
+                       "description": "desired number of combat units (keep high: a strong home defense PLUS a strike-force surplus)"},
         },
         "required": [],
     }
@@ -587,9 +593,12 @@ class CapturePointsSkill(Skill):
             self.detail = "base under attack — yielding capture units to defense"
             return
 
-        army = select_combat_units(ctx)
-        if not army:
-            self.detail = "no units to capture with yet"
+        total_combat = len(select_combat_units(ctx))
+        # Only INFANTRY can capture (the engine 'capture' = groupEnter, which vehicles can't do). Using
+        # combat units indiscriminately sent tanks that just drove onto the point and did nothing.
+        capturers = capture_capable_units(ctx)
+        if not capturers:
+            self.detail = "no infantry to capture with (need foot soldiers/engineers)"
             return
         caps = capturable_points(ctx)
         if not caps:
@@ -598,19 +607,19 @@ class CapturePointsSkill(Skill):
 
         home_guard = self.HOME_GUARD
         max_out = self.MAX_OUT
-        # Only commit the SURPLUS beyond the home guard, capped — never strip the defending army.
-        budget = min(max_out, max(0, len(army) - home_guard))
+        # Commit only surplus beyond the home guard, capped, and never more than the infantry we have.
+        budget = min(max_out, len(capturers), max(0, total_combat - home_guard))
         if len(force) >= budget:
-            self.detail = "capturing with {}/{} units (home guard {})".format(len(force), budget, home_guard)
+            self.detail = "capturing with {}/{} infantry (home guard {})".format(len(force), budget, home_guard)
             return
 
-        # Recruit free units (not already capturing, not in any other force) up to budget.
+        # Recruit free infantry (not already capturing, not in the attack strike force) up to budget.
         reserved = set(force) | force_claimed_by_siblings(ctx, {"attack_area"}, exclude=None)
-        free = [u for u in army if u.get("id") not in reserved]
+        free = [u for u in capturers if u.get("id") not in reserved]
         if not free:
-            self.detail = "no free units to expand capture"
+            self.detail = "no free infantry to expand capture"
             return
-        base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(army[0])
+        base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(capturers[0])
         caps.sort(key=lambda u: math.hypot(u["x"] - base[0], u["y"] - base[1]))
         per = self.UNITS_PER
         for tgt in caps:
