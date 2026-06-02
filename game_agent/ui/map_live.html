@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Bot World View — External-Control API</title>
+<style>
+  html,body { margin:0; height:100%; background:#15171c; color:#cfd3da; font:13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  #wrap { display:flex; height:100%; }
+  #side { width:250px; padding:10px 12px; box-sizing:border-box; background:#1c1f26; overflow-y:auto; border-right:1px solid #2c313c; }
+  #side h1 { font-size:14px; margin:0 0 8px; color:#fff; }
+  #side h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#7f8794; margin:14px 0 4px; }
+  .row { display:flex; align-items:center; gap:6px; margin:2px 0; }
+  .row label { flex:1; cursor:pointer; }
+  .sw { width:11px; height:11px; border-radius:2px; display:inline-block; }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  canvas { position:absolute; top:0; left:0; image-rendering:pixelated; cursor:crosshair; }
+  #tip { position:absolute; pointer-events:none; background:#000c; border:1px solid #444; padding:4px 6px; border-radius:4px; font-size:12px; white-space:pre; display:none; z-index:5; }
+  #hud { position:absolute; top:8px; left:8px; background:#000a; padding:6px 9px; border-radius:5px; font-variant-numeric:tabular-nums; }
+  input[type=text]{ width:100%; box-sizing:border-box; background:#11141a; color:#cfd3da; border:1px solid #2c313c; border-radius:4px; padding:4px; }
+  .muted{ color:#7f8794; } .num{ font-variant-numeric:tabular-nums; }
+  button{ background:#2a2f3a; color:#cfd3da; border:1px solid #3a4150; border-radius:4px; padding:4px 8px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="side">
+    <h1>Bot World View</h1>
+    <div class="row"><input id="api" type="text" value="http://127.0.0.1:3459"/></div>
+    <div class="row"><button id="reload">reload map</button><button id="pause">pause</button></div>
+    <div id="status" class="muted">connecting…</div>
+
+    <h2>View</h2>
+    <div class="row"><input type="checkbox" id="botview" checked><label for="botview"><b>see as the bot (fog of war)</b></label></div>
+    <div id="viewinfo" class="muted">resolving bot…</div>
+
+    <h2>Terrain</h2>
+    <div class="row"><span class="sw" style="background:rgb(196,190,150)"></span><label>clear / buildable</label></div>
+    <div class="row"><span class="sw" style="background:rgb(54,110,200)"></span><label>water</label></div>
+    <div class="row"><span class="sw" style="background:rgb(96,74,52)"></span><label>cliff</label></div>
+    <div class="row"><span class="sw" style="background:rgb(120,66,54)"></span><label>obstacle</label></div>
+
+    <h2>Overlays</h2>
+    <div class="row"><input type="checkbox" id="L_units" checked><span class="sw" style="background:#3ce63c"></span><label for="L_units">units (own/ally/enemy)</label></div>
+    <div class="row"><input type="checkbox" id="L_struct" checked><span class="sw" style="background:#fff"></span><label for="L_struct">player buildings</label></div>
+    <div class="row"><input type="checkbox" id="L_neutral" checked><span class="sw" style="background:#9aa"></span><label for="L_neutral">map buildings (neutral)</label></div>
+    <div class="row"><input type="checkbox" id="L_econ" checked><span class="sw" style="background:#ffd23f"></span><label for="L_econ">oil / supply (capture)</label></div>
+    <div class="row"><input type="checkbox" id="L_tech" checked><span class="sw" style="background:#c264ff"></span><label for="L_tech">tech / capturable</label></div>
+    <div class="row"><input type="checkbox" id="L_garr" checked><span class="sw" style="background:#ff8c1a"></span><label for="L_garr">garrisonable (bunkers)</label></div>
+    <div class="row"><input type="checkbox" id="L_props"><span class="sw" style="background:#556"></span><label for="L_props">props (trees…)</label></div>
+
+    <h2>Players</h2>
+    <div id="players" class="num"></div>
+
+    <h2>Counts</h2>
+    <div id="counts" class="num"></div>
+    <div class="muted" style="margin-top:10px">faded = cached/undefined (last-known, not in sight)<br>wheel = zoom · drag = pan · hover = inspect</div>
+  </div>
+
+  <div id="stage">
+    <canvas id="terrain"></canvas>
+    <canvas id="overlay"></canvas>
+    <div id="hud"></div>
+    <div id="tip"></div>
+  </div>
+</div>
+
+<script>
+const REL = { self:'#3ce63c', ally:'#36dcdc', enemy:'#eb2d2d', neutral:'#9aa3b0' };
+const TYPE_COLOR = { 0:[196,190,150],1:[54,110,200],2:[96,74,52],3:[135,135,135],4:[120,66,54],6:[32,32,36],255:[120,0,120] };
+
+let MAP=null, UNITS=[], PLAYERS=[], view={scale:3,panX:40,panY:40}, paused=false, mouse={x:0,y:0,on:false};
+let BOT_VIEW=true, BOT_INDEX=null;   // "see as the bot": fetch /units?view=<bot> so the API applies its fog
+const terrain=document.getElementById('terrain'), overlay=document.getElementById('overlay');
+const tctx=terrain.getContext('2d'), octx=overlay.getContext('2d');
+let terrainImg=null;
+
+const api = () => document.getElementById('api').value.replace(/\/+$/,'');
+async function getJSON(p){ const r=await fetch(api()+p); if(!r.ok) throw new Error(p+' '+r.status); return r.json(); }
+function b64(s){ const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; }
+
+function fit(){ const s=document.getElementById('stage'); for(const c of [terrain,overlay]){ c.width=s.clientWidth; c.height=s.clientHeight; } draw(); }
+window.addEventListener('resize', fit);
+
+async function loadMap(){
+  document.getElementById('status').textContent='loading map…';
+  MAP = await getJSON('/map');
+  const {width:W,height:H} = MAP;
+  const types=b64(MAP.type), hf=MAP.heightField||{}, hgt=hf.data?b64(hf.data):null;
+  const off=document.createElement('canvas'); off.width=W; off.height=H;
+  const ictx=off.getContext('2d'), img=ictx.createImageData(W,H);
+  for(let cy=0;cy<H;cy++) for(let cx=0;cx<W;cx++){
+    const i=cy*W+cx, c=TYPE_COLOR[types[i]]||TYPE_COLOR[255];
+    const sh=0.55+0.45*((hgt?hgt[i]:128)/255);
+    const o=((H-1-cy)*W+cx)*4;          // flip Y: north up
+    img.data[o]=Math.min(255,c[0]*sh); img.data[o+1]=Math.min(255,c[1]*sh); img.data[o+2]=Math.min(255,c[2]*sh); img.data[o+3]=255;
+  }
+  ictx.putImageData(img,0,0); terrainImg=off;
+  // fit view to stage
+  const s=document.getElementById('stage');
+  view.scale=Math.max(1,Math.min(s.clientWidth/W, s.clientHeight/H)); view.panX=10; view.panY=10;
+  document.getElementById('status').textContent='map '+W+'×'+H+' cells · cell='+MAP.cellSize+'u';
+  draw();
+}
+
+function worldToScreen(wx,wy){ const cs=MAP.cellSize; return [ wx/cs*view.scale+view.panX, (MAP.height - wy/cs)*view.scale+view.panY ]; }
+function screenToWorldCell(sx,sy){ const cs=MAP.cellSize; return [ (sx-view.panX)/view.scale, MAP.height-(sy-view.panY)/view.scale ]; }
+
+function classify(u){
+  const t=u.tags||[], cat=u.category;
+  if(t.includes('supply_source')||t.includes('cash_generator')) return 'econ';
+  if(t.includes('tech_building')||t.includes('capturable')) return 'tech';
+  if(t.includes('garrisonable')) return 'garr';
+  if(cat==='structure'||cat==='defense'||t.includes('structure')) return (u.relationToLocal==='neutral')?'neutral_b':'struct';
+  if(cat==='unit') return 'unit';
+  return 'prop';
+}
+const SHOW = {
+  unit:()=>document.getElementById('L_units').checked,
+  struct:()=>document.getElementById('L_struct').checked,
+  neutral_b:()=>document.getElementById('L_neutral').checked,
+  econ:()=>document.getElementById('L_econ').checked,
+  tech:()=>document.getElementById('L_tech').checked,
+  garr:()=>document.getElementById('L_garr').checked,
+  prop:()=>document.getElementById('L_props').checked,
+};
+
+function draw(){
+  if(!MAP||!terrainImg) return;
+  const {width:W,height:H}=MAP;
+  tctx.imageSmoothingEnabled=false; tctx.clearRect(0,0,terrain.width,terrain.height);
+  tctx.drawImage(terrainImg, view.panX, view.panY, W*view.scale, H*view.scale);
+  octx.clearRect(0,0,overlay.width,overlay.height);
+  const counts={};
+  for(const u of UNITS){
+    if(u.x===undefined) continue;
+    const k=classify(u); counts[k]=(counts[k]||0)+1;
+    if(!SHOW[k] || !SHOW[k]()) continue;
+    const [sx,sy]=worldToScreen(u.x,u.y);
+    const col=REL[u.relationToLocal]||REL.neutral;
+    octx.globalAlpha = (u.shroud==='cached'||u.shroud==='undefined') ? 0.38 : 1;   // not-live (out of sight) drawn faded
+    octx.lineWidth=1.5;
+    if(k==='unit'){ octx.fillStyle=col; octx.beginPath(); octx.arc(sx,sy,2.4,0,7); octx.fill(); }
+    else if(k==='struct'){ octx.fillStyle=col; octx.fillRect(sx-3,sy-3,6,6); octx.strokeStyle='#000'; octx.strokeRect(sx-3,sy-3,6,6); }
+    else if(k==='neutral_b'){ octx.fillStyle='#8a93a3'; octx.fillRect(sx-3,sy-3,6,6); }
+    else if(k==='econ'){ octx.fillStyle='#ffd23f'; octx.beginPath(); octx.moveTo(sx,sy-5);octx.lineTo(sx+5,sy);octx.lineTo(sx,sy+5);octx.lineTo(sx-5,sy);octx.closePath(); octx.fill(); octx.strokeStyle='#000';octx.stroke(); }
+    else if(k==='tech'){ octx.strokeStyle='#c264ff'; octx.fillStyle='#2a1840'; octx.beginPath();octx.arc(sx,sy,4,0,7);octx.fill();octx.stroke(); }
+    else if(k==='garr'){ octx.strokeStyle='#ff8c1a'; octx.lineWidth=2; octx.strokeRect(sx-4,sy-4,8,8); }
+    else if(k==='prop'){ octx.fillStyle='#4a5160'; octx.fillRect(sx,sy,1,1); }
+    octx.globalAlpha=1;
+  }
+  // hover
+  const tip=document.getElementById('tip');
+  if(mouse.on){ const hit=pick(mouse.x,mouse.y); if(hit){ const [sx,sy]=worldToScreen(hit.x,hit.y);
+      octx.strokeStyle='#fff'; octx.lineWidth=1; octx.beginPath(); octx.arc(sx,sy,7,0,7); octx.stroke();
+      tip.style.display='block'; tip.style.left=(mouse.x+12)+'px'; tip.style.top=(mouse.y+12)+'px';
+      tip.textContent=`${hit.template}\n${hit.relationToLocal} · ${hit.category}`+(hit.shroud?` · ${hit.shroud}`:'')+(hit.tags?'\n['+hit.tags.join(',')+']':'')+
+        (hit.health!==undefined?`\nhp ${Math.round(hit.health)}/${Math.round(hit.maxHealth)}`:'')+`\nid ${hit.id} player ${hit.player}`;
+  } else tip.style.display='none'; } else tip.style.display='none';
+
+  const order=['unit','struct','neutral_b','econ','tech','garr','prop'];
+  document.getElementById('counts').innerHTML=order.filter(k=>counts[k]).map(k=>`${k}: ${counts[k]}`).join('<br>');
+  const vtag = (BOT_VIEW && BOT_INDEX!=null) ? `  view: bot#${BOT_INDEX} (fog)` : (BOT_VIEW?'':'  view: ground-truth');
+  document.getElementById('hud').textContent = MAP ? `frame ${LASTFRAME}  objects ${UNITS.length}  zoom ${view.scale.toFixed(1)}${vtag}` : '';
+}
+
+function pick(mx,my){ let best=null,bd=64; for(const u of UNITS){ if(u.x===undefined)continue; const k=classify(u); if(!SHOW[k]||!SHOW[k]())continue; const [sx,sy]=worldToScreen(u.x,u.y); const d=(sx-mx)**2+(sy-my)**2; if(d<bd){bd=d;best=u;} } return best; }
+
+let LASTFRAME=0;
+function updateViewInfo(){
+  const el=document.getElementById('viewinfo');
+  if(BOT_VIEW && BOT_INDEX!=null) el.innerHTML=`fog ON — seeing as bot <b>#${BOT_INDEX}</b> (API applies its line-of-sight)`;
+  else if(BOT_VIEW) el.textContent='fog ON — but no external (bot) player found; showing ground truth';
+  else el.textContent='fog OFF — ground truth (every object on the map)';
+}
+async function poll(){
+  if(!paused && MAP){
+    try{
+      const [p,h]=await Promise.all([getJSON('/players'),getJSON('/healthz')]);
+      PLAYERS=p; LASTFRAME=h.frame;
+      const ext=p.find(x=>x.controller==='external'); BOT_INDEX = ext?ext.index:null;
+      const uURL = (BOT_VIEW && BOT_INDEX!=null) ? '/units?view='+BOT_INDEX : '/units';
+      UNITS = await getJSON(uURL);
+      updateViewInfo();
+      document.getElementById('players').innerHTML = p.filter(x=>x.controller!=='computer'||x.money).map(x=>{
+        const c=REL[x.relationToLocal]||'#9aa'; return `<div class="row"><span class="sw" style="background:${c}"></span>`+
+        `<label>#${x.index} ${x.controller==='external'?'API':x.controller} ${x.side||''} <span class="muted">$${x.money} ⚡${(x.powerProduction||0)-(x.powerConsumption||0)}</span></label></div>`; }).join('');
+      draw();
+    }catch(e){ document.getElementById('status').textContent='poll error: '+e.message; }
+  }
+  setTimeout(poll, 450);
+}
+
+// interaction
+const stage=document.getElementById('stage');
+stage.addEventListener('wheel',e=>{ e.preventDefault(); const f=e.deltaY<0?1.15:1/1.15; const mx=e.offsetX,my=e.offsetY;
+  view.panX=mx-(mx-view.panX)*f; view.panY=my-(my-view.panY)*f; view.scale*=f; draw(); },{passive:false});
+let drag=null;
+stage.addEventListener('mousedown',e=>drag={x:e.offsetX,y:e.offsetY,px:view.panX,py:view.panY});
+window.addEventListener('mouseup',()=>drag=null);
+stage.addEventListener('mousemove',e=>{ mouse.x=e.offsetX; mouse.y=e.offsetY; mouse.on=true;
+  if(drag){ view.panX=drag.px+(e.offsetX-drag.x); view.panY=drag.py+(e.offsetY-drag.y); } draw(); });
+stage.addEventListener('mouseleave',()=>{ mouse.on=false; draw(); });
+document.getElementById('reload').onclick=()=>loadMap();
+document.getElementById('pause').onclick=e=>{ paused=!paused; e.target.textContent=paused?'resume':'pause'; };
+for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_props']) document.getElementById(id).onchange=draw;
+document.getElementById('botview').onchange=e=>{ BOT_VIEW=e.target.checked; UNITS=[]; updateViewInfo(); draw(); };  // next poll (≤450ms) refetches with/without fog
+
+(async()=>{ fit(); try{ await loadMap(); }catch(e){ document.getElementById('status').textContent='no map yet: '+e.message+' (start a match)'; } poll(); })();
+</script>
+</body>
+</html>
