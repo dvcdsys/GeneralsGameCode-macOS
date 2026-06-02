@@ -56,14 +56,18 @@ home. Start it EARLY so you always have a force.
 never suicides a lone unit. Use it to finish the enemy once your army is strong.
 
 WINNING SEQUENCE (do this):
-1. FIRST round: start build_base AND maintain_army (target ~8-10) AND defend_base — all three. This \
-sets up economy, army production, and defense at once.
+1. FIRST round: start build_base AND maintain_army (target ~12) AND defend_base — all three. This sets \
+up economy, army production, static defenses, and base defense at once.
 2. Then each round just MONITOR the tasks list. Don't re-issue tasks that already exist and are \
 running/blocked (it does nothing). A 'blocked' build/army task usually means low money/power — be \
-patient or fix the cause, don't pile on duplicates.
-3. Scout the map to find the enemy base (scout). When your army is large (8+ combat units), launch \
-attack_area on the enemy base/contacts to destroy them.
-4. Keep power non-negative and keep maintain_army running so losses are replaced.
+patient, don't pile on duplicates.
+3. Scout ONCE or twice to locate the enemy base (scout) — do NOT scout every round. The enemyContacts \
+in the brief already show where enemies are.
+4. ATTACK to win — turtling loses. As soon as your army reaches ~10+ combat units, launch attack_area \
+on the enemy base or their main contact cluster (use the `at` coordinate of the biggest enemyContacts \
+group). Keep maintain_army running so the army is replaced, and re-launch attack_area after it clears \
+an area. You must destroy the enemy's buildings to win — go on the offensive once you have a force.
+5. Keep power non-negative; if buildings are being lost, you are too passive — push out and attack.
 
 Each round you get a JSON brief:
 - me: money, powerMargin (keep >= 0), unit/building counts.

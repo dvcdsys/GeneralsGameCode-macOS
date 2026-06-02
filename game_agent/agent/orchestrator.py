@@ -72,53 +72,57 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             time.sleep(1.0)
             continue
 
-        me = client.external_player()
-        if not me:
-            time.sleep(1.0)
-            continue
+        try:
+            me = client.external_player()
+            if not me:
+                time.sleep(1.0)
+                continue
 
-        v = me["index"] if view == "self" else view
-        if map_cache is None:
-            map_cache = client.map(ds=1)  # terrain is static for the match — fetch once
-        world = WorldModel(map_cache, client.units(view=v), client.players())
-        frame = (client.healthz() or {}).get("frame", 0)
-        ctx = SkillContext(world, me, client, threats=threats, journal=journal, frame=frame,
-                           taskmgr=taskmgr)
+            v = me["index"] if view == "self" else view
+            if map_cache is None:
+                map_cache = client.map(ds=1)  # terrain is static for the match — fetch once
+            world = WorldModel(map_cache, client.units(view=v), client.players())
+            frame = (client.healthz() or {}).get("frame", 0)
+            ctx = SkillContext(world, me, client, threats=threats, journal=journal, frame=frame,
+                               taskmgr=taskmgr)
 
-        # --- human directive (force a re-plan when it changes) -----------------
-        d_text, d_ts = _read_directive(directive_path)
-        directive_changed = (d_ts is not None and d_ts != last_dir_ts)
-        if directive_changed:
-            directive = d_text
-            last_dir_ts = d_ts
+            # --- human directive (force a re-plan when it changes) -------------
+            d_text, d_ts = _read_directive(directive_path)
+            directive_changed = (d_ts is not None and d_ts != last_dir_ts)
+            if directive_changed:
+                directive = d_text
+                last_dir_ts = d_ts
 
-        # --- deliberative tier (slow) ------------------------------------------
-        now = time.time()
-        if planner and (last_result is None or directive_changed or now - last_plan >= plan_period_s):
-            last_brief = compose_brief(ctx, taskmgr, notes, directive)
-            t0 = time.time()
-            last_result = planner.plan(last_brief, frame)
-            last_plan = time.time()
+            # --- deliberative tier (slow) --------------------------------------
+            now = time.time()
+            if planner and (last_result is None or directive_changed or now - last_plan >= plan_period_s):
+                last_brief = compose_brief(ctx, taskmgr, notes, directive)
+                t0 = time.time()
+                last_result = planner.plan(last_brief, frame)
+                last_plan = time.time()
+                if verbose:
+                    print("[plan f{} {:.1f}s] calls={} {}".format(
+                        frame, last_plan - t0, last_result.get("calls"), last_result.get("error", "")),
+                        flush=True)
+
+            # --- reactive/executive tier (fast) --------------------------------
+            taskmgr.tick(ctx)
+
+            # --- persist state for the UI --------------------------------------
+            _atomic_write(state_path, {
+                "inGame": True,
+                "frame": frame,
+                "me": {"player": me["index"], "side": me.get("side"), "money": me.get("money"),
+                       "power": (me.get("powerProduction", 0) or 0) - (me.get("powerConsumption", 0) or 0)},
+                "directive": directive,
+                "tasks": taskmgr.snapshot(),
+                "notes": notes.lines() if notes else [],
+                "events": journal.digest(16) if journal else [],
+                "threats": threats.threats(frame) if threats else [],
+                "lastPlan": last_result,
+            })
+        except Exception as e:  # noqa: BLE001 — a transient (API blip, bad snapshot) must not kill the bot
             if verbose:
-                print("[plan f{} {:.1f}s] calls={} {}".format(
-                    frame, last_plan - t0, last_result.get("calls"), last_result.get("error", "")),
-                    flush=True)
-
-        # --- reactive/executive tier (fast) ------------------------------------
-        taskmgr.tick(ctx)
-
-        # --- persist state for the UI ------------------------------------------
-        _atomic_write(state_path, {
-            "inGame": True,
-            "frame": frame,
-            "me": {"player": me["index"], "side": me.get("side"), "money": me.get("money"),
-                   "power": (me.get("powerProduction", 0) or 0) - (me.get("powerConsumption", 0) or 0)},
-            "directive": directive,
-            "tasks": taskmgr.snapshot(),
-            "notes": notes.lines() if notes else [],
-            "events": journal.digest(16) if journal else [],
-            "threats": threats.threats(frame) if threats else [],
-            "lastPlan": last_result,
-        })
+                print("[orch] tick error: {}".format(e), flush=True)
 
         time.sleep(1.0 / fast_hz if fast_hz else 0.5)

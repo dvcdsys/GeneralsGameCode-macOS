@@ -378,8 +378,10 @@ class BuildBaseSkill(Skill):
         },
         "required": [],
     }
-    # default opening: power, infantry, vehicles, more power (templates from /buildable; CWC Russia)
-    DEFAULT_PLAN = ["CWCruSmallFuelDepot", "CWCruBarracks", "CWCruWarFactory", "CWCruSmallFuelDepot"]
+    # default opening (CWC Russia templates from /buildable): power, infantry, base defense, vehicles,
+    # more power, more defense. Economy + army first, with static defenses to survive early pressure.
+    DEFAULT_PLAN = ["CWCruSmallFuelDepot", "CWCruBarracks", "CWCruFortInf", "CWCruWarFactory",
+                    "CWCruSmallFuelDepot", "CWCruFortTank", "CWCruFortInf"]
     DOZER_RETRAIN = 300
 
     def _enough(self, ctx, plan, i):

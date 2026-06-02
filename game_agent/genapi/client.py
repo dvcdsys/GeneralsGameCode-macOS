@@ -48,7 +48,8 @@ class GameClient:
         return self.get("/healthz")[1]
 
     def players(self):
-        return self.get("/players")[1] or []
+        r = self.get("/players")[1]
+        return r if isinstance(r, list) else []
 
     def state(self):
         return self.get("/state")[1]
@@ -60,7 +61,8 @@ class GameClient:
         if view is not None:
             q.append("view={}".format(view))
         qs = ("?" + "&".join(q)) if q else ""
-        return self.get("/units" + qs)[1] or []
+        r = self.get("/units" + qs)[1]
+        return r if isinstance(r, list) else []
 
     def resources(self, player):
         return self.get("/resources?player={}".format(player))[1]
