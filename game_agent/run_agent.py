@@ -3,7 +3,7 @@
 
     python3 run_agent.py                          # scripted baseline (no LLM, single cadence)
     python3 run_agent.py --agent ollama           # LLM planner + skill/task executor (two-tier)
-    GEN_API_PORT=3459 python3 run_agent.py --agent ollama --model qwen3:8b
+    GEN_API_PORT=3459 python3 run_agent.py --agent ollama --model qwen3.5:9b
 
 The 'ollama' agent is the deliberative/reactive system: a fast deterministic executor (TaskManager
 ticking Skill state-machines) orchestrated by a slow LLM planner over Ollama function-calling. See
@@ -61,7 +61,7 @@ def main():
     ap.add_argument("--hz", type=float, default=0.5, help="scripted: decisions per second")
     ap.add_argument("--max-ticks", type=int, default=None)
     # ollama
-    ap.add_argument("--model", default=None, help="ollama model (default qwen3:8b / $GEN_OLLAMA_MODEL)")
+    ap.add_argument("--model", default=None, help="ollama model (default qwen3.5:9b / $GEN_OLLAMA_MODEL)")
     ap.add_argument("--ollama-host", default=None, help="host:port (default $GEN_OLLAMA_HOST)")
     ap.add_argument("--fast-hz", type=float, default=2.0, help="ollama: executor ticks per second")
     ap.add_argument("--plan-period", type=float, default=20.0, help="ollama: seconds between LLM plans")

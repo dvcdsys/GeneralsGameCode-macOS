@@ -59,7 +59,7 @@ Each planning round: build a brief (`agent.brief.compose_brief`) → call Ollama
 can't drain resources); management calls mutate the queue / write a note. No new Python dependency
 (stdlib HTTP, like `GameClient`).
 
-- **Model:** `qwen3:8b` by default (tools + thinking; thinking disabled for latency). Override with
+- **Model:** `qwen3.5:9b` by default (tools + thinking; thinking disabled for latency). Override with
   `GEN_OLLAMA_HOST` / `GEN_OLLAMA_MODEL` or `--ollama-host` / `--model`. Warm planning ≈ 1 s; the first
   call pays a one-time model-load (~tens of s).
 - **System prompt:** role = strategic commander; explains the two-tier control, the brief fields, fog
@@ -105,7 +105,7 @@ orders forwarded as `/command`s), **pause-agent** (stop planning without pausing
 
 ```bash
 make run                                   # launch the stand (external player, [SK|AI] map)
-make agent AGENT=ollama                    # planner + executor (qwen3:8b on $GEN_OLLAMA_HOST)
+make agent AGENT=ollama                    # planner + executor (qwen3.5:9b on $GEN_OLLAMA_HOST)
 make viewer                                # browser UI with the Agent panel (directive + tasks)
 # direct:
 GEN_OLLAMA_HOST=192.168.1.168:11434 python3 run_agent.py --agent ollama --plan-period 20 --fast-hz 2

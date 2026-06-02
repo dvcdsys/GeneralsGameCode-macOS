@@ -60,7 +60,7 @@ game_agent/
     scripted.py       NO-LLM baseline (rally to nearest capture point)
     orchestrator.py   two-cadence driver: fast skill executor + slow LLM planner (LLM path)
     ollama_agent.py   OllamaPlanner — Ollama function-calling planner over the skill catalog
-    ollama_client.py  minimal Ollama /api/chat wrapper (stdlib; default qwen3:8b)
+    ollama_client.py  minimal Ollama /api/chat wrapper (stdlib; default qwen3.5:9b)
     tasks.py          TaskManager — the executor's queue of Skill state-machines + history
     brief.py          compose_brief — WorldModel + memory -> compact LLM brief (~1-3 KB)
     journal.py        EventJournal (event digest/counts) + AgentNotes (planner scratchpad)

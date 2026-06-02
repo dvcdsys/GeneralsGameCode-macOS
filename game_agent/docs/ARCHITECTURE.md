@@ -221,7 +221,7 @@ library (so the model issues *tasks*, not coordinates):
   tool. `build_structure / train_units / assemble_group / defend_sector / attack_area / hold_point /
   scout`. Add one by subclassing `Skill` + registering it; it appears to the model automatically.
 - **Planner** (`agent/ollama_agent.OllamaPlanner`) — builds the brief (`agent.brief`), calls Ollama
-  (`qwen3:8b`, tools, thinking off, stdlib HTTP via `agent.ollama_client`), applies tool calls with
+  (`qwen3.5:9b`, tools, thinking off, stdlib HTTP via `agent.ollama_client`), applies tool calls with
   **dedup** so re-planning can't recreate equivalent active tasks.
 - **Memory** (`agent/journal.py`) — `EventJournal` (digest + exact event counts) and `AgentNotes`
   (planner scratchpad); folded into the brief alongside the task ledger and the human directive.
