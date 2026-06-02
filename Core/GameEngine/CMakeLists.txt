@@ -1166,6 +1166,14 @@ else()
 endif()
 
 
+# External-control API server sources (Milestone 1), behind RTS_BUILD_EXTERNAL_CONTROL.
+if(RTS_BUILD_EXTERNAL_CONTROL)
+    list(APPEND GAMEENGINE_SRC
+        Include/Common/ExternalControl/ExternalControlInterface.h
+        Source/Common/ExternalControl/ExternalControlSystem.cpp
+    )
+endif()
+
 add_library(corei_gameengine_private INTERFACE)
 add_library(corei_gameengine_public INTERFACE)
 
@@ -1199,6 +1207,11 @@ target_link_libraries(corei_gameengine_public INTERFACE
     gamespy::gamespy
     stlport
 )
+
+# External-control API server deps (cpp-httplib / nlohmann-json / IXWebSocket).
+if(RTS_BUILD_EXTERNAL_CONTROL)
+    target_link_libraries(corei_gameengine_public INTERFACE rts_external_control_deps)
+endif()
 
 # ReactOS ATL for MinGW-w64 only (MSVC uses native ATL)
 if(MINGW)

@@ -148,6 +148,7 @@ enum PlayerType CPP_11(: Int)
 {
 	PLAYER_HUMAN,				///< player is human-controlled
 	PLAYER_COMPUTER,		///< player is computer-controlled
+	PLAYER_EXTERNAL,		///< opponent driven entirely by the external-control API (no internal AI brain)
 
 	PLAYERTYPE_COUNT
 };

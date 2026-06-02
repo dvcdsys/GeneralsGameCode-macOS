@@ -485,18 +485,47 @@ void DebugAutoStartSkirmish( const char *mapName )
 
 	SkirmishPreferences prefs;
 
+	bool useExternalSlot = false;
+	bool allyMode = false;
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+	useExternalSlot = (::getenv("GEN_AUTO_EXTERNAL") != nullptr);
+	// GEN_AUTO_ALLY: put the External(API) player on the HUMAN's team and add a common enemy AI,
+	// so the human (local view, no fog) can watch the API-driven ally's units move. Needs a 3+
+	// player AI map (pass GEN_AUTO_MAP, e.g. so_countryside_day).
+	allyMode = useExternalSlot && (::getenv("GEN_AUTO_ALLY") != nullptr);
+#endif
+	// Matching non-(-1) team numbers => allies; different => enemies (see GameLogic slot->Dict).
+	const Int TEAM_HUMAN_ALLY = 0;
+	const Int TEAM_ENEMY      = 1;
+
 	// Slot 0: the local human player.
 	GameSlot gSlot;
 	gSlot.setName(prefs.getUserName());
 	gSlot.setState( SLOT_PLAYER, prefs.getUserName() );
 	gSlot.setColor(prefs.getPreferredColor());
 	gSlot.setPlayerTemplate(prefs.getPreferredFaction());
+	if (allyMode)
+		gSlot.setTeamNumber(TEAM_HUMAN_ALLY);
 	TheSkirmishGameInfo->setSlot(0, gSlot);
 
-	// Slot 1: a single easy AI opponent (random color/faction/start filled in later).
+	// Slot 1: an AI opponent (random color/faction/start filled in later). By default a single
+	// easy AI; with GEN_AUTO_EXTERNAL set it is an external-control (API-driven) opponent, so the
+	// external-control API has a PLAYER_EXTERNAL to read and command. In allyMode it joins the
+	// human's team (TEAM_HUMAN_ALLY). NOTE: set team AFTER setState (setState resets team).
 	GameSlot aiSlot;
-	aiSlot.setState(SLOT_EASY_AI);
+	aiSlot.setState(useExternalSlot ? SLOT_EXTERNAL_AI : SLOT_EASY_AI);
+	if (allyMode)
+		aiSlot.setTeamNumber(TEAM_HUMAN_ALLY);
 	TheSkirmishGameInfo->setSlot(1, aiSlot);
+
+	// Slot 2 (allyMode only): a common enemy for the human + API ally to fight.
+	if (allyMode)
+	{
+		GameSlot enemySlot;
+		enemySlot.setState(SLOT_EASY_AI);
+		enemySlot.setTeamNumber(TEAM_ENEMY);
+		TheSkirmishGameInfo->setSlot(2, enemySlot);
+	}
 
 	TheSkirmishGameInfo->setSeed(GetTickCount());
 	TheSkirmishGameInfo->setStartingCash( prefs.getStartingCash() );
@@ -531,7 +560,8 @@ void DebugAutoStartSkirmish( const char *mapName )
 	TheWritableGlobalData->m_mapName = TheSkirmishGameInfo->getMap();
 	TheSkirmishGameInfo->startGame(0);
 
-	DEBUG_LOG(("DebugAutoStartSkirmish: launching skirmish on map '%s' (1 human + 1 easy AI)", map.str()));
+	DEBUG_LOG(("DebugAutoStartSkirmish: launching skirmish on map '%s' (%s)", map.str(),
+		allyMode ? "human + API-ally vs enemy AI" : (useExternalSlot ? "1 human + 1 external/API player" : "1 human + 1 easy AI")));
 
 	InitRandom(TheSkirmishGameInfo->getSeed());
 	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
@@ -1176,6 +1206,8 @@ void InitSkirmishGameGadgets()
       GadgetComboBoxSetItemData(comboBoxPlayer[i], 3, (void *)SLOT_MED_AI);
 			GadgetComboBoxAddEntry(comboBoxPlayer[i],TheGameText->fetch("GUI:HardAI"),white);
       GadgetComboBoxSetItemData(comboBoxPlayer[i], 4, (void *)SLOT_BRUTAL_AI);
+			GadgetComboBoxAddEntry(comboBoxPlayer[i],TheGameText->fetch("GUI:ExternalAI"),white);
+      GadgetComboBoxSetItemData(comboBoxPlayer[i], 5, (void *)SLOT_EXTERNAL_AI);
 			GadgetComboBoxSetSelectedPos(comboBoxPlayer[i],0);
 
 		}

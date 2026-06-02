@@ -40,7 +40,8 @@ enum SlotState CPP_11(: Int)
 	SLOT_EASY_AI,
 	SLOT_MED_AI,
 	SLOT_BRUTAL_AI,
-	SLOT_PLAYER
+	SLOT_PLAYER,
+	SLOT_EXTERNAL_AI		///< local skirmish slot driven by the external-control API (Milestone 1)
 };
 
 enum

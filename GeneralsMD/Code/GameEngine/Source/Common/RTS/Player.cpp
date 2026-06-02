@@ -84,6 +84,9 @@
 #include "GameLogic/Object.h"
 #include "GameLogic/Scripts.h"
 #include "GameLogic/PartitionManager.h"
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+#include "Common/ExternalControl/ExternalControlInterface.h"	// TheExternalControl (production taps)
+#endif
 #include "GameLogic/SidesList.h"
 #include "GameLogic/Squad.h"
 #include "GameLogic/RankInfo.h"
@@ -858,6 +861,12 @@ void Player::initFromDict(const Dict* d)
 		}
 		skirmish = false;
 	}
+	else if (d->getBool(TheKey_playerIsExternalAI, &exists) && exists)
+	{
+		// Driven by the external-control API: a computer-style opponent with NO internal AI
+		// brain (setPlayerType only creates m_ai for PLAYER_COMPUTER, so m_ai stays null here).
+		setPlayerType(PLAYER_EXTERNAL, skirmish);
+	}
 	else
 	{
 		setPlayerType(PLAYER_COMPUTER, skirmish);
@@ -1559,6 +1568,15 @@ void Player::onUnitCreated( Object *factory, Object *unit )
 	// ai notification callback
 	if( m_ai )
 		m_ai->onUnitProduced( factory, unit );
+
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+	// External-control event tap: a factory finished a unit.
+	if( TheExternalControl && TheExternalControl->eventsActive() && unit )
+		TheExternalControl->eventUnitProduced(
+			(unsigned)unit->getID(), (int)getPlayerIndex(),
+			unit->getTemplate() ? unit->getTemplate()->getName().str() : "",
+			factory ? (unsigned)factory->getID() : 0u );
+#endif
 }
 
 
@@ -1651,6 +1669,14 @@ void Player::onStructureConstructionComplete( Object *builder, Object *structure
 	// ai notification callback
 	if( m_ai )
 		m_ai->onStructureProduced( builder, structure );
+
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+	// External-control event tap: a structure finished construction.
+	if( TheExternalControl && TheExternalControl->eventsActive() && structure )
+		TheExternalControl->eventStructureComplete(
+			(unsigned)structure->getID(), (int)getPlayerIndex(),
+			structure->getTemplate() ? structure->getTemplate()->getName().str() : "" );
+#endif
 
 	// the GUI needs to re-evaluate the information being displayed to the user now
 	if( TheControlBar )
@@ -3419,6 +3445,13 @@ void Player::friend_applyDifficultyBonusesForObject(Object* obj, Bool apply) con
 				WEAPONBONUSCONDITION_SOLO_HUMAN_HARD
 			},
 			{
+				WEAPONBONUSCONDITION_SOLO_AI_EASY,
+				WEAPONBONUSCONDITION_SOLO_AI_NORMAL,
+				WEAPONBONUSCONDITION_SOLO_AI_HARD
+			},
+			{
+				// PLAYER_EXTERNAL: treat like the AI for solo weapon bonuses (must exist or
+				// wbonus[PLAYER_EXTERNAL] would zero-init to a bogus WeaponBonusConditionType).
 				WEAPONBONUSCONDITION_SOLO_AI_EASY,
 				WEAPONBONUSCONDITION_SOLO_AI_NORMAL,
 				WEAPONBONUSCONDITION_SOLO_AI_HARD

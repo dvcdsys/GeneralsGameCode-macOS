@@ -809,6 +809,14 @@ DEFINE_KEY(playerIsHuman)
 /**
 	Which: Player Properties
 	Type: Bool
+	Usage: true if this player is driven by the external-control API (PLAYER_EXTERNAL).
+	       No internal AI brain is created; all orders arrive over the API.
+*/
+DEFINE_KEY(playerIsExternalAI)
+
+/**
+	Which: Player Properties
+	Type: Bool
 	Usage: true if this player is in skirmish or multiplayer, rather than solo.
 */
 DEFINE_KEY(playerIsSkirmish)

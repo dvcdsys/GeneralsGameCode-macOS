@@ -1493,6 +1493,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 					case SLOT_EASY_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_EASY); break;
 					case SLOT_MED_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_NORMAL); break;
 					case SLOT_BRUTAL_AI : d.setInt(TheKey_skirmishDifficulty, DIFFICULTY_HARD); break;
+					case SLOT_EXTERNAL_AI : d.setBool(TheKey_playerIsExternalAI, true); break;	// driven by external-control API; no internal brain
 					default: break;	 // no setting.
 				}
 			}

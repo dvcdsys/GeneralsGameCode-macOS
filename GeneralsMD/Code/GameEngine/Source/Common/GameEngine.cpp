@@ -65,6 +65,9 @@
 #include "Common/DamageFX.h"
 #include "Common/MultiplayerSettings.h"
 #include "Common/Recorder.h"
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+#include "Common/ExternalControl/ExternalControlInterface.h"
+#endif
 #include "Common/SpecialPower.h"
 #include "Common/TerrainTypes.h"
 #include "Common/Upgrade.h"
@@ -644,6 +647,12 @@ void GameEngine::init()
 		initSubsystem(TheRadar,"TheRadar", createRadar(TheGlobalData->m_headless), nullptr);
 		initSubsystem(TheVictoryConditions,"TheVictoryConditions", createVictoryConditions(), nullptr);
 
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+		// External-control API server (Milestone 1). Registered after the game logic, AI, player
+		// list, recorder and victory conditions so its per-tick work can rely on all of them.
+		initSubsystem(TheExternalControl,"TheExternalControl", createExternalControl(), nullptr);
+#endif
+
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -1060,11 +1069,26 @@ void GameEngine::update()
 			}
 		}
 
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+		// Service external-control API requests on the engine thread, before the logic update.
+		// Reads see a coherent end-of-previous-frame snapshot; this runs every loop iteration
+		// (even while paused or in the shell) so health/state/control stay responsive.
+		if (TheExternalControl != nullptr)
+			TheExternalControl->serviceRequests();
+#endif
+
 		const Bool canUpdate = canUpdateGameLogic();
 		const Bool canUpdateLogic = canUpdate && !TheFramePacer->isGameHalted() && !TheFramePacer->isTimeFrozen();
 		const Bool canUpdateScript = canUpdate && !TheFramePacer->isGameHalted();
 
-		if (canUpdateLogic)
+		Bool forcedStep = FALSE;
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+		// External-control single-step: advance exactly one logic frame even while paused.
+		if (!canUpdateLogic && TheExternalControl != nullptr && TheExternalControl->consumePendingStep())
+			forcedStep = TRUE;
+#endif
+
+		if (canUpdateLogic || forcedStep)
 		{
 			TheGameClient->step();
 			TheGameLogic->UPDATE();

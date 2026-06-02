@@ -40,6 +40,9 @@
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/Radar.h"
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+#include "Common/ExternalControl/ExternalControlInterface.h"	// TheExternalControl (game-event taps)
+#endif
 #include "Common/SpecialPower.h"
 #include "Common/Team.h"
 #include "Common/ThingFactory.h"
@@ -1918,6 +1921,23 @@ void Object::attemptDamage( DamageInfo *damageInfo )
 			m_radarData != nullptr &&
 			isLocallyControlled() )
 		TheRadar->tryUnderAttackEvent( this );
+
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+	// External-control event tap: real damage only (skip healing/penalty), gated on a live client.
+	if (damageInfo->out.m_actualDamageDealt > 0.0f &&
+			damageInfo->in.m_damageType != DAMAGE_HEALING &&
+			damageInfo->in.m_damageType != DAMAGE_PENALTY &&
+			TheExternalControl && TheExternalControl->eventsActive())
+	{
+		Player* vcp = getControllingPlayer();
+		TheExternalControl->eventCombatDamage(
+			(unsigned)getID(),
+			(unsigned)damageInfo->in.m_sourceID,
+			vcp ? (int)vcp->getPlayerIndex() : -1,
+			(float)damageInfo->out.m_actualDamageDealt,
+			(int)damageInfo->in.m_damageType);
+	}
+#endif
 
 }
 
@@ -4635,6 +4655,19 @@ void Object::onDie( DamageInfo *damageInfo )
 #endif
 
 	Bool selfInflicted = (damageInfo->in.m_sourceID == getID());
+
+#ifdef RTS_HAS_EXTERNAL_CONTROL
+	// External-control event tap: report this death on the /events stream (no-op if no client).
+	if (TheExternalControl && TheExternalControl->eventsActive())
+	{
+		Player* ocp = getControllingPlayer();
+		TheExternalControl->eventUnitDied(
+			(unsigned)getID(),
+			(unsigned)damageInfo->in.m_sourceID,
+			ocp ? (int)ocp->getPlayerIndex() : -1,
+			getTemplate() ? getTemplate()->getName().str() : "");
+	}
+#endif
 
 	// FIRST, call our die modules.
 	for (BehaviorModule** d = m_behaviors; *d; ++d)

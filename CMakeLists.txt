@@ -87,6 +87,11 @@ include(cmake/config.cmake)
 include(cmake/gamespy.cmake)
 include(cmake/lzhl.cmake)
 
+# External-control API server dependencies (cpp-httplib / nlohmann-json / IXWebSocket).
+if(RTS_BUILD_EXTERNAL_CONTROL)
+    include(cmake/external_control.cmake)
+endif()
+
 if (IS_VS6_BUILD)
     # The original max sdk does not compile against a modern compiler.
     # If there is a desire to make this work, then a fixed max sdk needs to be created.
