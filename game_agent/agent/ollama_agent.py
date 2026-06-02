@@ -213,7 +213,7 @@ class OllamaPlanner:
         the fresh brief and emits its orders (usually all at once). max_steps is kept LOW — concrete
         orders are independent, so we don't need to feed tool results back across many slow thinking
         steps (that made each round ~38s); the model re-plans next cycle on a fresh brief instead."""
-        system = SYSTEM_PROMPT
+        system = SYSTEM_PROMPT + ("\n\n" + self.knowledge if self.knowledge else "")
         messages = self._build_messages(brief)
         t0 = time.time()
         applied_all, total_calls, rationale, thinking, last_msg = [], 0, "", "", None
