@@ -22,8 +22,8 @@ class OllamaChat:
         if not host.startswith("http"):
             host = "http://" + host
         self.base = host.rstrip("/")
-        # gemma4:e4b — smaller/faster than 9b, snappier strategic cadence; tools + thinking
-        self.model = model or os.environ.get("GEN_OLLAMA_MODEL", "gemma4:e4b")
+        # gemma4:26b — smaller/faster than 9b, snappier strategic cadence; tools + thinking
+        self.model = model or os.environ.get("GEN_OLLAMA_MODEL", "gemma4:26b")
         self.timeout = timeout
         self.temperature = temperature
         self.think = think
