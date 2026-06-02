@@ -72,6 +72,14 @@ class GameClient:
         qs = "?ds={}".format(ds) + ("&zone=1" if zone else "")
         return self.get("/map" + qs)[1]
 
+    def catalog(self, side=None):
+        """Static per-template stats (cost/buildTime/power/prereqs/tags). Optional faction filter."""
+        return self.get("/catalog" + ("?side={}".format(side) if side else ""))[1] or []
+
+    def buildable(self, player):
+        """What `player` can build/train now: {money, power, builders[], available[]}."""
+        return self.get("/buildable?player={}".format(player))[1]
+
     # --- mutations -------------------------------------------------------------
     def control(self, action, value=None):
         body = {"action": action}

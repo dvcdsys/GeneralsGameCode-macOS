@@ -146,33 +146,28 @@ gains an entry in the LLM schema (§5) with **no loop change** — the dispatch 
 **Defense**
 | verb | params | meaning | |
 |------|--------|---------|---|
-| `guard_zone` | `anchor:{x,y}`, `engage:{x,y}`, `aggression?`, `fallback_if?` | hold/return-to an area, watching a zone (aggression coarse, `fallback_if` accepted-but-ignored in M1) | ✓ |
-| `garrison` / `ungarrison` | `targetId` (building) | enter a civilian building as a bunker / leave it | ◻ |
+| `guard_zone` | `anchor:{x,y}`, `engage:{x,y}`, `aggression?`, `fallback_if?` | hold/return-to an area, watching a zone (aggression coarse, `fallback_if` accepted-but-ignored) | ✓ |
 
-**Economy / capture**
+**Unit actions**
 | verb | params | meaning | |
 |------|--------|---------|---|
-| `capture` | `targetId` (neutral capturable/oil/tech) | send a capture-capable unit to take it. *Today this is emergent:* `move`/`attack_move` onto the target auto-captures — an explicit verb is planned for clarity | ◻ (emergent via `move`) |
+| `capture` | `targetId` (neutral/enemy building) | send units to take it (`groupEnter`) | ✓ |
+| `garrison` / `ungarrison` | `targetId` (building) | enter a building as a bunker / leave it (`ungarrison` with no target = evacuate) | ✓ |
+| `repair` | `targetId` | dozers repair the target | ✓ |
+| `sell` | — | sell the building(s) in `ids[]` (refund) | ✓ |
+| `special_power` | `power`, `targetId?`/`pos?` | general's power / superweapon / power-based unit ability | ✓ |
+| `ability` | `button`, `targetId?`/`pos?` | generic command-button ability (deploy, weapon toggle, upgrade, hack…) | ✓ |
 
-**Production / construction** — *not yet implemented; the biggest gap.* Needs the engine production
-interface (`MSG_QUEUE_UNIT_CREATE` analog / dozer build) + the static data endpoints `/catalog`
-(costs, build time, prerequisites/tech tree, footprint) and `/buildable` (what's constructible now).
+**Production / construction** (use `/catalog` for stats, `/buildable?player=N` for what's makeable now + the `builderId` to use)
 | verb | params | meaning | |
 |------|--------|---------|---|
-| `build_structure` | `builderId` (dozer), `template`, `pos:{x,y}` | place a building | ◻ |
-| `train_unit` | `factoryId`, `template`, `count?` | queue unit production at a factory | ◻ |
-| `set_rally` | `buildingId`, `pos:{x,y}` | set a factory's rally point | ◻ |
-| `cancel` / `sell` / `repair` | `buildingId` / `queueId` | cancel a queue item, sell or repair a building | ◻ |
+| `build_structure` | `ids[0]`=dozer, `template`, `pos:{x,y}`, `angle?` | place a building (validates location; returns new `objectId`) | ✓ |
+| `train_unit` | `ids[0]`=factory, `template`, `count?` | queue unit production at a factory | ✓ |
+| `set_rally` | `ids[0]`=building, `pos:{x,y}` | set a building's rally point | ✓ |
 
-**Special abilities / general's powers**
-| verb | params | meaning | |
-|------|--------|---------|---|
-| `ability` | `unitId`, `which`, `pos?`/`targetId?` | unit special ability (deploy, hijack, capture-building, etc.) | ◻ |
-| `special_power` | `which`, `pos?`/`targetId?` | general's power / superweapon (artillery, spy drone, etc.) | ◻ |
-
-Today an agent can fully **scout, manoeuvre, attack, and defend** with the ✓ verbs; it cannot yet
-**build, train, or use abilities**. Those ◻ verbs are the next capability milestone (see §5 and the
-task list) — until then an agent commands the units the engine already gives it.
+The agent now has the **full action vocabulary** — scout, manoeuvre, attack, defend, capture/garrison,
+build, train, repair, sell, and trigger powers/abilities. Remaining game-side polish (see API doc §5):
+combat stats in `/catalog` (health/armor/weapons/vision/speed), and `cancel`/queue-management verbs.
 
 ---
 
@@ -221,8 +216,9 @@ return [{ids, verb, params}]  ──▶  run() dispatches via /command (already 
 1. **Compaction is the crux, not the model.** A 7B model can't read 2000 objects. `compact(world, me)`
    produces a brief: my economy (`/resources`: money, power margin), my forces grouped by template →
    `{type, count, centroid, ids}`, visible enemy contacts grouped by area, capture/economy points and
-   bunkers with `clear|cached|undefined` status, and (once the game ships them) `/catalog` stats +
-   `/buildable`. Keep it stable and small; this is where most of the engineering goes.
+   bunkers with `clear|cached|undefined` status, plus `/buildable` (what's makeable now + the
+   `builderId` to use) and `/catalog` (costs/prereqs). Keep it stable and small; this is where most of
+   the engineering goes.
 2. **Constrained output.** System prompt embeds the §3 action schema; request Ollama `format:"json"`
    and low temperature so the reply is a parseable action list. Reject/repair on schema mismatch
    (one retry, then fall back to the previous tick's intent or the scripted baseline).
@@ -245,8 +241,8 @@ return [{ids, verb, params}]  ──▶  run() dispatches via /command (already 
       / endpoint / temperature.
 - [ ] `make agent AGENT=ollama` works against the stand; verify accepted orders + sane behaviour.
 - [ ] (Optional) overlay the agent's last brief + chosen actions on `map_live.html`.
-- [ ] Depends on game-side `/catalog` + `/buildable` for build/train decisions (tasks open); movement &
-      capture strategy works without them.
+- [ ] Game-side `/catalog` + `/buildable` and the full verb set (build/train/capture/abilities) are
+      **already live** — the agent can use them immediately; no game-side blockers remain for M3.
 
 ---
 

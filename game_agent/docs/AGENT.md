@@ -29,9 +29,9 @@ Pipeline per decision:
 2. **Compact** — the model cannot read 2000 raw objects. Summarize into a small structured brief:
    my forces (grouped by type + count + centroid), visible enemy contacts (by area), economy/capture
    points (`world.economy_points()`), garrisonable bunkers, my economy (`/resources`), and — once the
-   game exposes them — what I can build now (`/buildable`) with costs/prereqs from `/catalog`.
+   what I can build now (`/buildable`, with the `builderId` to use) and costs/prereqs from `/catalog`.
 3. **Prompt** — system prompt = role + rules + the **action schema** (the `/command` verbs:
-   `move/attack_move/attack_target/stop/guard_zone/retreat`, plus build/train when added); user
+   move/combat/defense/capture/garrison/repair/sell/build_structure/train_unit/set_rally/special_power/ability); user
    message = the compact brief. Ask for a JSON list of actions (constrain with Ollama's `format:json`).
 4. **Parse → act** — validate the JSON against the schema, map unit references to real ObjectIDs, and
    return the command dicts; `run()` dispatches them via `/command`/`/commands`.
