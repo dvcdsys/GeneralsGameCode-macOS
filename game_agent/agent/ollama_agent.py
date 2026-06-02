@@ -172,12 +172,14 @@ class OllamaPlanner:
         self.chat.think = True              # let it reason; thinking is kept in the rolling memory
         self.reasoning = deque()            # one entry per round: {"frame","text"} (kept verbatim)
         self.summary = ""                   # compacted memory of rounds older than KEEP_ROUNDS
+        self.knowledge = ""                 # static game rules sheet from /catalog (set once per match)
 
     def _build_messages(self, brief):
         """Assemble the continuous ('infinity') conversation: system principles, a compacted memory of
         older rounds, the last KEEP_ROUNDS rounds of the model's own reasoning verbatim, then the fresh
         brief. The model thus sees its recent thinking and decisions and can build on them."""
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        sys_text = SYSTEM_PROMPT + ("\n\n" + self.knowledge if self.knowledge else "")
+        messages = [{"role": "system", "content": sys_text}]
         if self.summary:
             messages.append({"role": "user",
                              "content": "MEMORY of earlier rounds (compacted):\n" + self.summary})

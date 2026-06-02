@@ -189,13 +189,23 @@ def is_infantry(u):
     return ("infantry" in tags) or ("inf" in t and not any(h in t for h in _NONCOMBAT_HINTS))
 
 
+# Templates the ENGINE reports as able to capture (canCapture from /catalog) — populated once at
+# startup. In CWC that's the Rifleman + Officer (NOT the engineer). Data-driven, never guessed.
+CAPTURE_TEMPLATES = set()
+
+
+def set_capture_templates(names):
+    global CAPTURE_TEMPLATES
+    CAPTURE_TEMPLATES = set(names or [])
+
+
 def capture_capable_units(ctx):
-    """My units that can actually capture (infantry), engineers first — used so capture_points never
-    sends a tank that just drives over the point and does nothing."""
-    inf = [u for u in my_units(ctx) if is_infantry(u)]
-    eng = [u for u in inf if "engineer" in (u.get("template") or "").lower()]
-    rest = [u for u in inf if u not in eng]
-    return eng + rest
+    """My units that can actually capture, per the engine's canCapture data (Rifleman/Officer in CWC).
+    Falls back to infantry only if the catalog set hasn't loaded yet — never sends a tank/engineer that
+    just stands at the point doing nothing."""
+    if CAPTURE_TEMPLATES:
+        return [u for u in my_units(ctx) if u.get("template") in CAPTURE_TEMPLATES]
+    return [u for u in my_units(ctx) if is_infantry(u)]
 
 
 def find_dozers(ctx):

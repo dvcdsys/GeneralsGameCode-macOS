@@ -22,7 +22,8 @@ import threading
 import time
 
 from agent.brief import compose_brief
-from agent.skills.base import SkillContext
+from agent.skills.base import SkillContext, my_buildings, my_units, set_capture_templates
+from agent.knowledge import compose_catalog_digest, capture_capable_templates, faction_prefix
 from genapi.world import WorldModel
 
 STATE_PATH = "/tmp/gen_agent_state.json"
@@ -69,6 +70,7 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
         threading.Thread(target=_warm, name="llm-warmup", daemon=True).start()
 
     map_cache = None
+    catalog_loaded = False
     last_dir_ts = None
     directive = ""
     # the planner runs on a background thread so the LLM's seconds of thinking never freeze the
@@ -80,6 +82,7 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             _atomic_write(state_path, {"inGame": False, "tasks": taskmgr.snapshot(),
                                        "notes": notes.lines() if notes else [], "directive": directive})
             map_cache = None
+            catalog_loaded = False  # reload knowledge for a fresh match (faction may differ)
             if verbose:
                 print("[orch] waiting for in-game ...")
             time.sleep(1.0)
@@ -98,6 +101,21 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
             frame = (client.healthz() or {}).get("frame", 0)
             ctx = SkillContext(world, me, client, threats=threats, journal=journal, frame=frame,
                                taskmgr=taskmgr)
+
+            # --- game knowledge (once per match): teach the LLM the rules from the API ----------
+            if not catalog_loaded:
+                cat = client.catalog() or []
+                if cat:
+                    my_t = [u.get("template") for u in (my_buildings(ctx) + my_units(ctx))]
+                    prefix = faction_prefix(me.get("side"), my_t)
+                    cap = capture_capable_templates(cat)
+                    set_capture_templates(cap)
+                    if planner is not None:
+                        planner.knowledge = compose_catalog_digest(cat, prefix)
+                    catalog_loaded = True
+                    if verbose:
+                        print("[orch] knowledge loaded: faction={} canCapture={}".format(
+                            prefix, sorted(cap)[:6]), flush=True)
 
             # --- human directive (force a re-plan when it changes) -------------
             d_text, d_ts = _read_directive(directive_path)
