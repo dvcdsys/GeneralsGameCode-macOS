@@ -125,20 +125,54 @@ run(agent, client, hz, view):
   decisions; the agent corrects course on the next tick.
 
 ### Action schema (the harness↔game contract)
-`decide()` returns a list of `{ids: [ObjectID...], verb, params}`; the loop fills `player`. Verbs (from
-the game side):
+`decide()` returns a list of `{ids: [ObjectID...], verb, params}`; the loop fills `player`. The verb
+vocabulary is the full set of actions a player can take, organised by intent. **✓ = live in
+`generalszh_api` today; ◻ = planned (game-side roadmap).** When a planned verb lands it appears here and
+gains an entry in the LLM schema (§5) with **no loop change** — the dispatch is entirely game-side.
 
-| verb | params | meaning |
-|------|--------|---------|
-| `move` | `pos:{x,y,z}` | move group to a point |
-| `attack_move` | `pos:{x,y,z}` | advance, engaging on the way |
-| `attack_target` | `target:ObjectID` | focus-fire one object |
-| `stop` | — | halt the group |
-| `guard_zone` | `anchor:{x,y}`, `engage:{x,y}`, `aggression?` | hold an area (aggression coarse; fallback ignored) |
-| `retreat` | `pos:{x,y,z}` | fall back (mapped to move) |
+**Movement**
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `move` | `pos:{x,y,z}` | move group to a point | ✓ |
+| `stop` | — | halt the group (`groupIdle`) | ✓ |
+| `retreat` | `pos:{x,y,z}` | fall back (currently mapped to `move`) | ✓ |
 
-Build/train/rally verbs are on the game-side roadmap; when added they appear here and the LLM schema
-(§5) gains them with no loop change.
+**Combat (offense)**
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `attack_move` | `pos:{x,y,z}` | advance to a point, engaging anything on the way | ✓ |
+| `attack_target` | `targetId:ObjectID` | focus-fire one object | ✓ |
+
+**Defense**
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `guard_zone` | `anchor:{x,y}`, `engage:{x,y}`, `aggression?`, `fallback_if?` | hold/return-to an area, watching a zone (aggression coarse, `fallback_if` accepted-but-ignored in M1) | ✓ |
+| `garrison` / `ungarrison` | `targetId` (building) | enter a civilian building as a bunker / leave it | ◻ |
+
+**Economy / capture**
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `capture` | `targetId` (neutral capturable/oil/tech) | send a capture-capable unit to take it. *Today this is emergent:* `move`/`attack_move` onto the target auto-captures — an explicit verb is planned for clarity | ◻ (emergent via `move`) |
+
+**Production / construction** — *not yet implemented; the biggest gap.* Needs the engine production
+interface (`MSG_QUEUE_UNIT_CREATE` analog / dozer build) + the static data endpoints `/catalog`
+(costs, build time, prerequisites/tech tree, footprint) and `/buildable` (what's constructible now).
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `build_structure` | `builderId` (dozer), `template`, `pos:{x,y}` | place a building | ◻ |
+| `train_unit` | `factoryId`, `template`, `count?` | queue unit production at a factory | ◻ |
+| `set_rally` | `buildingId`, `pos:{x,y}` | set a factory's rally point | ◻ |
+| `cancel` / `sell` / `repair` | `buildingId` / `queueId` | cancel a queue item, sell or repair a building | ◻ |
+
+**Special abilities / general's powers**
+| verb | params | meaning | |
+|------|--------|---------|---|
+| `ability` | `unitId`, `which`, `pos?`/`targetId?` | unit special ability (deploy, hijack, capture-building, etc.) | ◻ |
+| `special_power` | `which`, `pos?`/`targetId?` | general's power / superweapon (artillery, spy drone, etc.) | ◻ |
+
+Today an agent can fully **scout, manoeuvre, attack, and defend** with the ✓ verbs; it cannot yet
+**build, train, or use abilities**. Those ◻ verbs are the next capability milestone (see §5 and the
+task list) — until then an agent commands the units the engine already gives it.
 
 ---
 
