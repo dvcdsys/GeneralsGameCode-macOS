@@ -1,82 +1,130 @@
-# Agent design — LLM player + human control
+# Agent design — LLM planner + skill executor + human control
 
-How the harness turns a small local LLM into a `PLAYER_EXTERNAL` player, and how a human supervises
-it. This is the design/roadmap; today only the scripted baseline (`agent/scripted.py`) exists.
+How the harness turns a small local LLM into a `PLAYER_EXTERNAL` commander, and how a human supervises
+it. **This is implemented** (`agent/ollama_agent.py` + `agent/skills/` + `agent/tasks.py` +
+`agent/orchestrator.py`); the no-LLM `agent/scripted.py` remains as the baseline.
 
-## Interface
+## The core idea: two tiers — slow planner, fast executor
 
-Every agent implements `agent.base.Agent`:
-
-```python
-class Agent:
-    def on_start(self, client): ...
-    def decide(self, world, me, client) -> list[dict]:   # [{ids, verb, params}, ...]
-```
-
-`agent.base.run()` drives it: connect → wait for match → build `WorldModel` (fog-aware) → `decide()`
-→ dispatch commands. Register new agents in `run_agent.py` (`--agent <name>`).
-
-## LLM agent (Ollama, qwen/gemma 7B) — planned `agent/ollama_agent.py`
-
-Local model via **Ollama** (`http://localhost:11434/api/chat`), e.g. `qwen2.5:7b` or `gemma2`. No
-Python dependency — plain HTTP. The agent is **strategic, low-cadence** (a decision every few
-seconds, not per-frame micro), which suits a 7B model.
-
-Pipeline per decision:
-
-1. **Observe** — `WorldModel.from_api(client, view=me.index)` (fog-aware: the API synthesizes the
-   bot's fog from its + allies' unit vision — see `../../docs/EXTERNAL_CONTROL_API.md` §5).
-2. **Compact** — the model cannot read 2000 raw objects. Summarize into a small structured brief:
-   my forces (grouped by type + count + centroid), visible enemy contacts (by area), economy/capture
-   points (`world.economy_points()`), garrisonable bunkers, my economy (`/resources`), and — once the
-   what I can build now (`/buildable`, with the `builderId` to use) and costs/prereqs from `/catalog`.
-3. **Prompt** — system prompt = role + rules + the **action schema** (the `/command` verbs:
-   move/combat/defense/capture/garrison/repair/sell/build_structure/train_unit/set_rally/special_power/ability); user
-   message = the compact brief. Ask for a JSON list of actions (constrain with Ollama's `format:json`).
-4. **Parse → act** — validate the JSON against the schema, map unit references to real ObjectIDs, and
-   return the command dicts; `run()` dispatches them via `/command`/`/commands`.
-
-Keep the verb→engine mapping authoritative on the game side; the LLM only emits the documented schema.
-Every emitted action is captured in the bot-action log (`/tmp/gen_api_actions.jsonl`) for analysis and
-for building eval/fine-tune datasets later.
-
-## Human control
-
-The human supervises the agent through the browser UI, mediated by the **harness server**
-(`ui/server.py`) — which is part of the harness, distinct from the game's API:
+An LLM cannot drive an RTS in real time (a planning call is ~1 s warm, longer cold). So the agent is
+split into two cadences:
 
 ```
-browser (map_live.html)  ⇄  harness server (ui/server.py)  ⇄  agent loop
-                                         │
-                                         └─▶ game API (:3459 / :3460)
+            (slow, ~every 15-30 s, or on directive change)         (fast, ~2 Hz, deterministic)
+   ┌──────────────────────────────────────────┐        ┌────────────────────────────────────────┐
+   │  PLANNER  (agent.ollama_agent.OllamaPlanner)│        │  EXECUTOR (agent.tasks.TaskManager)      │
+   │  • gets a compact brief (agent.brief)       │ tasks  │  • ticks every active Skill state-machine│
+   │  • calls Ollama with the SKILL CATALOG as   │──────▶ │  • each Skill issues low-level /command's │
+   │    native tools + task-management ops        │        │  • advances build %, counts production,  │
+   │  • tool calls MUTATE the task queue + notes  │        │    reacts to threats, retires done/failed│
+   └──────────────────────────────────────────┘        └────────────────────────────────────────┘
+              ▲  brief: world + memory + tasks                         │  reads WorldModel(view=self) each tick
+              └────────────────────────────────────────────────────────┘
 ```
 
-Planned control modes (harness server holds agent state + exposes control endpoints; the UI grows
-panels for them):
+The LLM **plans and orchestrates**; deterministic Python **executes in real time**. A single tool call
+("build a War Factory in the north", "assemble 4 rockets at the ridge") becomes many ticks of orders
+the model never has to micromanage.
 
-- **Observe** — agent runs autonomously; UI shows its current world brief + the actions it just issued
-  (overlaid on the map: target arrows, group selections).
-- **Approve** — agent *proposes* actions; they wait in the UI until the human confirms/edits/rejects.
-- **Override** — human issues manual orders directly (click units → click destination), which the
-  harness forwards as `/command`s; agent paused or constrained.
-- **Pause agent** — stop the decision loop without pausing the game (distinct from `/control pause`).
+## Skills — the extensible tool library (`agent/skills/`)
 
-The map viewer expands to render: the agent's fog-limited view (`/units?view=N`), its decision
-overlay, and the control panels. Because human orders and agent orders both flow through the same
-`/command` path, they're uniformly recorded in the action log.
+A **Skill** is a parameterised, stateful routine. `tick(ctx)` is called every fast tick; it advances
+its own state machine, issues commands via `ctx.client`, and reports a status (`pending` → `running` →
+`done`/`failed`/`blocked`). Each skill is exposed to the model as **one native function-calling tool**
+(name + description + JSON-schema params), so the model issues *tasks*, not coordinates.
+
+Starter library (`agent/skills/library.py`):
+
+| skill (tool) | intent | how it executes |
+|---|---|---|
+| `build_structure` | place a building near an area | finds a free dozer (avoids double-booking), spirals to a legal cell, tracks build % to completion |
+| `train_units` | queue N units | finds the factory that can make it now (`/buildable`), counts `unit_produced` events to done |
+| `assemble_group` | build a mixed force at a muster point | sets factory rally points, trains each type, done when all produced |
+| `defend_sector` | hold an area + counter attackers | standing `guard_zone`; cross-checks `ThreatTracker` and focus-fires visible attackers |
+| `attack_area` | assault an area | `attack_move`; done when no enemies remain near the target |
+| `hold_point` | take & hold a point / capturable | `capture` then `guard_zone` |
+| `scout` | reveal fog | sends one unit; done when a unit reaches the area |
+
+**Add a capability** = write a `Skill` subclass + register it in `agent/skills/registry.py`. It appears
+in the LLM tool list automatically — no planner/loop change. Teach the model to use it via the tool
+`description` and (if needed) the system prompt. The model can still emit raw verbs indirectly through
+these skills; authority stays game-side (illegal orders are rejected by the skill or `/command` and
+surface as a `failed` task, never a crash).
+
+## Planner (`agent/ollama_agent.py`)
+
+Each planning round: build a brief (`agent.brief.compose_brief`) → call Ollama `/api/chat` with
+`tools = skill catalog + {cancel_task, set_priority, note}` → apply each tool call. Skill tool calls
+`add` a task (with **dedup**: a task whose identity matches an active one is skipped, so re-planning
+can't drain resources); management calls mutate the queue / write a note. No new Python dependency
+(stdlib HTTP, like `GameClient`).
+
+- **Model:** `qwen3:8b` by default (tools + thinking; thinking disabled for latency). Override with
+  `GEN_OLLAMA_HOST` / `GEN_OLLAMA_MODEL` or `--ollama-host` / `--model`. Warm planning ≈ 1 s; the first
+  call pays a one-time model-load (~tens of s).
+- **System prompt:** role = strategic commander; explains the two-tier control, the brief fields, fog
+  semantics (clear/cached/undefined), and that the human **directive outranks** its own preferences.
+
+## Memory under a finite context (`agent/journal.py`)
+
+The model never sees the raw firehose. Two bounded structures bridge it:
+
+- **EventJournal** — daemon over WS `/events`; keeps a ring of raw events (exact counts like "produced
+  since frame F") and a short rolling **digest** of notable lines (my structure finished, my unit died,
+  enemy unit appeared).
+- **AgentNotes** — a small scratchpad the planner writes via the `note` tool and reads back next round
+  (its own long-horizon memory: enemy intent, where it's expanding, what failed). Capped.
+
+Plus the **task ledger** itself is memory (what's been ordered + status), and the human **directive**
+is standing intent. `compose_brief` packs all of this — economy, forces by type, enemy contacts (with
+fog status), always-known economy/capture geography, `/buildable` make-now list, threats, tasks,
+digest, notes, directive — into a terse (~1–3 KB) JSON brief.
+
+## Human control (`ui/server.py` + `ui/map_live.html`)
+
+Decoupled via two files in `/tmp` (the project's idiom, like the action log) so the agent process and
+the UI server never block each other:
+
+```
+browser (map_live.html)  ⇄  harness server (ui/server.py)  ⇄  files in /tmp  ⇄  orchestrator
+   directive box  ──POST /agent/directive──▶  /tmp/gen_agent_directive.json ──▶ re-plan now
+   task panel     ──GET  /agent/state    ◀──  /tmp/gen_agent_state.json     ◀── every fast tick
+```
+
+The **Agent panel** in the viewer shows: live tasks with status pills (running/blocked/done/failed),
+task history, the planner's last rationale + tool-call count, agent notes, recent events — and a
+**Commander's intent** textbox. Typing a directive ("defend the north, hold the central oil") and
+hitting *send* writes the directive file; the orchestrator picks it up and **re-plans immediately**,
+folding it into the system prompt as intent the model must obey. This is the human steering channel the
+design calls for: set a global behaviour/goal, watch the task list, correct course.
+
+Future control modes (same seam): **approve** (agent proposes, human confirms), **override** (manual
+orders forwarded as `/command`s), **pause-agent** (stop planning without pausing the game).
+
+## Running it
+
+```bash
+make run                                   # launch the stand (external player, [SK|AI] map)
+make agent AGENT=ollama                    # planner + executor (qwen3:8b on $GEN_OLLAMA_HOST)
+make viewer                                # browser UI with the Agent panel (directive + tasks)
+# direct:
+GEN_OLLAMA_HOST=192.168.1.168:11434 python3 run_agent.py --agent ollama --plan-period 20 --fast-hz 2
+```
+
+## Known limitations / next refinements
+
+- **Dozer contention:** with one dozer, a second `build_structure` correctly goes `blocked` until the
+  dozer frees; a stalled foundation isn't auto-resumed (no resume-construction verb yet).
+- **Strategy quality** is prompt/skill-tuning, not framework: the model can over-commit while low on
+  cash. Tune the system prompt, add economy-gating skills, or a cheaper "what-should-I-prioritise"
+  pre-pass.
+- **Planning is synchronous** — the executor pauses ~1 s per plan. Fine at strategic cadence; a worker
+  thread + mutation queue would remove even that if needed.
+- More skills (expand-to-oil, tech-up, base-wall, superweapon-watch), `/catalog` combat stats in the
+  brief, and reflex skills wired directly to `ThreatTracker`.
 
 ## Determinism & evaluation (later, M4)
 
-For reproducible matches and an optimizer loop: fix the RNG via `POST /session {seed}` (pre-start),
-read the outcome via `GET /session` (`outcome.localResult/decided/endFrame`), and score runs from the
-action log + outcome. Same launch path + seed → repeatable game for A/B-ing prompts/agents.
-
-## Dependencies (game side — see ../../docs/EXTERNAL_CONTROL_API.md §5)
-
-- `/catalog` (unit/building stats + tech tree + footprint) — needed for build/train decisions and
-  matchup reasoning.
-- `/buildable` — what's constructible now.
-- `/query/can_build` + `/query/path` — authoritative placement/pathing checks.
-
-Fog-of-war is **done**: `view=N` already gives the agent a realistic limited picture (vision-range
-based, with scouted-structure memory), independent of the engine's local-player-only shroud.
+Reproducible matches + optimizer loop: fix RNG via `POST /session {seed}` (pre-start), read outcome via
+`GET /session`, score runs from the action log + outcome. Same launch + seed ⇒ repeatable game for
+A/B-ing prompts, models, and skills.

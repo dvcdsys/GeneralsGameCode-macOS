@@ -56,13 +56,24 @@ game_agent/
     threats.py        ThreatTracker — background WS listener; aggregates 'combat' events into a
                       live "my units under attack" picture (reactive layer for the agent)
   agent/
-    base.py           Agent interface (decide) + run() driver loop
+    base.py           Agent interface (decide) + run() driver loop (scripted path)
     scripted.py       NO-LLM baseline (rally to nearest capture point)
-    # ollama_agent.py qwen/gemma via Ollama (planned — see AGENT.md)
+    orchestrator.py   two-cadence driver: fast skill executor + slow LLM planner (LLM path)
+    ollama_agent.py   OllamaPlanner — Ollama function-calling planner over the skill catalog
+    ollama_client.py  minimal Ollama /api/chat wrapper (stdlib; default qwen3:8b)
+    tasks.py          TaskManager — the executor's queue of Skill state-machines + history
+    brief.py          compose_brief — WorldModel + memory -> compact LLM brief (~1-3 KB)
+    journal.py        EventJournal (event digest/counts) + AgentNotes (planner scratchpad)
+    skills/           the extensible automation tool-library (see AGENT.md)
+      base.py         Skill base + SkillContext + shared world/queries helpers
+      library.py      build_structure / train_units / assemble_group / defend_sector /
+                      attack_area / hold_point / scout  (add a skill -> new LLM tool)
+      registry.py     SkillRegistry — maps names to classes + emits the LLM tool catalog
   ui/
-    server.py         harness UI server (serves the viewer; later: agent state + human control)
+    server.py         harness UI server: serves the viewer + GET /agent/state, POST /agent/directive
     map_live.html     interactive canvas (live poll, zoom/pan/hover, layer toggles,
                       "see as the bot (fog of war)" toggle — ON by default; off = ground truth)
+                      + Agent panel: task history w/ statuses, last plan, notes, directive box
   tools/              one-shot utilities, thin clients over genapi
     smoke_read.py smoke_control.py demo.py events_listen.py session.py map_view.py
   docs/               HARNESS.md (this), AGENT.md

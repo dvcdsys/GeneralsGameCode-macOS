@@ -30,6 +30,8 @@ LOG     ?= /tmp/gen_api_actions.jsonl
 GAMELOG ?= /tmp/gen_api_stand.log
 PY      ?= python3
 AGENT   ?= scripted
+OLLAMA_HOST ?= 192.168.1.168:11434
+MODEL   ?= qwen3:8b
 
 # extra GEN_AUTO_* knobs; override to taste
 RUNENV  ?= GEN_AUTO_SKIRMISH=1 GEN_AUTO_EXTERNAL=1 GEN_AUTO_ALLY=1
@@ -41,7 +43,7 @@ help:
 	@echo "game_agent harness — targets:"
 	@echo "  make build          build generalszh_api ($(BIN))"
 	@echo "  make run            launch stand (skirmish+API) and wait for in-game"
-	@echo "  make agent          run harness agent '$(AGENT)' against the stand"
+	@echo "  make agent          run harness agent '$(AGENT)' (use AGENT=ollama for the LLM planner)"
 	@echo "  make viewer         interactive browser world-view  (http://localhost:$(WEBPORT)/map_live.html)"
 	@echo "  make map            render world PNG -> /tmp/gen_world.png"
 	@echo "  make demo           read->pause->move->resume DoD loop"
@@ -81,8 +83,11 @@ stop:
 	echo "stopped api game + viewer (your own generalszh is untouched)"
 
 # Run the agent from the package root so `genapi`/`agent` import cleanly.
+# `make agent`              -> scripted baseline (no LLM)
+# `make agent AGENT=ollama` -> LLM planner + skill executor (qwen3:8b on $OLLAMA_HOST)
 agent:
-	@cd "$(PKG)" && GEN_API_PORT=$(PORT) $(PY) run_agent.py --agent $(AGENT)
+	@cd "$(PKG)" && GEN_API_PORT=$(PORT) GEN_OLLAMA_HOST=$(OLLAMA_HOST) GEN_OLLAMA_MODEL=$(MODEL) \
+		$(PY) run_agent.py --agent $(AGENT)
 
 viewer:
 	@echo "serving interactive world-view at http://localhost:$(WEBPORT)/map_live.html (Ctrl-C to stop)"

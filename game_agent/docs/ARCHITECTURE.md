@@ -93,6 +93,9 @@ def run(agent, client, hz=0.5, view="self", max_ticks=None): ...
 so the agent sees the game through its own fog; `view=None` is omniscient (debug); an int forces a
 specific player. **`hz` is strategic cadence — keep it low** (default 0.5/s); this is not micro.
 
+The **LLM agent does not use `run()`** — it uses the two-cadence `agent.orchestrator.orchestrate`
+(fast skill executor + slow LLM planner). See §5 and `AGENT.md`.
+
 ### `agent.ScriptedAgent` — the no-LLM baseline
 `agent/scripted.py`: rallies idle units to the nearest economy point (else map centre). Its only job is
 to prove the loop end-to-end and be the reference the LLM agent must beat. New agents subclass `Agent`
@@ -102,8 +105,10 @@ and register in `run_agent.py` (`AGENTS` dict → `--agent <name>`).
 `ui/server.py` serves `ui/map_live.html` over http (the page fetches the API cross-origin; the API
 sends `Access-Control-Allow-Origin: *`). The page renders terrain + classified objects, with a **"see
 as the bot (fog of war)" toggle (on by default)** that fetches `/units?view=<bot>` and dims
-cached/undefined objects. This server is the seam where human-control endpoints (observe / approve /
-override / pause-agent) will live — see `AGENT.md`.
+cached/undefined objects. It also serves the **Agent panel** and the human-control endpoints that are
+now live: `GET /agent/state` (tasks/notes/events/last-plan, from `/tmp/gen_agent_state.json`) and
+`POST /agent/directive` (the Commander's-intent box → `/tmp/gen_agent_directive.json` → immediate
+re-plan). Future approve/override/pause-agent modes extend the same seam — see `AGENT.md`.
 
 ### `tools/` — one-shot probes
 `smoke_read, smoke_control, demo, events_listen, session, map_view` — thin `GameClient` users for
@@ -198,62 +203,34 @@ enemy composition must be *discovered* (reward scouting); never assume a `cached
 
 ---
 
-## 5. Next: the Ollama / Qwen-7B agent
+## 5. The LLM agent — two tiers (built; full design in [`AGENT.md`](AGENT.md))
 
-A new `agent/ollama_agent.py` implementing `Agent.decide()` by prompting a local model over Ollama
-(`http://localhost:11434/api/chat`, e.g. `qwen2.5:7b`). **No new dependency** (plain HTTP via
-`urllib`, like `GameClient`) and **no engine/loop change** — it slots into the existing pipeline:
+The LLM agent is **not** a single `decide()` — an LLM can't drive an RTS in real time. It is a slow
+**planner** orchestrating a fast deterministic **executor**, with the planner's tools being the skill
+library (so the model issues *tasks*, not coordinates):
 
 ```
-WorldModel(view=self)
-   │  compact()                      # 2000 raw objects -> a small structured brief (we write this)
-   ▼
-world brief (JSON, ~1–2 KB)
-   │  prompt = system(role + rules + ACTION SCHEMA) + user(brief)
-   ▼
-Ollama /api/chat  (format:"json", low temp, qwen2.5:7b)
-   │  parse + validate against schema
-   ▼
-actions [{group|unit refs, verb, params}]
-   │  resolve refs -> real ObjectIDs (from the brief's id lists)
-   ▼
-return [{ids, verb, params}]  ──▶  run() dispatches via /command (already logged to the action log)
+        PLANNER (agent.ollama_agent)                     EXECUTOR (agent.tasks.TaskManager)
+   compact brief ─▶ Ollama /api/chat with               every ~0.5 s: tick each active Skill
+   tools = skill catalog + {cancel,priority,note}  ──▶   (build %, production counts, threat
+   tool calls mutate the task queue + notes              reactions); retire done/failed
+        (~every 15-30 s, or on directive change)         (agent.orchestrator drives both cadences)
 ```
 
-**Design points (to settle when we build it):**
+- **Skills** (`agent/skills/`) — parameterised stateful routines; each is one native function-calling
+  tool. `build_structure / train_units / assemble_group / defend_sector / attack_area / hold_point /
+  scout`. Add one by subclassing `Skill` + registering it; it appears to the model automatically.
+- **Planner** (`agent/ollama_agent.OllamaPlanner`) — builds the brief (`agent.brief`), calls Ollama
+  (`qwen3:8b`, tools, thinking off, stdlib HTTP via `agent.ollama_client`), applies tool calls with
+  **dedup** so re-planning can't recreate equivalent active tasks.
+- **Memory** (`agent/journal.py`) — `EventJournal` (digest + exact event counts) and `AgentNotes`
+  (planner scratchpad); folded into the brief alongside the task ledger and the human directive.
+- **Orchestrator** (`agent/orchestrator.py`) — the two-cadence driver. Persists agent state to
+  `/tmp/gen_agent_state.json` and reads the human directive from `/tmp/gen_agent_directive.json`
+  (file-based control channel ⇄ the UI server).
 
-1. **Compaction is the crux, not the model.** A 7B model can't read 2000 objects. `compact(world, me)`
-   produces a brief: my economy (`/resources`: money, power margin), my forces grouped by template →
-   `{type, count, centroid, ids}`, visible enemy contacts grouped by area, capture/economy points and
-   bunkers with `clear|cached|undefined` status, plus `/buildable` (what's makeable now + the
-   `builderId` to use) and `/catalog` (costs/prereqs). Keep it stable and small; this is where most of
-   the engineering goes.
-2. **Constrained output.** System prompt embeds the §3 action schema; request Ollama `format:"json"`
-   and low temperature so the reply is a parseable action list. Reject/repair on schema mismatch
-   (one retry, then fall back to the previous tick's intent or the scripted baseline).
-3. **Reference indirection.** The model emits group/unit references that exist in the brief (e.g.
-   `"group":"rocket_inf"` or explicit `ids`); the harness maps them to live ObjectIDs. The model never
-   invents IDs.
-4. **Authority stays on the game side.** The LLM only emits documented verbs; verb→engine mapping
-   (AIGroup dispatch) is the game's job. Anything illegal is rejected by `/command` and logged.
-5. **Cadence vs latency + reactive layer.** A 7B decision takes ~hundreds of ms–seconds; that fits
-   `hz≈0.2–0.5`. The loop tolerates this; long calls just lower the tick rate. For things that can't
-   wait for the next strategic tick (a unit being attacked), attach a `ThreatTracker` in `on_start()`
-   and fold its `threats(now_frame)` into the brief — cheap reflexes (retreat/counter) without blocking
-   the model call.
-6. **Determinism & eval (M4).** Fix RNG via `POST /session {seed}` pre-start, read `GET /session`
-   outcome, and score from the action log + outcome. Same launch + seed ⇒ repeatable game for A/B-ing
-   prompts/models. The action log (`/tmp/gen_api_actions.jsonl`) is the dataset for eval and later
-   fine-tuning.
-
-**Integration checklist for the next session:**
-- [ ] `agent/ollama_agent.py`: `OllamaAgent(Agent)` with `compact()`, `prompt()`, `parse()`, `decide()`.
-- [ ] Register in `run_agent.py` `AGENTS = {"scripted": ..., "ollama": OllamaAgent}`; flags for model name
-      / endpoint / temperature.
-- [ ] `make agent AGENT=ollama` works against the stand; verify accepted orders + sane behaviour.
-- [ ] (Optional) overlay the agent's last brief + chosen actions on `map_live.html`.
-- [ ] Game-side `/catalog` + `/buildable` and the full verb set (build/train/capture/abilities) are
-      **already live** — the agent can use them immediately; no game-side blockers remain for M3.
+Authority stays game-side (the LLM only triggers documented skills/verbs); compaction + the skill layer
+are where the engineering lives. Determinism & eval (M4) reuse `POST /session {seed}` + the action log.
 
 ---
 

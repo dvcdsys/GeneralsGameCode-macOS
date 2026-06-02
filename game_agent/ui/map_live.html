@@ -19,6 +19,20 @@
   input[type=text]{ width:100%; box-sizing:border-box; background:#11141a; color:#cfd3da; border:1px solid #2c313c; border-radius:4px; padding:4px; }
   .muted{ color:#7f8794; } .num{ font-variant-numeric:tabular-nums; }
   button{ background:#2a2f3a; color:#cfd3da; border:1px solid #3a4150; border-radius:4px; padding:4px 8px; cursor:pointer; }
+  #agent { width:300px; padding:10px 12px; box-sizing:border-box; background:#1c1f26; overflow-y:auto; border-left:1px solid #2c313c; }
+  #agent h1 { font-size:14px; margin:0 0 8px; color:#fff; }
+  #agent h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:#7f8794; margin:14px 0 4px; }
+  #directive { width:100%; box-sizing:border-box; height:54px; resize:vertical; background:#11141a; color:#cfd3da; border:1px solid #2c313c; border-radius:4px; padding:5px; font:inherit; }
+  .task { border:1px solid #2c313c; border-radius:5px; padding:5px 7px; margin:4px 0; background:#11141a; }
+  .task .t-head { display:flex; align-items:center; gap:6px; }
+  .task .t-name { font-weight:600; color:#dfe3ea; flex:1; }
+  .task .t-detail { color:#9aa3b0; font-size:11.5px; margin-top:2px; }
+  .pill { font-size:10px; padding:1px 6px; border-radius:9px; text-transform:uppercase; letter-spacing:.04em; }
+  .st-running{ background:#1d4ed833; color:#7da7ff; } .st-pending{ background:#55555533; color:#aab; }
+  .st-blocked{ background:#a8650033; color:#ffb454; } .st-done{ background:#1f7a3433; color:#5fd07f; }
+  .st-failed{ background:#7a1f1f33; color:#ff7b7b; } .st-cancelled{ background:#55555533; color:#888; }
+  .line { color:#9aa3b0; font-size:11.5px; margin:2px 0; border-left:2px solid #2c313c; padding-left:6px; }
+  .rationale { color:#bfc6d0; font-size:11.5px; font-style:italic; white-space:pre-wrap; }
 </style>
 </head>
 <body>
@@ -61,6 +75,30 @@
     <canvas id="overlay"></canvas>
     <div id="hud"></div>
     <div id="tip"></div>
+  </div>
+
+  <div id="agent">
+    <h1>Agent</h1>
+    <div id="agentstatus" class="muted">no agent state yet…</div>
+
+    <h2>Commander's intent (directive)</h2>
+    <textarea id="directive" placeholder="e.g. Defend my base in the north. Hold the central oil. Don't over-extend."></textarea>
+    <div class="row" style="margin-top:4px"><button id="sendDirective">send directive</button><span id="dirstatus" class="muted"></span></div>
+
+    <h2>Tasks</h2>
+    <div id="tasks" class="muted">—</div>
+
+    <h2>Last plan</h2>
+    <div id="rationale" class="rationale muted">—</div>
+
+    <h2>Notes (agent memory)</h2>
+    <div id="notes" class="muted">—</div>
+
+    <h2>Recent events</h2>
+    <div id="events" class="muted">—</div>
+
+    <h2>History</h2>
+    <div id="history" class="muted">—</div>
   </div>
 </div>
 
@@ -206,6 +244,39 @@ for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_
 document.getElementById('botview').onchange=e=>{ BOT_VIEW=e.target.checked; UNITS=[]; updateViewInfo(); draw(); };  // next poll (≤450ms) refetches with/without fog
 
 (async()=>{ fit(); try{ await loadMap(); }catch(e){ document.getElementById('status').textContent='no map yet: '+e.message+' (start a match)'; } poll(); })();
+// ---- Agent panel: task history + directive (talks to the harness UI server, same origin) ----
+const escAg = s => String(s==null?'':s).replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function renderTask(t){
+  const st = (t.status||'pending').toLowerCase();
+  return `<div class="task"><div class="t-head"><span class="t-name">#${t.id} ${escAg(t.skill)}</span>`+
+         `<span class="pill st-${st}">${escAg(st)}</span></div>`+
+         `<div class="t-detail">${escAg(t.detail||'')}</div></div>`;
+}
+async function pollAgent(){
+  let s; try { s = await (await fetch('/agent/state',{cache:'no-store'})).json(); } catch(e){ return; }
+  const stat = document.getElementById('agentstatus');
+  if(!s || s.inGame===false){ stat.textContent='agent idle / not in game'; }
+  else { stat.innerHTML = `frame ${s.frame??'?'} · $${(s.me&&s.me.money)??'?'} · power ${(s.me&&s.me.power)??'?'}`; }
+  const tasks=(s.tasks&&s.tasks.active)||[];
+  document.getElementById('tasks').innerHTML = tasks.length? tasks.map(renderTask).join('') : '<span class="muted">no active tasks</span>';
+  const hist=(s.tasks&&s.tasks.history)||[];
+  document.getElementById('history').innerHTML = hist.length? hist.slice(-12).reverse().map(renderTask).join('') : '<span class="muted">—</span>';
+  const lp=s.lastPlan;
+  document.getElementById('rationale').innerHTML = lp? (escAg(lp.rationale||'(no text)')+ (lp.error?`<br><span class="st-failed pill">err</span> ${escAg(lp.error)}`:'') + `<br><span class="muted">tool calls: ${lp.calls??(lp.applied?lp.applied.length:0)}</span>`) : '<span class="muted">—</span>';
+  document.getElementById('notes').innerHTML = (s.notes&&s.notes.length)? s.notes.map(n=>`<div class="line">${escAg(n)}</div>`).join('') : '<span class="muted">—</span>';
+  document.getElementById('events').innerHTML = (s.events&&s.events.length)? s.events.slice(-12).reverse().map(e=>`<div class="line">${escAg(e)}</div>`).join('') : '<span class="muted">—</span>';
+}
+async function sendDirective(){
+  const text=document.getElementById('directive').value;
+  const ds=document.getElementById('dirstatus');
+  try{ await fetch('/agent/directive',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})}); ds.textContent='sent ✓'; }
+  catch(e){ ds.textContent='failed'; }
+  setTimeout(()=>ds.textContent='',2500);
+}
+document.getElementById('sendDirective').addEventListener('click', sendDirective);
+// prefill the directive box with whatever the agent currently holds
+fetch('/agent/state',{cache:'no-store'}).then(r=>r.json()).then(s=>{ if(s&&s.directive){ document.getElementById('directive').value=s.directive; } }).catch(()=>{});
+setInterval(pollAgent, 1500); pollAgent();
 </script>
 </body>
 </html>
