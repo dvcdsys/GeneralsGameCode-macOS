@@ -31,7 +31,7 @@ GAMELOG ?= /tmp/gen_api_stand.log
 PY      ?= python3
 AGENT   ?= scripted
 OLLAMA_HOST ?= 192.168.1.168:11434
-MODEL   ?= qwen3.5:4b
+MODEL   ?= gemma4:e4b
 
 # extra GEN_AUTO_* knobs; override to taste
 RUNENV  ?= GEN_AUTO_SKIRMISH=1 GEN_AUTO_EXTERNAL=1 GEN_AUTO_ALLY=1
@@ -85,7 +85,7 @@ stop:
 
 # Run the agent from the package root so `genapi`/`agent` import cleanly.
 # `make agent`              -> scripted baseline (no LLM)
-# `make agent AGENT=ollama` -> LLM planner + skill executor (qwen3.5:4b on $OLLAMA_HOST)
+# `make agent AGENT=ollama` -> LLM planner + skill executor (gemma4:e4b on $OLLAMA_HOST)
 agent:
 	@cd "$(PKG)" && GEN_API_PORT=$(PORT) GEN_OLLAMA_HOST=$(OLLAMA_HOST) GEN_OLLAMA_MODEL=$(MODEL) \
 		$(PY) run_agent.py --agent $(AGENT)
