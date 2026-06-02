@@ -96,6 +96,34 @@ def _buildable(client, player):
     }
 
 
+def _base_centroid(objs):
+    pts = [(u["x"], u["y"]) for u in objs if "x" in u]
+    if not pts:
+        return None
+    return {"x": round(sum(x for x, _ in pts) / len(pts)),
+            "y": round(sum(y for _, y in pts) / len(pts))}
+
+
+def _enemy_base_guess(world, my_blds, my_units):
+    """Best estimate of where to send the army to find & kill the enemy.
+    1) If we've SCOUTED any enemy buildings, aim at their centroid (true location).
+    2) Otherwise aim at the opposite corner: reflect our base through the map centre. On standard
+       skirmish maps the AI starts in the far corner, so this reliably leads the strike force into
+       the enemy base, where attack-move grinds through whatever is there."""
+    enemy_blds = [u for u in world.enemies() if is_building(u) and "x" in u]
+    if enemy_blds:
+        g = _base_centroid(enemy_blds)
+        return {**g, "source": "scouted", "count": len(enemy_blds)}
+    home = _base_centroid(my_blds) or _base_centroid(my_units)
+    if not home:
+        return None
+    w = (world.width or 0) * (world.cell or 0)
+    h = (world.height or 0) * (world.cell or 0)
+    if w and h:
+        return {"x": round(w - home["x"]), "y": round(h - home["y"]), "source": "opposite_corner"}
+    return None
+
+
 def compose_brief(ctx, taskmgr, notes, directive=""):
     world, me = ctx.world, ctx.me
     p = ctx.player
@@ -114,6 +142,8 @@ def compose_brief(ctx, taskmgr, notes, directive=""):
             "unitCount": len(my_units),
             "buildingCount": len(my_blds),
         },
+        "myBaseAt": _base_centroid(my_blds) or _base_centroid(my_units),
+        "enemyBaseGuess": _enemy_base_guess(world, my_blds, my_units),
         "myForces": _group_by_template(my_units),
         "myBuildings": _group_by_template(my_blds),
         "buildable": _buildable(ctx.client, p),

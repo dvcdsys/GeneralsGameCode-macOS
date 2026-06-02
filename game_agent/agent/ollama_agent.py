@@ -72,25 +72,31 @@ what you intend to do now. This is your memory (currentStrategy in the brief sho
 the human reads it. Revise it as the game changes — then call your action tools.
 
 WINNING SEQUENCE (do this):
-1. FIRST round: start build_base AND maintain_army (target ~12) AND capture_points AND defend_base — \
-all of them. You CAN and SHOULD call several tools in one turn. This sets up economy, army production, \
-economy-point capture, static defenses, and base defense at once. Capturing oil/supply points early is \
-critical — it funds everything.
-2. Then each round just MONITOR the tasks list. Don't re-issue tasks that already exist and are \
-running/blocked (it does nothing). A 'blocked' build/army task usually means low money/power — be \
-patient, don't pile on duplicates.
-3. Scout ONCE or twice to locate the enemy base (scout) — do NOT scout every round. The enemyContacts \
-in the brief already show where enemies are.
-4. ATTACK to win — turtling loses, but do NOT all-in. Once your army reaches ~16+, launch ONE \
-attack_area toward the enemy (use the `at` of the biggest enemyContacts group, or scout toward the \
-unexplored corner to find their base). attack_area automatically sends only a strike force and keeps a \
-home guard, so your base stays defended. Keep maintain_army running to replace losses; the enemy base \
-is usually in the opposite corner of the map — push toward it in waves, scouting as you advance. You \
-win by destroying their buildings.
-5. Keep power non-negative; if buildings are being lost, you are too passive — push out and attack.
+1. FIRST round, issue ALL of these in one turn (several tool calls at once):
+   - build_base            (no args)
+   - maintain_army         (target 18 — you need defense + capture + a strike force)
+   - capture_points        (no args)
+   - defend_base           (no args)
+   - attack_area           with area = the brief's enemyBaseGuess {x,y}
+   attack_area is a STANDING order: it stays 'blocked' (waiting) until a strike force is ready, keeps a \
+home guard so your base is never undefended, then automatically assaults. Issuing it early means the \
+army marches the moment it's strong — you do NOT need to time it yourself.
+2. Then each round just MONITOR the tasks list and revise set_strategy. Don't re-issue tasks that \
+already exist (it's a no-op). A 'blocked' task usually means not enough units/money yet — be patient.
+3. The brief gives you myBaseAt and enemyBaseGuess. enemyBaseGuess is where the enemy base most likely \
+is (their scouted buildings, else the opposite corner). That is your attack target. Scout ONCE toward \
+it if you want vision, but you do NOT need to find them first — attack_area toward enemyBaseGuess will \
+march the army in and uncover + destroy whatever is there.
+4. When attack_area reports DONE ('area clear'), the area was cleared — issue a NEW attack_area toward \
+the updated enemyBaseGuess to keep pushing into their base. Repeat until their buildings are gone. \
+Keep maintain_army running to replace losses and feed fresh waves.
+5. Keep power non-negative. Turtling never wins — your standing attack_area + maintain_army loop is \
+how you grind down and destroy the enemy. You win by destroying ALL their buildings.
 
 Each round you get a JSON brief:
 - me: money, powerMargin (keep >= 0), unit/building counts.
+- myBaseAt: {x,y} centre of your base. enemyBaseGuess: {x,y} where the enemy base most likely is \
+(scouted buildings if seen, else the opposite corner) — pass this as attack_area's `area`.
 - myForces / myBuildings: your stuff grouped by template (ids + rough location `at`). A dozer is a \
 builder, not a fighter; drones are recon, not fighters.
 - buildable.makeableNow: what you can build/train RIGHT NOW (exact template names).

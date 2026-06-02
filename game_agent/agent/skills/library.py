@@ -252,7 +252,7 @@ class AttackAreaSkill(Skill):
             "radius": {"type": "number", "default": 200},
             "min_units": {"type": "integer", "default": 8,
                           "description": "don't attack until the strike force has at least this many"},
-            "keep_home": {"type": "integer", "default": 8,
+            "keep_home": {"type": "integer", "default": 6,
                           "description": "combat units to leave behind defending the base"},
             "ids": {"type": "array", "items": {"type": "integer"}},
         },
@@ -265,7 +265,7 @@ class AttackAreaSkill(Skill):
         ax, ay = resolve_point(ctx, self.params)
         radius = float(self.params.get("radius", 200))
         min_units = int(self.params.get("min_units", 8))
-        keep_home = int(self.params.get("keep_home", 8))
+        keep_home = int(self.params.get("keep_home", 6))
         if self.params.get("ids"):
             units = select_combat_units(ctx, ids=self.params.get("ids"))
         else:
@@ -289,7 +289,11 @@ class AttackAreaSkill(Skill):
         self.status = RUNNING
         near_enemies = [e for e in ctx.world.enemies()
                         if math.hypot(e.get("x", 0) - ax, e.get("y", 0) - ay) <= radius]
-        if not near_enemies and self._elapsed(ctx) > 60:
+        # Only declare the area clear once the strike force has actually ARRIVED there (else a force
+        # still marching across the map would falsely 'complete' and oscillate forever).
+        force_pos = [(u.get("x", 0), u.get("y", 0)) for u in units if "x" in u]
+        arrived = bool(force_pos) and min(math.hypot(fx - ax, fy - ay) for fx, fy in force_pos) <= radius * 1.5
+        if arrived and not near_enemies and self._elapsed(ctx) > 60:
             self.status, self.detail = DONE, "area clear"
             return
         if ctx.frame - getattr(self, "_last", -10 ** 9) >= self.REISSUE:
@@ -461,7 +465,8 @@ class MaintainArmySkill(Skill):
     param_schema = {
         "type": "object",
         "properties": {
-            "target": {"type": "integer", "default": 8, "description": "desired number of combat units"},
+            "target": {"type": "integer", "default": 18,
+                       "description": "desired number of combat units (keep high: defense + capture + a strike force)"},
         },
         "required": [],
     }
@@ -470,7 +475,7 @@ class MaintainArmySkill(Skill):
     def tick(self, ctx):
         self._begin(ctx)
         self.status = RUNNING
-        target = int(self.params.get("target", 8))
+        target = int(self.params.get("target", 18))
         army = [u for u in my_units(ctx) if is_combat_unit(u)]
         if len(army) >= target:
             self.detail = "army {}/{} (full)".format(len(army), target)
@@ -554,18 +559,14 @@ class CapturePointsSkill(Skill):
                    "units to take neutral/enemy capturable points one by one (nearest first). Standing "
                    "order — keeps grabbing points as they're discovered. Start this EARLY; economy "
                    "points fund your army.")
-    param_schema = {
-        "type": "object",
-        "properties": {
-            "units_per": {"type": "integer", "default": 1, "description": "units to send per point"},
-            "home_guard": {"type": "integer", "default": 6,
-                           "description": "combat units kept home (never sent capturing)"},
-            "max_out": {"type": "integer", "default": 4,
-                        "description": "max units committed to capturing at once"},
-        },
-        "required": [],
-    }
-    RETRY = 500  # frames before re-sending to a point we already dispatched to
+    # No tunable params: the model used to override these (it once passed home_guard=0, max_out=8,
+    # stripping the whole army onto capture duty and leaving the base open). Doctrine lives here, not
+    # in the model's whim — call it bare, like build_base.
+    param_schema = {"type": "object", "properties": {}, "required": []}
+    RETRY = 500       # frames before re-sending to a point we already dispatched to
+    HOME_GUARD = 6    # combat units always kept home for defense (never sent capturing)
+    MAX_OUT = 4       # max units committed to capturing at once
+    UNITS_PER = 1     # units sent per point
 
     def tick(self, ctx):
         self._begin(ctx)
@@ -593,8 +594,8 @@ class CapturePointsSkill(Skill):
             self.detail = "no capturable points in sight (scout to find them)"
             return
 
-        home_guard = max(0, int(self.params.get("home_guard", 6)))
-        max_out = max(1, int(self.params.get("max_out", 4)))
+        home_guard = self.HOME_GUARD
+        max_out = self.MAX_OUT
         # Only commit the SURPLUS beyond the home guard, capped — never strip the defending army.
         budget = min(max_out, max(0, len(army) - home_guard))
         if len(force) >= budget:
@@ -609,7 +610,7 @@ class CapturePointsSkill(Skill):
             return
         base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(army[0])
         caps.sort(key=lambda u: math.hypot(u["x"] - base[0], u["y"] - base[1]))
-        per = max(1, int(self.params.get("units_per", 1)))
+        per = self.UNITS_PER
         for tgt in caps:
             if ctx.frame - self._sent.get(tgt["id"], -10 ** 9) < self.RETRY:
                 continue

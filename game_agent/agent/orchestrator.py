@@ -21,12 +21,38 @@ import os
 import threading
 import time
 
-from agent.brief import compose_brief
-from agent.skills.base import SkillContext
+from agent.brief import compose_brief, _enemy_base_guess
+from agent.skills.base import SkillContext, select_combat_units, base_under_attack, my_buildings, my_units
+from agent.skills.library import AttackAreaSkill
 from genapi.world import WorldModel
 
 STATE_PATH = "/tmp/gen_agent_state.json"
 DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
+
+# Autonomous-offense safety net: a small LLM sometimes turtles forever and never orders the attack
+# even when it has a winning army. To actually BEAT the AI we guarantee offense — if the army is
+# strong, the base is safe, the enemy location is known/estimable, and no attack is already running,
+# we inject one toward the enemy base. The LLM is still the commander (its own attack_area dedupes
+# this); this only fires when it has failed to push.
+AUTO_ATTACK_ARMY = 14  # combat units before the safety-net attack triggers
+
+
+def _maybe_autonomous_attack(ctx, taskmgr, verbose=False):
+    if base_under_attack(ctx, 700.0):
+        return  # defend first; attack_area would keep a home guard anyway, but don't split under siege
+    if any(t["skill"] == "attack_area" for t in taskmgr.active()):
+        return  # an attack is already planned/running (LLM's or ours)
+    army = select_combat_units(ctx)
+    if len(army) < AUTO_ATTACK_ARMY:
+        return
+    guess = _enemy_base_guess(ctx.world, my_buildings(ctx), my_units(ctx))
+    if not guess:
+        return
+    skill = AttackAreaSkill({"area": {"x": guess["x"], "y": guess["y"]}})
+    taskmgr.add(skill, priority=4, frame=ctx.frame)
+    if verbose:
+        print("[orch] AUTO-ATTACK injected toward {} ({})".format(
+            (guess["x"], guess["y"]), guess.get("source")), flush=True)
 
 
 def _atomic_write(path, obj):
@@ -118,6 +144,9 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
                 t = threading.Thread(target=_run, name="planner", daemon=True)
                 t.start()
                 plan_box["thread"] = t
+
+            # --- autonomous offense safety net (guarantees the bot pushes to win) --
+            _maybe_autonomous_attack(ctx, taskmgr, verbose=verbose)
 
             # --- reactive/executive tier (fast — never blocked by planning) ----
             taskmgr.tick(ctx)
