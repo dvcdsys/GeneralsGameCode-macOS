@@ -52,16 +52,20 @@ class BuildStructureSkill(Skill):
             if not dozers:
                 self.status, self.detail = BLOCKED, "no dozer available"
                 return
-            # avoid double-booking a dozer that a sibling build task already claimed
-            claimed = set()
-            if ctx.taskmgr:
-                for t in ctx.taskmgr.active():
-                    d = t["params"].get("_dozer")
-                    if d is not None:
-                        claimed.add(d)
-            free = [d for d in dozers if d["id"] not in claimed] or dozers
-            dozer = free[0]
-            self.params["_dozer"] = dozer["id"]
+            # honor a pre-assigned dozer (build_base assigns a distinct one per parallel sub-build)
+            pre = self.params.get("_dozer")
+            dozer = next((d for d in dozers if d["id"] == pre), None)
+            if dozer is None:
+                # else avoid double-booking a dozer that a sibling build task already claimed
+                claimed = set()
+                if ctx.taskmgr:
+                    for t in ctx.taskmgr.active():
+                        d = t["params"].get("_dozer")
+                        if d is not None:
+                            claimed.add(d)
+                free = [d for d in dozers if d["id"] not in claimed] or dozers
+                dozer = free[0]
+                self.params["_dozer"] = dozer["id"]
             cx, cy = resolve_point(ctx, self.params)
             sx, sy = find_build_spot(ctx, cx, cy, attempt=self._attempts)
             res = ctx.client.command(ctx.player, [dozer["id"]], "build_structure",
@@ -398,77 +402,97 @@ class ScoutSkill(Skill):
 # ------------------------------------------------------------------------------
 class BuildBaseSkill(Skill):
     name = "build_base"
-    description = ("Build up your base in a sensible ORDER, ONE structure at a time, skipping roles you "
-                   "already have. Trains a dozer first if needed and auto-builds power when low. "
-                   "Faction-agnostic (works as any side). Call with NO arguments — it picks the right "
-                   "structures from what you can build. Use this instead of many build_structure calls.")
+    description = ("Build up your base, skipping roles you already have. Keeps a couple of dozers and "
+                   "builds several structures IN PARALLEL (one per free dozer). Faction-agnostic — picks "
+                   "the right buildings from what you can build. Call with NO arguments. Use this instead "
+                   "of many build_structure calls.")
     param_schema = {"type": "object", "properties": {}, "required": []}
-    # role order (resolved per-faction from /buildable): power -> infantry -> defense -> vehicles
-    DEFAULT_ROLES = ["power", "barracks", "defense", "warfactory", "defense"]
-    DOZER_RETRAIN = 300
-    ROLE_WAIT = 1200  # frames to wait for an unbuildable role before skipping it
+    # role order (resolved per-faction from /buildable). Each role is built once; the LLM/maintain can
+    # add more later. (power = fuel depot in CWC; it also unlocks the war factory.)
+    DEFAULT_ROLES = ["power", "barracks", "warfactory", "defense", "airfield"]
+    DOZER_TARGET = 2     # keep ~2 dozers so construction parallelises and survives losing one
+    DOZER_RETRAIN = 250  # min frames between dozer trains
+    ROLE_WAIT = 1200     # frames to wait for an unbuildable role before skipping it
 
     def tick(self, ctx):
         self._begin(ctx)
         roles = self.DEFAULT_ROLES
-        if not hasattr(self, "_i"):
-            self._i, self._sub, self._dz_frame, self._power_insert, self._wait = 0, None, None, False, None
-        # 1) need a dozer to build at all
-        if not find_dozers(ctx):
+        if not hasattr(self, "_subs"):
+            self._subs, self._dz_frame, self._wait, self._skip = [], None, {}, set()
+
+        # 1) DOZERS: keep up to DOZER_TARGET. Always train the first; train extras only when we can
+        #    comfortably afford it (don't starve buildings). More dozers => parallel construction.
+        dozers = find_dozers(ctx)
+        if len(dozers) < self.DOZER_TARGET:
             dz = find_trainable_dozer(ctx)
-            if dz and ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN:
+            money = ctx.me.get("money", 0) or 0
+            need_first = not dozers
+            if dz and ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN \
+                    and (need_first or money >= dz[2] + 1500):
                 ctx.client.command(ctx.player, [dz[1]], "train_unit", {"template": dz[0], "count": 1})
                 self._dz_frame = ctx.frame
-            self.status = RUNNING if dz else BLOCKED
-            self.detail = "training a dozer first" if dz else "no dozer and none trainable"
-            return
-        # 2) skip roles already satisfied (built OR currently under construction — don't duplicate)
-        while (self._i < len(roles) and self._sub is None
-               and (have_role(ctx, roles[self._i]) or role_in_progress(ctx, roles[self._i]))):
-            self._i += 1
-            self._wait = None
-        if self._i >= len(roles):
-            self.status, self.detail = DONE, "base plan complete"
-            return
-        role = roles[self._i]
-        # if the current role's building is mid-construction, wait for it rather than start another
-        if self._sub is None and role_in_progress(ctx, role):
-            self.status, self.detail = RUNNING, "{} under construction — waiting".format(role)
-            return
-        # 3) power emergency: inject power ONLY if power is genuinely NEGATIVE. (Some mods/factions —
-        # e.g. CWC USA — don't track power at all and report margin 0; <=0 here used to loop forever
-        # building fuel depots and never advance to the war factory, leaving the bot infantry-only.)
-        if self._sub is None and power_margin(ctx) < 0:
-            pwr = find_power_buildable(ctx)
+            if need_first:
+                self.status = RUNNING if dz else BLOCKED
+                self.detail = "training first dozer" if dz else "no dozer and none trainable"
+                return
+
+        # 2) prune finished sub-builds (advance past their role)
+        self._subs = [s for s in self._subs if s["sub"].status not in (DONE, FAILED)]
+        active_roles = {s["role"] for s in self._subs}
+
+        def free_dozer():
+            used = {s["sub"].params.get("_dozer") for s in self._subs}
+            for d in dozers:
+                if d["id"] not in used:
+                    return d["id"]
+            return None
+
+        # 3) power emergency (only when genuinely NEGATIVE — CWC reports 0 and doesn't track fuel-power)
+        if power_margin(ctx) < 0 and "power!" not in active_roles:
+            dzid = free_dozer()
+            pwr = find_power_buildable(ctx) if dzid is not None else None
             if pwr:
-                self._sub = BuildStructureSkill({"structure": pwr})
-                self._power_insert = True
-        # 4) resolve the current role to a concrete buildable template
-        if self._sub is None:
+                self._subs.append({"role": "power!",
+                                   "sub": BuildStructureSkill({"structure": pwr, "_dozer": dzid})})
+                active_roles.add("power!")
+
+        # 4) assign each FREE dozer to the next pending role (parallel construction)
+        for ri, role in enumerate(roles):
+            dzid = free_dozer()
+            if dzid is None:
+                break
+            if role in active_roles or ri in self._skip:
+                continue
+            if have_role(ctx, role) or role_in_progress(ctx, role):
+                continue
             tmpl = find_buildable_by_role(ctx, role)
             if not tmpl:
-                if self._wait is None:
-                    self._wait = ctx.frame
-                if ctx.frame - self._wait > self.ROLE_WAIT:    # give up on this role, move on
-                    self._i += 1
-                    self._wait = None
-                    self.status, self.detail = RUNNING, "skip {} (not buildable)".format(role)
-                else:
-                    self.status, self.detail = BLOCKED, "waiting to build {} (prereq/money)".format(role)
-                return
-            self._sub = BuildStructureSkill({"structure": tmpl})
-            self._power_insert = False
-            self._wait = None
-        # 5) drive the sub-build
-        self._sub.tick(ctx)
+                self._wait.setdefault(ri, ctx.frame)
+                if ctx.frame - self._wait[ri] > self.ROLE_WAIT:
+                    self._skip.add(ri)   # give up on this role for now
+                continue
+            self._subs.append({"role": role,
+                               "sub": BuildStructureSkill({"structure": tmpl, "_dozer": dzid})})
+            active_roles.add(role)
+            self._wait.pop(ri, None)
+
+        # 5) drive all active sub-builds (parallel)
+        for s in self._subs:
+            s["sub"].tick(ctx)
+
+        # 6) status / done
+        pending = [r for ri, r in enumerate(roles)
+                   if r not in active_roles and ri not in self._skip
+                   and not have_role(ctx, r) and not role_in_progress(ctx, r)]
         self.status = RUNNING
-        label = "power!" if self._power_insert else "[{}/{} {}]".format(self._i + 1, len(roles), role)
-        self.detail = "{} {}".format(label, self._sub.status_line())
-        if self._sub.status in (DONE, FAILED):
-            if not self._power_insert:
-                self._i += 1
-            self._sub = None
-            self._power_insert = False
+        if self._subs:
+            self.detail = "{} dozers, building: ".format(len(dozers)) + \
+                "; ".join("{} {}".format(s["role"], s["sub"].status_line()) for s in self._subs)
+        elif pending:
+            self.status = BLOCKED
+            self.detail = "waiting (prereq/money) for: " + ", ".join(pending)
+        else:
+            self.status, self.detail = DONE, "base plan complete ({} dozers)".format(len(dozers))
 
 
 class MaintainArmySkill(Skill):
