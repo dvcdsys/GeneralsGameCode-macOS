@@ -958,6 +958,23 @@ private:
 					continue;
 				}
 
+				// Capturable RESOURCE POINTS (oil/fuel/flags/tech/cash) are strategic map control: their
+				// CURRENT OWNER is always reported, even through fog, so the planner always knows what is
+				// neutral (capture it), mine (done), or enemy-held (recapture it). Position is static; we
+				// don't reveal HP through fog. This intentionally bypasses the cached/undefined freezing.
+				bool isCapPoint = obj->isKindOf(KINDOF_CAPTURABLE) || obj->isKindOf(KINDOF_TECH_BUILDING)
+					|| obj->isKindOf(KINDOF_SUPPLY_SOURCE) || obj->isKindOf(KINDOF_CASH_GENERATOR);
+				if (isCapPoint)
+				{
+					json u = liveJson(obj, owner);   // live relation/owner (the whole point of this case)
+					u.erase("health"); u.erase("maxHealth");
+					u["shroud"] = "tracked";
+					if (fog) { FogEntry e; e.snap = u; e.everSeen = true; (*fog)[id] = e; }
+					arr.push_back(u);
+					emitted.insert(id);
+					continue;
+				}
+
 				// Out of sight: replay the cached snapshot (frozen state) if we have one.
 				if (fog)
 				{
