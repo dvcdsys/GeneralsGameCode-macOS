@@ -1330,11 +1330,39 @@ private:
 			if (!warns.empty()) r["warnings"] = warns;
 		}
 		// --- unit actions: capture / garrison / repair / sell / special power -----------------
-		else if (verb == "capture" || verb == "garrison")
+		else if (verb == "capture")
 		{
 			Object* tgt = targetObj();
-			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (building to enter/capture)"; return r; }
-			group->groupEnter(tgt, CMD_FROM_AI);		// enter hostile bldg -> capture; civilian -> garrison
+			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (building to capture)"; return r; }
+			// Capturing a tech building / flag is the infantry SPECIAL POWER
+			// SPECIAL_INFANTRY_CAPTURE_BUILDING — NOT a plain enter. groupEnter just walks the unit onto
+			// a neutral capturable and does nothing (enter is for garrisoning civilian houses).
+			const SpecialPowerTemplate* cap = NULL;
+			if (TheSpecialPowerStore)
+			{
+				Int n = TheSpecialPowerStore->getNumSpecialPowers();
+				for (Int i = 0; i < n; ++i)
+				{
+					const SpecialPowerTemplate* t = TheSpecialPowerStore->getSpecialPowerTemplateByIndex(i);
+					if (t && t->getSpecialPowerType() == SPECIAL_INFANTRY_CAPTURE_BUILDING) { cap = t; break; }
+				}
+			}
+			if (cap)
+			{
+				group->groupDoSpecialPowerAtObject(cap->getID(), tgt, 0);
+				r["capturePower"] = cap->getName().str();
+			}
+			else
+			{
+				group->groupEnter(tgt, CMD_FROM_AI);	// fallback if this mod has no capture power
+			}
+			r["accepted"] = true;
+		}
+		else if (verb == "garrison")
+		{
+			Object* tgt = targetObj();
+			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (building to enter)"; return r; }
+			group->groupEnter(tgt, CMD_FROM_AI);		// occupy a garrisonable civilian building
 			r["accepted"] = true;
 		}
 		else if (verb == "ungarrison" || verb == "evacuate")
