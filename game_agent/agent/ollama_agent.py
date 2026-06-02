@@ -51,13 +51,17 @@ PREFER THE MACRO SKILLS — they encode good play so you don't have to micromana
 if needed). Use this ONCE — not many separate build_structure calls.
 - maintain_army  : continuously trains & reinforces a standing army to a target size and rallies it \
 home. Start it EARLY so you always have a force.
+- capture_points : sends units to capture ALL oil/supply/tech/flag points (economy + map control). \
+This is how you out-economy the enemy — START IT EARLY and keep it running.
 - defend_base    : keeps your whole army guarding your base and counters attackers. Standing.
 - attack_area    : sends the army to assault a location; it WAITS until you have enough units, so it \
 never suicides a lone unit. Use it to finish the enemy once your army is strong.
 
 WINNING SEQUENCE (do this):
-1. FIRST round: start build_base AND maintain_army (target ~12) AND defend_base — all three. This sets \
-up economy, army production, static defenses, and base defense at once.
+1. FIRST round: start build_base AND maintain_army (target ~12) AND capture_points AND defend_base — \
+all of them. You CAN and SHOULD call several tools in one turn. This sets up economy, army production, \
+economy-point capture, static defenses, and base defense at once. Capturing oil/supply points early is \
+critical — it funds everything.
 2. Then each round just MONITOR the tasks list. Don't re-issue tasks that already exist and are \
 running/blocked (it does nothing). A 'blocked' build/army task usually means low money/power — be \
 patient, don't pile on duplicates.
@@ -94,31 +98,49 @@ class OllamaPlanner:
         self.log_path = log_path
         self._tools = self.registry.skill_tools() + MANAGEMENT_TOOLS
 
-    def plan(self, brief, frame=0):
+    def plan(self, brief, frame=0, max_steps=4):
+        """One planning round = an agentic tool-use loop: the model calls tools, we apply them and
+        feed the results back, and it can call MORE — up to max_steps — so it issues many actions per
+        round and reacts to what happened, instead of one action per round."""
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps(brief, separators=(",", ":"))},
         ]
         t0 = time.time()
-        msg = self.chat.chat(messages, tools=self._tools)
+        applied_all, total_calls, rationale, last_msg = [], 0, "", None
+        for _step in range(max_steps):
+            msg = self.chat.chat(messages, tools=self._tools)
+            last_msg = msg
+            if not msg or msg.get("error"):
+                latency_ms = int((time.time() - t0) * 1000)
+                self._log(frame, messages, msg or {}, applied_all, latency_ms)
+                return {"error": (msg or {}).get("error", "no response"), "applied": applied_all,
+                        "calls": total_calls, "latencyMs": latency_ms}
+            if msg.get("content"):
+                rationale = msg["content"].strip()
+            calls = msg.get("tool_calls") or []
+            if not calls:
+                break
+            total_calls += len(calls)
+            messages.append({"role": "assistant", "content": msg.get("content", "") or "",
+                             "tool_calls": calls})
+            step_applied = [self._apply(c, frame) for c in calls]
+            applied_all += step_applied
+            for c, res in zip(calls, step_applied):  # feed results back so it can continue
+                messages.append({"role": "tool",
+                                 "tool_name": (c.get("function") or {}).get("name", ""),
+                                 "content": json.dumps(res)})
         latency_ms = int((time.time() - t0) * 1000)
-        if not msg or msg.get("error"):
-            result = {"error": (msg or {}).get("error", "no response"), "applied": [],
-                      "latencyMs": latency_ms}
-            self._log(frame, messages, msg or {}, [], latency_ms)
-            return result
-        calls = msg.get("tool_calls") or []
-        applied = [self._apply(c, frame) for c in calls]
         result = {
-            "rationale": (msg.get("content") or "").strip(),
-            "applied": applied,
-            "calls": len(calls),
+            "rationale": rationale,
+            "applied": applied_all,
+            "calls": total_calls,
             "latencyMs": latency_ms,
-            # the model's raw decision, surfaced for the UI / state file
-            "response": {"content": msg.get("content", ""), "thinking": msg.get("thinking"),
-                         "tool_calls": calls},
+            "response": {"content": (last_msg or {}).get("content", ""),
+                         "thinking": (last_msg or {}).get("thinking"),
+                         "tool_calls": (last_msg or {}).get("tool_calls") or []},
         }
-        self._log(frame, messages, msg, applied, latency_ms)
+        self._log(frame, messages, last_msg or {}, applied_all, latency_ms)
         return result
 
     def _log(self, frame, messages, msg, applied, latency_ms):
@@ -148,7 +170,8 @@ class OllamaPlanner:
     _IDENTITY = {"build_structure": "structure", "train_units": "unit",
                  "assemble_group": None, "hold_point": "targetId",
                  # singleton macros — only one of each makes sense at a time
-                 "build_base": None, "maintain_army": None, "defend_base": None}
+                 "build_base": None, "maintain_army": None, "defend_base": None,
+                 "capture_points": None}
 
     def _duplicate_of(self, fn, args):
         if fn not in self._IDENTITY:

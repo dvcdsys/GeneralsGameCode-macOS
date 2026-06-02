@@ -237,6 +237,22 @@ def find_trainable_dozer(ctx):
     return r[0] if r else None
 
 
+def capturable_points(ctx):
+    """Neutral/enemy economy + tech points worth capturing (oil/supply/cash/tech/capturable flags),
+    not already mine. These give economy and map control — capture them early."""
+    out = []
+    for u in ctx.world.units:
+        if u.get("player") == ctx.player:
+            continue
+        cat = u.get("category")
+        tags = [str(t).lower() for t in u.get("tags", [])]
+        is_cap = (cat == "economy"
+                  or any(t in tags for t in ("supply_source", "cash_generator", "capturable", "tech")))
+        if is_cap and u.get("relationToLocal") in ("neutral", "enemy") and "x" in u:
+            out.append(u)
+    return out
+
+
 def resolve_point(ctx, params, default=None):
     """Resolve a target point from params: explicit `pos`, then `area`, then `default`, then base
     centroid, then map centre."""

@@ -13,6 +13,7 @@ from agent.skills.base import (
     my_units, my_buildings, find_object, find_dozers, find_producer,
     select_combat_units, resolve_point, find_build_spot, obj_pos,
     is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
+    capturable_points,
 )
 
 _POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}},
@@ -502,11 +503,55 @@ class DefendBaseSkill(Skill):
         self.detail = "defending base with {} units".format(len(ids))
 
 
+class CapturePointsSkill(Skill):
+    name = "capture_points"
+    description = ("Capture all nearby oil/supply/tech/flag points for economy and map control — sends "
+                   "units to take neutral/enemy capturable points one by one (nearest first). Standing "
+                   "order — keeps grabbing points as they're discovered. Start this EARLY; economy "
+                   "points fund your army.")
+    param_schema = {
+        "type": "object",
+        "properties": {
+            "units_per": {"type": "integer", "default": 1, "description": "units to send per point"},
+        },
+        "required": [],
+    }
+    RETRY = 500  # frames before re-sending to a point we already dispatched to
+
+    def tick(self, ctx):
+        self._begin(ctx)
+        self.status = RUNNING
+        if not hasattr(self, "_sent"):
+            self._sent = {}
+        caps = capturable_points(ctx)
+        if not caps:
+            self.detail = "no capturable points in sight (scout to find them)"
+            return
+        units = select_combat_units(ctx)
+        if not units:
+            self.detail = "no units to capture with yet"
+            return
+        per = max(1, int(self.params.get("units_per", 1)))
+        base = ctx.world.centroid(my_buildings(ctx)) or obj_pos(units[0])
+        caps.sort(key=lambda u: math.hypot(u["x"] - base[0], u["y"] - base[1]))
+        for tgt in caps:
+            if ctx.frame - self._sent.get(tgt["id"], -10 ** 9) < self.RETRY:
+                continue
+            units.sort(key=lambda u: math.hypot(u.get("x", 0) - tgt["x"], u.get("y", 0) - tgt["y"]))
+            grp = [u["id"] for u in units[:per]]
+            ctx.client.command(ctx.player, grp, "capture", {"targetId": tgt["id"]})
+            self._sent[tgt["id"]] = ctx.frame
+            self.detail = "capturing point {} ({} total known)".format(tgt["id"], len(caps))
+            return
+        self.detail = "all {} known points dispatched".format(len(caps))
+
+
 ALL_SKILLS = [
     # macros (preferred — encode doctrine)
     BuildBaseSkill,
     MaintainArmySkill,
     DefendBaseSkill,
+    CapturePointsSkill,
     # primitives
     BuildStructureSkill,
     TrainUnitsSkill,

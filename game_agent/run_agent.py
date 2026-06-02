@@ -64,7 +64,7 @@ def main():
     ap.add_argument("--model", default=None, help="ollama model (default qwen3.5:9b / $GEN_OLLAMA_MODEL)")
     ap.add_argument("--ollama-host", default=None, help="host:port (default $GEN_OLLAMA_HOST)")
     ap.add_argument("--fast-hz", type=float, default=2.0, help="ollama: executor ticks per second")
-    ap.add_argument("--plan-period", type=float, default=20.0, help="ollama: seconds between LLM plans")
+    ap.add_argument("--plan-period", type=float, default=15.0, help="ollama: seconds between LLM plans")
     args = ap.parse_args()
 
     view = None if args.view == "none" else ("self" if args.view == "self" else int(args.view))

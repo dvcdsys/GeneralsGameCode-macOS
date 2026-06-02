@@ -18,6 +18,7 @@ with a mutation queue if responsiveness during planning ever matters.
 
 import json
 import os
+import threading
 import time
 
 from agent.brief import compose_brief
@@ -56,11 +57,11 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
         threats.start()
 
     map_cache = None
-    last_plan = 0.0
     last_dir_ts = None
     directive = ""
-    last_result = None
-    last_brief = None
+    # the planner runs on a background thread so the LLM's seconds of thinking never freeze the
+    # executor — the box carries the latest plan result + the running thread between iterations.
+    plan_box = {"result": None, "thread": None, "last": 0.0}
 
     while True:
         if not client.in_game():
@@ -93,19 +94,32 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
                 directive = d_text
                 last_dir_ts = d_ts
 
-            # --- deliberative tier (slow) --------------------------------------
+            # --- deliberative tier (slow, ASYNC) -------------------------------
             now = time.time()
-            if planner and (last_result is None or directive_changed or now - last_plan >= plan_period_s):
-                last_brief = compose_brief(ctx, taskmgr, notes, directive)
-                t0 = time.time()
-                last_result = planner.plan(last_brief, frame)
-                last_plan = time.time()
-                if verbose:
-                    print("[plan f{} {:.1f}s] calls={} {}".format(
-                        frame, last_plan - t0, last_result.get("calls"), last_result.get("error", "")),
-                        flush=True)
+            th = plan_box["thread"]
+            due = (plan_box["result"] is None or directive_changed
+                   or now - plan_box["last"] >= plan_period_s)
+            if planner and due and (th is None or not th.is_alive()):
+                brief = compose_brief(ctx, taskmgr, notes, directive)  # snapshot now (main thread)
+                plan_box["last"] = now
 
-            # --- reactive/executive tier (fast) --------------------------------
+                def _run(brief=brief, frame=frame):
+                    t0 = time.time()
+                    try:
+                        r = planner.plan(brief, frame)  # slow LLM call(s); mutates taskmgr under its lock
+                        plan_box["result"] = r
+                        if verbose:
+                            print("[plan f{} {:.1f}s] calls={} {}".format(
+                                frame, time.time() - t0, r.get("calls"), r.get("error", "")), flush=True)
+                    except Exception as e:  # noqa: BLE001
+                        if verbose:
+                            print("[plan] error: {}".format(e), flush=True)
+
+                t = threading.Thread(target=_run, name="planner", daemon=True)
+                t.start()
+                plan_box["thread"] = t
+
+            # --- reactive/executive tier (fast — never blocked by planning) ----
             taskmgr.tick(ctx)
 
             # --- persist state for the UI --------------------------------------
@@ -119,7 +133,7 @@ def orchestrate(client, planner, taskmgr, journal=None, threats=None, notes=None
                 "notes": notes.lines() if notes else [],
                 "events": journal.digest(16) if journal else [],
                 "threats": threats.threats(frame) if threats else [],
-                "lastPlan": last_result,
+                "lastPlan": plan_box["result"],
             })
         except Exception as e:  # noqa: BLE001 — a transient (API blip, bad snapshot) must not kill the bot
             if verbose:

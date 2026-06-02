@@ -9,6 +9,8 @@ This is the layer that makes the LLM's slowness irrelevant: the model sets inten
 carries multi-tick skills forward every ~0.5s in between.
 """
 
+import threading
+
 from agent.skills.base import TERMINAL, CANCELLED, FAILED
 
 
@@ -41,40 +43,48 @@ class TaskManager:
         self._history = []      # list of snapshots (terminal), most-recent last
         self._next_id = 1
         self._history_cap = history_cap
+        # the planner mutates the queue from a background thread while the executor ticks it
+        self._lock = threading.RLock()
 
     # --- mutation (planner-facing) --------------------------------------------
     def add(self, skill, priority=5, frame=0):
-        tid = self._next_id
-        self._next_id += 1
-        self._tasks[tid] = Task(tid, skill, priority=priority, created_frame=frame)
-        return tid
+        with self._lock:
+            tid = self._next_id
+            self._next_id += 1
+            self._tasks[tid] = Task(tid, skill, priority=priority, created_frame=frame)
+            return tid
 
     def cancel(self, tid):
-        t = self._tasks.get(tid)
-        if not t:
-            return False
-        t.skill.status = CANCELLED
-        t.skill.detail = "cancelled"
-        self._retire(t)
-        return True
+        with self._lock:
+            t = self._tasks.get(tid)
+            if not t:
+                return False
+            t.skill.status = CANCELLED
+            t.skill.detail = "cancelled"
+            self._retire(t)
+            return True
 
     def set_priority(self, tid, priority):
-        t = self._tasks.get(tid)
-        if not t:
-            return False
-        t.priority = int(priority)
-        return True
+        with self._lock:
+            t = self._tasks.get(tid)
+            if not t:
+                return False
+            t.priority = int(priority)
+            return True
 
     # --- execution (executor-facing) ------------------------------------------
     def tick(self, ctx):
-        for t in sorted(self._tasks.values(), key=lambda x: (-x.priority, x.id)):
+        with self._lock:
+            tasks = sorted(self._tasks.values(), key=lambda x: (-x.priority, x.id))
+        for t in tasks:
             try:
                 t.skill.tick(ctx)
             except Exception as e:  # noqa: BLE001  — one bad skill must not kill the executor
                 t.skill.status = FAILED
                 t.skill.detail = "error: {}".format(e)
             if t.skill.status in TERMINAL:
-                self._retire(t)
+                with self._lock:
+                    self._retire(t)
 
     def _retire(self, t):
         self._tasks.pop(t.id, None)
@@ -84,10 +94,12 @@ class TaskManager:
 
     # --- introspection --------------------------------------------------------
     def active(self):
-        return [t.snapshot() for t in sorted(self._tasks.values(), key=lambda x: (-x.priority, x.id))]
+        with self._lock:
+            return [t.snapshot() for t in sorted(self._tasks.values(), key=lambda x: (-x.priority, x.id))]
 
     def history(self):
-        return list(self._history)
+        with self._lock:
+            return list(self._history)
 
     def snapshot(self):
         return {"active": self.active(), "history": self.history()}
