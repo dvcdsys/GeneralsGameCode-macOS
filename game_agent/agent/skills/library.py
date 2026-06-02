@@ -693,17 +693,19 @@ class PipelineSkill(Skill):
     HORIZON = 8
 
     def _make_sub(self, step):
-        do = step.get("do")
+        do = (step.get("do") or "").lower()
         if do == "build":
             return BuildStructureSkill({"structure": step.get("structure"), "area": step.get("area")})
         if do == "train":
             return TrainUnitsSkill({"unit": step.get("unit"), "count": step.get("count", 1)})
-        if do == "capture":
+        if do in ("capture", "hold_point", "hold"):   # accept tool-name aliases the model may use
             return HoldPointSkill({"targetId": step.get("targetId"), "ids": step.get("ids"),
                                    "pos": step.get("pos")})
-        if do == "attack":
+        if do in ("defend", "defend_sector"):
+            return DefendSectorSkill({"area": step.get("area"), "ids": step.get("ids")})
+        if do in ("attack", "attack_area"):
             return AttackAreaSkill({"area": step.get("area"), "ids": step.get("ids")})
-        if do == "scout":
+        if do in ("scout", "move"):
             return ScoutSkill({"area": step.get("area"), "ids": step.get("ids")})
         return None  # 'wait' (and unknown) handled inline
 
@@ -747,7 +749,7 @@ class PipelineSkill(Skill):
         self.status = RUNNING
         self.detail = "{}: {} [{}]".format(tag, do, self._sub.status_line())
         done = self._sub.status in (DONE, FAILED)
-        if do == "capture":   # capture completes when the point is actually ours
+        if (do or "").lower() in ("capture", "hold_point", "hold"):   # done when the point is ours
             tgt = find_object(ctx.world, step.get("targetId"))
             if tgt is not None and tgt.get("relationToLocal") in ("self", "ally"):
                 done = True
