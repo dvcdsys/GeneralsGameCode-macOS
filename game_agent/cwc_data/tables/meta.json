@@ -1,0 +1,13 @@
+{
+ "archive": "_469_CWC.gib",
+ "archiveSize": 744907456,
+ "counts": {
+  "armors": 150,
+  "buttons": 1157,
+  "commandSets": 695,
+  "effectiveness": 130,
+  "units": 769,
+  "weapons": 581
+ },
+ "extractorVersion": 1
+}

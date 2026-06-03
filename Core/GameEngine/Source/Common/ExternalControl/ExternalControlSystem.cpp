@@ -72,6 +72,7 @@
 #include "Common/KindOf.h"				// KINDOF_* (object classification for /units, /map overlays)
 #include "Common/Energy.h"
 #include "Common/Money.h"
+#include "Common/Science.h"			// TheScienceStore, grant_science verb
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"		// TheThingFactory->findTemplate (build/train verbs, /catalog)
 #include "Common/BuildAssistant.h"		// TheBuildAssistant (build_structure/sell, /buildable)
@@ -87,6 +88,7 @@
 #include "Common/ObjectStatusTypes.h"	// OBJECT_STATUS_STEALTHED/DETECTED/DISGUISED (synth fog)
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/AI.h"				// TheAI, AIGroup, createGroup (command dispatch)
+#include "GameLogic/Module/DozerAIUpdate.h"	// DozerAIInterface / DOZER_TASK_* (dozer-busy flag in /units)
 #include "GameLogic/AIPathfind.h"		// Pathfinder grid, PathfindCell, LAYER_GROUND (/map)
 #include "GameLogic/TerrainLogic.h"		// TheTerrainLogic ground height (/map)
 #include "GameLogic/VictoryConditions.h"	// TheVictoryConditions (/session outcome)
@@ -892,6 +894,13 @@ private:
 					u["constructing"] = true;
 					u["constructionPercent"] = (double)obj->getConstructionPercent();
 				}
+				// A dozer/worker currently building/repairing/fortifying is BUSY. The harness must NOT
+				// re-task it — that cancels its construct order and abandons the half-built structure (the
+				// bug the build kludge worked around). Expose it so find_dozers skips busy builders and the
+				// native dozer-construct completes normally.
+				if (AIUpdateInterface* aiu = obj->getAIUpdateInterface())
+					if (DozerAIInterface* dzai = aiu->getDozerAIInterface())
+						if (dzai->getCurrentTask() != DOZER_TASK_INVALID) u["busy"] = true;
 				// Dynamic combat-relevant state (lean: only when non-default).
 				VeterancyLevel vet = obj->getVeterancyLevel();
 				if (vet != LEVEL_REGULAR) u["veterancy"] = veterancyName(vet);	// promoted ranks
@@ -1218,11 +1227,18 @@ private:
 			const int fps = (value >= 1.0) ? (int)value : (int)LOGICFRAMES_PER_SECOND;
 			if (TheFramePacer)
 			{
+				// The logic time scale is CAPPED by the render fps limit, so raise that too — otherwise
+				// setLogicTimeScaleFps(50) stays pinned at the default ~30 and the sim never speeds up.
+				// Headless renders cheaply, so this lets matches run faster than real-time for quicker
+				// test iteration. (Pass a big value, e.g. 1000, to effectively uncap.)
+				TheFramePacer->setFramesPerSecondLimit(fps);
+				TheFramePacer->enableFramesPerSecondLimit(TRUE);
 				TheFramePacer->setLogicTimeScaleFps(fps);
 				TheFramePacer->enableLogicTimeScale(TRUE);
 			}
 			o["ok"] = true;
 			o["logicTimeScaleFps"] = fps;
+			o["renderFpsLimit"] = fps;
 		}
 		else
 		{
@@ -1382,11 +1398,29 @@ private:
 		{
 			Object* tgt = targetObj();
 			if (!tgt) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.targetId (building to capture)"; return r; }
-			// Capturing a tech building / flag is the infantry SPECIAL POWER
-			// SPECIAL_INFANTRY_CAPTURE_BUILDING — NOT a plain enter. groupEnter just walks the unit onto
-			// a neutral capturable and does nothing (enter is for garrisoning civilian houses).
+			// Capture = the infantry's OWN special power of type SPECIAL_INFANTRY_CAPTURE_BUILDING. We must
+			// issue the template the UNIT actually owns (found via its command set), NOT a global by-type
+			// lookup: in mods (CWC) the unit's capture power is a DIFFERENT template than the first global
+			// one, so issuing the global id silently no-ops (the unit doesn't own that power) — which is
+			// why captures never landed for the external player. Fall back to global, then to groupEnter.
 			const SpecialPowerTemplate* cap = NULL;
-			if (TheSpecialPowerStore)
+			Object* capUnit = firstOwned();
+			if (capUnit && TheControlBar)
+			{
+				const ThingTemplate* utt = capUnit->getTemplate();
+				const CommandSet* cs = utt ? TheControlBar->findCommandSet(utt->friend_getCommandSetString()) : NULL;
+				if (cs)
+				{
+					for (Int i = 0; i < MAX_COMMANDS_PER_SET; ++i)
+					{
+						const CommandButton* cb = cs->getCommandButton(i);
+						if (!cb) continue;
+						const SpecialPowerTemplate* sp = cb->getSpecialPowerTemplate();
+						if (sp && sp->getSpecialPowerType() == SPECIAL_INFANTRY_CAPTURE_BUILDING) { cap = sp; break; }
+					}
+				}
+			}
+			if (!cap && TheSpecialPowerStore)
 			{
 				Int n = TheSpecialPowerStore->getNumSpecialPowers();
 				for (Int i = 0; i < n; ++i)
@@ -1499,6 +1533,11 @@ private:
 			if (!params.contains("pos")) { statusOut = 400; r["accepted"] = false; r["error"] = "need params.pos"; return r; }
 			Coord3D pos = jsonToCoord(params["pos"]);
 			Real angle = (Real)params.value("angle", 0.0);
+			// Thin relay: pass the command straight to the engine. The DOZER is the constructor (Python
+			// policy always supplies a real dozer id) → buildObjectNow routes to DozerAIUpdate::construct(),
+			// which owns the whole lifecycle (UNDER_CONSTRUCTION, cost withdraw, dozer drives over, timed
+			// raise, engine-fired completion). The API does NOT pre-judge prereqs/money/rank — the engine's
+			// own gating decides, exactly as it does for the skirmish AI. We only translate ids→Object.
 			Object* builder = firstOwned();				// dozer/worker; may be null for instant placement
 			if (!TheBuildAssistant) { statusOut = 503; r["accepted"] = false; r["error"] = "build assistant unavailable"; return r; }
 			LegalBuildCode lbc = TheBuildAssistant->isLocationLegalToBuild(&pos, tt, angle,
@@ -1509,6 +1548,40 @@ private:
 			if (bldg) r["objectId"] = (unsigned)bldg->getID();
 			else { statusOut = 400; r["error"] = "buildObjectNow failed"; }
 		}
+		else if (verb == "purchase_science" || verb == "grant_science")
+			{
+				// FAIR tech: PURCHASE general's-promotion sciences with the rank/skill points the player
+				// has EARNED through combat — exactly what the skirmish AI does (Player::attemptToPurchase-
+				// Science, AIPlayer.cpp). NOT grantScience(), which hands them out free (a cheat the AI never
+				// uses). Only sciences whose prereqs are met AND that the player can afford right now are
+				// bought; the rest are reported `pending` so the bot retries as it ranks up. The engine owns
+				// all gating (points/prereqs/rank). params: {science:"NAME"} or {sciences:[...]}.
+				if (!TheScienceStore) { statusOut = 503; r["accepted"] = false; r["error"] = "science store unavailable"; return r; }
+				json names = json::array();
+				if (params.contains("sciences") && params["sciences"].is_array())
+					names = params["sciences"];
+				else if (params.contains("science"))
+					names.push_back(params["science"]);
+				json bought = json::array();
+				json pending = json::array();
+				for (const auto& nm : names)
+				{
+					if (!nm.is_string()) continue;
+					std::string s = nm.get<std::string>();
+					ScienceType st = TheScienceStore->getScienceFromInternalName(AsciiString(s.c_str()));
+					if (st == SCIENCE_INVALID) continue;
+					if (p->hasScience(st)) continue;					// already owned
+					if (p->isCapableOfPurchasingScience(st) && p->attemptToPurchaseScience(st))
+						bought.push_back(s);							// affordable + prereqs met -> bought
+					else
+						pending.push_back(s);							// not enough rank points yet
+				}
+				r["accepted"]  = true;
+				r["purchased"] = bought;
+				r["pending"]   = pending;
+				r["sciencePurchasePoints"] = p->getSciencePurchasePoints();
+				r["rankLevel"] = p->getRankLevel();
+			}
 		else if (verb == "set_rally")
 		{
 			Object* obj = firstOwned();
@@ -1810,6 +1883,7 @@ private:
 	std::deque<std::shared_ptr<PendingRequest> > m_inbound;
 
 	std::atomic<int> m_pendingSteps{0};			///< logic frames to force-advance while paused (step)
+
 
 	// --- /events WebSocket -----------------------------------------------------------------------
 	struct RingEvent { uint64_t seq; json data; };

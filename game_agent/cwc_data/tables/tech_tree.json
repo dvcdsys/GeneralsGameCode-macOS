@@ -1,0 +1,2056 @@
+{
+ "objects": {
+  "CWCeuLeo2A4": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCru2S1": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCruAT5": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruAT5_Convoy": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruAirField": {
+   "object": [
+    "CWCruSmallFuelDepot",
+    "CWCruLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCruBM21": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruBM21"
+   ]
+  },
+  "CWCruBM21_CWCruMission01": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruBM21"
+   ]
+  },
+  "CWCruBMD1": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruBMP2": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruAT5Technology"
+   ]
+  },
+  "CWCruBMP2_Convoy": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruBRDM2": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruBRDM2_Convoy": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruBTR80": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruCruiseMissile": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": []
+  },
+  "CWCruFortInf": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCruRank2"
+   ]
+  },
+  "CWCruFortSA6": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCruRank2"
+   ]
+  },
+  "CWCruFortTank": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCruRank2"
+   ]
+  },
+  "CWCruHelipad": {
+   "object": [
+    "CWCruSmallFuelDepot",
+    "CWCruLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCruInfAntiAir": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfAntiMaterial": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCruSpecialInfantry"
+   ]
+  },
+  "CWCruInfAntiTank": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfAssault": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfEngineer": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfHeavyAssault": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfMedic": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfOfficer": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfSniper": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": []
+  },
+  "CWCruInfSpetsnaz": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCruSpecialInfantry",
+    "SCIENCE_CWCruRank2"
+   ]
+  },
+  "CWCruInfSpetsnaz_CWCruMission02": {
+   "object": [
+    "CWCruBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCruSpecialInfantry"
+   ]
+  },
+  "CWCruLargeFuelDepot": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCruMi24": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruMi24"
+   ]
+  },
+  "CWCruMi26": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank2"
+   ]
+  },
+  "CWCruMi8": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruMi8"
+   ]
+  },
+  "CWCruMiG29": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCruS300": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruSA11": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruSA11"
+   ]
+  },
+  "CWCruSA11_CWCusMission03": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruSA11"
+   ]
+  },
+  "CWCruSA11_Deployable": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruSA11"
+   ]
+  },
+  "CWCruSA11_Deployed": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruSA11"
+   ]
+  },
+  "CWCruSA9": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruSA9_Convoy": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruSS20": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruShilka": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruSu25": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCruSu25T": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruSu25T"
+   ]
+  },
+  "CWCruSu25_C": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCruSu27": {
+   "object": [
+    "CWCruAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCruSu27"
+   ]
+  },
+  "CWCruT64": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruT64"
+   ]
+  },
+  "CWCruT64_R": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruT64"
+   ]
+  },
+  "CWCruT72": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruT80BV": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruT80BV"
+   ]
+  },
+  "CWCruT80UK": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruT80UK"
+   ]
+  },
+  "CWCruUAZ": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": []
+  },
+  "CWCruUral": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruUralRadar": {
+   "object": [
+    "CWCruSmallFuelDepot",
+    "CWCruLargeFuelDepot"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruUral_Convoy": {
+   "object": [
+    "CWCruWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCruRank1"
+   ]
+  },
+  "CWCruWarFactory": {
+   "object": [
+    "CWCruSmallFuelDepot",
+    "CWCruLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCru_AirField": {
+   "object": [
+    "CWCru_SmallFuelDepot",
+    "CWCru_LargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCru_Helipad": {
+   "object": [
+    "CWCru_SmallFuelDepot",
+    "CWCru_LargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCru_LargeFuelDepot": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCruRank3"
+   ]
+  },
+  "CWCru_WarFactory": {
+   "object": [
+    "CWCru_SmallFuelDepot",
+    "CWCru_LargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCusA10": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank4"
+   ]
+  },
+  "CWCusAH1": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusAH1"
+   ]
+  },
+  "CWCusAH6": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusAH6"
+   ]
+  },
+  "CWCusAH64": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusAH64"
+   ]
+  },
+  "CWCusAH6_F": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusAH6"
+   ]
+  },
+  "CWCusAirField": {
+   "object": [
+    "CWCusSmallFuelDepot",
+    "CWCusLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCusCH47": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusCH47_SkyCrane": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusCruiseMissile": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusE3": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusE3_Patrol": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusEF111": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusSuppressionOfEnemyAirDefences"
+   ]
+  },
+  "CWCusF111": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusF111"
+   ]
+  },
+  "CWCusF111_B": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusF111_M": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusF117": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusF15": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank3"
+   ]
+  },
+  "CWCusF15_Patrol": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": []
+  },
+  "CWCusF16": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusF4G": {
+   "object": [
+    "CWCusAirField"
+   ],
+   "science": [
+    "SCIENCE_CWCusSuppressionOfEnemyAirDefences"
+   ]
+  },
+  "CWCusFortChap": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusFortM2": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusFortMortar": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusFortTOW": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusHelipad": {
+   "object": [
+    "CWCusSmallFuelDepot",
+    "CWCusLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCusInfAntiAir": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfAntiTankWhite01": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfAssault": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta_Demolition": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta_Medic": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta_Medic_CWCusMission02": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta_Sniper": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfDelta_Sniper_CWCusMission02": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfEngineer": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfGreenBeret": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCusSpecialInfantry",
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusInfGreenBeret_CWCusMission02": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCusSpecialInfantry"
+   ]
+  },
+  "CWCusInfHeavyAssaultWhite01": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfHeavySniper": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": [
+    "SCIENCE_CWCusSpecialInfantry"
+   ]
+  },
+  "CWCusInfM2Man": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfMedic": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfMortarMan": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfOfficer": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfSniperWhite01": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusInfTOWMan": {
+   "object": [
+    "CWCusBarracks"
+   ],
+   "science": []
+  },
+  "CWCusLargeFuelDepot": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCusRank3"
+   ]
+  },
+  "CWCusM109": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank3"
+   ]
+  },
+  "CWCusM113": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM113ChassisOne": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM113ChassisOne_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM163": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM163ChassisOne": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM1A1": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusM1A1"
+   ]
+  },
+  "CWCusM2A1": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusTowTechnology"
+   ]
+  },
+  "CWCusM2A1_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM48": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusM48"
+   ]
+  },
+  "CWCusM48_Deployable": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusM48"
+   ]
+  },
+  "CWCusM48_Deployed": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusM48"
+   ]
+  },
+  "CWCusM48_Deployed_Stealthed": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusM48"
+   ]
+  },
+  "CWCusM60A3": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM939": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM939_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM998": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM998_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM998_M2": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM998_M2_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM998_M2_Scout": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM998_Mk19": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM998_Mk19_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusM998_TOW": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusM998_TOW_Convoy": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": []
+  },
+  "CWCusMLRS": {
+   "object": [
+    "CWCusWarFactory"
+   ],
+   "science": [
+    "SCIENCE_CWCusMLRS"
+   ]
+  },
+  "CWCusRadarStation": {
+   "object": [
+    "CWCusSmallFuelDepot",
+    "CWCusLargeFuelDepot"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCusUH60": {
+   "object": [
+    "CWCusHelipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCusWarFactory": {
+   "object": [
+    "CWCusSmallFuelDepot",
+    "CWCusLargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCus_AirField": {
+   "object": [
+    "CWCus_SmallFuelDepot",
+    "CWCus_LargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCus_CH47_SkyCrane": {
+   "object": [
+    "CWCus_Helipad"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank2"
+   ]
+  },
+  "CWCus_Helipad": {
+   "object": [
+    "CWCus_SmallFuelDepot",
+    "CWCus_LargeFuelDepot"
+   ],
+   "science": []
+  },
+  "CWCus_LargeFuelDepot": {
+   "object": [],
+   "science": [
+    "SCIENCE_CWCusRank3"
+   ]
+  },
+  "CWCus_RadarStation": {
+   "object": [
+    "CWCus_SmallFuelDepot",
+    "CWCus_LargeFuelDepot"
+   ],
+   "science": [
+    "SCIENCE_CWCusRank1"
+   ]
+  },
+  "CWCus_WarFactory": {
+   "object": [
+    "CWCus_SmallFuelDepot",
+    "CWCus_LargeFuelDepot"
+   ],
+   "science": []
+  }
+ },
+ "ranks": {
+  "1": {
+   "SciencePurchasePointsGranted": 2,
+   "SkillPointsNeeded": 0
+  },
+  "2": {
+   "SciencePurchasePointsGranted": 3,
+   "SkillPointsNeeded": 7500
+  },
+  "3": {
+   "SciencePurchasePointsGranted": 4,
+   "SkillPointsNeeded": 17500
+  },
+  "4": {
+   "SciencePurchasePointsGranted": 5,
+   "SkillPointsNeeded": 50000
+  },
+  "5": {
+   "SciencePurchasePointsGranted": 6,
+   "SkillPointsNeeded": 87500
+  }
+ },
+ "sciences": {
+  "AirF_SCIENCE_A10ThunderboltMissileStrike1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "AirF_SCIENCE_A10ThunderboltMissileStrike2": {
+   "cost": 1,
+   "prereq": [
+    "AirF_SCIENCE_A10ThunderboltMissileStrike1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "AirF_SCIENCE_A10ThunderboltMissileStrike3": {
+   "cost": 1,
+   "prereq": [
+    "AirF_SCIENCE_A10ThunderboltMissileStrike2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Chem_SCIENCE_RebelAmbush1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Chem_SCIENCE_RebelAmbush2": {
+   "cost": 1,
+   "prereq": [
+    "Chem_SCIENCE_RebelAmbush1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Chem_SCIENCE_RebelAmbush3": {
+   "cost": 1,
+   "prereq": [
+    "Chem_SCIENCE_RebelAmbush2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_ChinaCarpetBomb": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_EmergencyRepair1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Rank1"
+   ]
+  },
+  "Early_SCIENCE_EmergencyRepair2": {
+   "cost": 1,
+   "prereq": [
+    "Early_SCIENCE_EmergencyRepair1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_EmergencyRepair3": {
+   "cost": 1,
+   "prereq": [
+    "Early_SCIENCE_EmergencyRepair2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_Frenzy1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "Early_SCIENCE_Frenzy2": {
+   "cost": 1,
+   "prereq": [
+    "Early_SCIENCE_Frenzy1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_Frenzy3": {
+   "cost": 1,
+   "prereq": [
+    "Early_SCIENCE_Frenzy2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Early_SCIENCE_LeafletDrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Infa_SCIENCE_InfantryParadrop1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Infa_SCIENCE_InfantryParadrop2": {
+   "cost": 1,
+   "prereq": [
+    "Infa_SCIENCE_InfantryParadrop1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Infa_SCIENCE_InfantryParadrop3": {
+   "cost": 1,
+   "prereq": [
+    "Infa_SCIENCE_InfantryParadrop2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Infa_SCIENCE_RedGuardTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "Nuke_SCIENCE_ChinaCarpetBomb": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "Nuke_SCIENCE_NukeDrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_A10ThunderboltMissileStrike1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_A10ThunderboltMissileStrike2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_A10ThunderboltMissileStrike1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_A10ThunderboltMissileStrike3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_A10ThunderboltMissileStrike2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_AMERICA": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_AirF_CarpetBomb": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_AnthraxBomb": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_ArtilleryBarrage1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_ArtilleryBarrage2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_ArtilleryBarrage1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_ArtilleryBarrage3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_ArtilleryBarrage2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_ArtilleryTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_BattlemasterTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_BlackMarketNuke": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_CHINA": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_CWCruAT5Technology": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCruBM21": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCruMi24": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank3",
+    "SCIENCE_CWCruMi8",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCruMi8": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCruMiG25RecceOverflight": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCruRank1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCruRank2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank1",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCruRank3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCruRank4": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank3",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCruRank5": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank4",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCruSA11": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCruSmerchMissileStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank4",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCruSpecialInfantry": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCruSu24ClusterBombStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCruSu25T": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank4",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCruSu27": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank4",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCruT64": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCruT80BV": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank3",
+    "SCIENCE_CWCruT64",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCruT80UK": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank4",
+    "SCIENCE_CWCruT80BV",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCruTankParadrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCruTu160CruiseMissileStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCruTu95MissileStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_RUSSIA",
+    "SCIENCE_CWCruRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCusAC130Strike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCusAH1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank2",
+    "SCIENCE_CWCusAH6",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCusAH6": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCusAH64": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank4",
+    "SCIENCE_CWCusAH1",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCusB1BCarpetBombStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCusB52CruiseMissileStrike": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCusDeltaParadrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank4",
+    "SCIENCE_CWCusSpecialInfantry",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCusE3RecceOverflight": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCusF111": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank4",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCusM1A1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCusM48": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCusMLRS": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank5",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCusParadrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCusRank1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCusRank2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank1",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCusRank3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCusRank4": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank3",
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_CWCusRank5": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank4",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_CWCusSR71RecceOverflight": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank2",
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_CWCusSpecialInfantry": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CWCusSuppressionOfEnemyAirDefences": {
+   "cost": 2,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank3",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CWCusTowTechnology": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_USA",
+    "SCIENCE_CWCusRank1",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_CarpetBomb": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_CashBounty1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CashBounty2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CashBounty1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CashBounty3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CashBounty2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CashHack1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CashHack2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CashHack1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CashHack3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CashHack2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_ChinaCarpetBomb": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_ClusterMines": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_CrateDrop": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_DaisyCutter": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_Defector": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_EMPPulse": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_EmergencyRepair1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_EmergencyRepair2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_EmergencyRepair1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_EmergencyRepair3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_EmergencyRepair2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Frenzy1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Frenzy2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Frenzy1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Frenzy3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Frenzy2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_GLA": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_GPSScrambler": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_GattlingTankTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_Hijacker": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_InfantryParadrop1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_InfantryParadrop2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_InfantryParadrop1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_InfantryParadrop3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_InfantryParadrop2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_LeafletDrop": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_MOAB": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_AMERICA"
+   ]
+  },
+  "SCIENCE_MarauderTank": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_NapalmStrike": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_NukeLauncher": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_OverlordTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_PaladinTank": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_Paradrop1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Paradrop2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Paradrop1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Paradrop3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_Paradrop2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Pathfinder": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_RUSSIA": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_Rank1": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_Rank2": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_Rank3": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank2"
+   ]
+  },
+  "SCIENCE_Rank4": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_Rank5": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank4"
+   ]
+  },
+  "SCIENCE_Rank6": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_Rank7": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank6"
+   ]
+  },
+  "SCIENCE_Rank8": {
+   "cost": 0,
+   "prereq": [
+    "SCIENCE_Rank7"
+   ]
+  },
+  "SCIENCE_RebelAmbush1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_RebelAmbush2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RebelAmbush1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_RebelAmbush3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_RebelAmbush2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_RedGuardTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_ScudLauncher": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_SneakAttack": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_SpectreGunship1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_SpectreGunship2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_SpectreGunship1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_SpectreGunship3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_SpectreGunship2",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_SpectreGunshipSolo": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank5"
+   ]
+  },
+  "SCIENCE_SpyDrone": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_StealthFighter": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_AMERICA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_TankParadrop1": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_CHINA",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_TankParadrop2": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_TankParadrop1",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_TankParadrop3": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_TankParadrop2",
+    "SCIENCE_Rank3"
+   ]
+  },
+  "SCIENCE_TechnicalTraining": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank1"
+   ]
+  },
+  "SCIENCE_TerrorCell": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "SCIENCE_USA": {
+   "cost": 0,
+   "prereq": [
+    "None"
+   ]
+  },
+  "Slth_SCIENCE_GPSScrambler": {
+   "cost": 1,
+   "prereq": [
+    "SCIENCE_GLA",
+    "SCIENCE_Rank3"
+   ]
+  }
+ }
+}

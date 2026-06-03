@@ -10,7 +10,7 @@ import math
 
 from agent.skills.base import (
     Skill, PENDING, RUNNING, DONE, FAILED, BLOCKED,
-    my_units, my_buildings, find_object, find_dozers, find_producer,
+    my_units, my_buildings, find_object, find_dozers, find_all_dozers, find_producer,
     select_combat_units, resolve_point, find_build_spot, obj_pos,
     is_combat_unit, find_trainable_combat, find_trainable_dozer, is_dozerish,
     capturable_points, power_margin, find_power_buildable,
@@ -67,12 +67,26 @@ class BuildStructureSkill(Skill):
                 dozer = free[0]
                 self.params["_dozer"] = dozer["id"]
             cx, cy = resolve_point(ctx, self.params)
-            sx, sy = find_build_spot(ctx, cx, cy, attempt=self._attempts)
+            spot = find_build_spot(ctx, cx, cy, attempt=self._attempts,
+                                   avoid=self.params.get("_avoid"))
+            if spot is None:
+                # no clear spot (base crowded / siblings took the nearby ones this tick) — wait & retry,
+                # never stack on an existing building
+                self._attempts += 1
+                self.status, self.detail = BLOCKED, "no clear build spot ({}/{})".format(
+                    self._attempts, self.MAX_ATTEMPTS)
+                if self._attempts >= self.MAX_ATTEMPTS:
+                    self.status = FAILED
+                return
+            sx, sy = spot
             res = ctx.client.command(ctx.player, [dozer["id"]], "build_structure",
                                      {"template": structure, "pos": {"x": sx, "y": sy}})
             if res and res.get("accepted"):
                 self._oid = res.get("objectId")
                 self._spot = (sx, sy)
+                # NATIVE construction: the engine already tasks this dozer to drive over and build. Do NOT
+                # issue any further command to it (a move/attack would CANCEL its construct order and
+                # abandon the structure) — find_dozers now reports it `busy` so no sibling grabs it either.
                 self.status, self.detail = RUNNING, "placing {} @ {:.0f},{:.0f}".format(structure, sx, sy)
             else:
                 self._attempts += 1
@@ -87,11 +101,13 @@ class BuildStructureSkill(Skill):
                 if self._elapsed(ctx) > 1200:
                     self.status, self.detail = FAILED, "structure never completed"
                 return
-            hp, mx = obj.get("health", 0), obj.get("maxHealth", 0) or 1
-            if hp >= mx * 0.99:
+            # Complete when the structure is no longer UNDER_CONSTRUCTION (timed self-build), NOT on hp —
+            # a constructing building can report full hp, which would free the dozer instantly and it'd
+            # never look like it built anything. Keeping the dozer reserved until done = realistic.
+            if not obj.get("constructing"):
                 self.status, self.detail = DONE, "{} complete".format(structure)
             else:
-                self.detail = "{} building {:.0f}%".format(structure, 100.0 * hp / mx)
+                self.detail = "{} building".format(structure)
 
 
 class TrainUnitsSkill(Skill):
@@ -420,13 +436,15 @@ class BuildBaseSkill(Skill):
         if not hasattr(self, "_subs"):
             self._subs, self._dz_frame, self._wait, self._skip = [], None, {}, set()
 
-        # 1) DOZERS: keep up to DOZER_TARGET. Always train the first; train extras only when we can
-        #    comfortably afford it (don't starve buildings). More dozers => parallel construction.
-        dozers = find_dozers(ctx)
-        if len(dozers) < self.DOZER_TARGET:
+        # 1) DOZERS: keep up to DOZER_TARGET. Count ALL dozers (busy + free) for the target — else, now
+        #    that find_dozers returns only FREE dozers, a base mid-construction looks dozer-starved and we
+        #    over-train (saw 10 dozers). Assign only FREE dozers to new builds.
+        dozers = find_dozers(ctx)            # free (for assignment)
+        all_dozers = find_all_dozers(ctx)    # busy + free (for the target count)
+        if len(all_dozers) < self.DOZER_TARGET:
             dz = find_trainable_dozer(ctx)
             money = ctx.me.get("money", 0) or 0
-            need_first = not dozers
+            need_first = not all_dozers
             if dz and ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN \
                     and (need_first or money >= dz[2] + 1500):
                 ctx.client.command(ctx.player, [dz[1]], "train_unit", {"template": dz[0], "count": 1})
@@ -476,9 +494,18 @@ class BuildBaseSkill(Skill):
             active_roles.add(role)
             self._wait.pop(ri, None)
 
-        # 5) drive all active sub-builds (parallel)
+        # 5) drive all active sub-builds (parallel). Feed each not-yet-placed sub the spots already
+        # chosen THIS TICK by its siblings (and the in-progress ones), so parallel builds off the same
+        # base centroid don't all pick the identical spot and stack (the "two barracks in one" bug).
+        placed_spots = [sp for s in self._subs if (sp := getattr(s["sub"], "_spot", None))]
         for s in self._subs:
-            s["sub"].tick(ctx)
+            sub = s["sub"]
+            if getattr(sub, "_spot", None) is None:
+                sub.params["_avoid"] = list(placed_spots)
+            sub.tick(ctx)
+            sp = getattr(sub, "_spot", None)
+            if sp and sp not in placed_spots:
+                placed_spots.append(sp)
 
         # 6) status / done
         pending = [r for ri, r in enumerate(roles)

@@ -25,6 +25,7 @@ import time
 import webbrowser
 
 STATE_PATH = "/tmp/gen_agent_state.json"
+STATIC_PATH = "/tmp/gen_agent_static.json"
 DIRECTIVE_PATH = "/tmp/gen_agent_directive.json"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -53,6 +54,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 return self._json(200, {"inGame": False, "tasks": {"active": [], "history": []},
                                         "notes": [], "events": [], "threats": []})
+        if self.path.split("?")[0] == "/agent/static":
+            try:
+                with open(STATIC_PATH) as f:
+                    return self._json(200, json.load(f))
+            except Exception:  # noqa: BLE001
+                return self._json(200, {"ok": False})
         return super().do_GET()
 
     def do_POST(self):

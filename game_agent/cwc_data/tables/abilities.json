@@ -1,0 +1,2596 @@
+{
+ "BrickWall01SeeThrough": {
+  "builds": []
+ },
+ "CWCcivBBT": {
+  "builds": []
+ },
+ "CWCcivBus": {
+  "builds": []
+ },
+ "CWCcivCampFire": {
+  "builds": []
+ },
+ "CWCcivCar01": {
+  "builds": []
+ },
+ "CWCcivCar02": {
+  "builds": []
+ },
+ "CWCcivCar03": {
+  "builds": []
+ },
+ "CWCcivCar04": {
+  "builds": []
+ },
+ "CWCcivChurch": {
+  "builds": []
+ },
+ "CWCcivChurchDebris01": {
+  "builds": []
+ },
+ "CWCcivConveyor": {
+  "builds": []
+ },
+ "CWCcivCrossingGuard": {
+  "builds": []
+ },
+ "CWCcivEuropeanLandmarkBridge": {
+  "builds": []
+ },
+ "CWCcivEuropeanLandmarkBridgeRubble": {
+  "builds": []
+ },
+ "CWCcivFakeRider_1": {
+  "builds": []
+ },
+ "CWCcivFakeRider_2": {
+  "builds": []
+ },
+ "CWCcivFishHut": {
+  "builds": []
+ },
+ "CWCcivFishHut_2": {
+  "builds": []
+ },
+ "CWCcivFishHut_3": {
+  "builds": []
+ },
+ "CWCcivFlag_Large": {
+  "builds": []
+ },
+ "CWCcivFlag_Small": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_ConsumerDrone": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilDepot": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilRefinery01": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilRefinery02": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilStorageTank01": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilStorageTank02": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilTank01": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_OilTank02": {
+  "builds": []
+ },
+ "CWCcivFuel_Large_StealDrone": {
+  "builds": []
+ },
+ "CWCcivFuel_Medium_GasStation01": {
+  "builds": []
+ },
+ "CWCcivFuel_Medium_GasStation02": {
+  "builds": []
+ },
+ "CWCcivFuel_Medium_OilDerrick": {
+  "builds": []
+ },
+ "CWCcivFuel_Small_ConsumerDrone": {
+  "builds": []
+ },
+ "CWCcivFuel_Small_GasStation01": {
+  "builds": []
+ },
+ "CWCcivFuel_Small_OilStorageTank01": {
+  "builds": []
+ },
+ "CWCcivHolz01": {
+  "builds": []
+ },
+ "CWCcivHolzstoss": {
+  "builds": []
+ },
+ "CWCcivInfTarget": {
+  "builds": []
+ },
+ "CWCcivL_house": {
+  "builds": []
+ },
+ "CWCcivLeitplanke": {
+  "builds": []
+ },
+ "CWCcivLeitplankeLeftEnd": {
+  "builds": []
+ },
+ "CWCcivLeitplankeLeftEnd_Autobahn": {
+  "builds": []
+ },
+ "CWCcivLeitplankeRightEnd": {
+  "builds": []
+ },
+ "CWCcivLeitplankeRightEnd_Autobahn": {
+  "builds": []
+ },
+ "CWCcivLeitplanke_Autobahn": {
+  "builds": []
+ },
+ "CWCcivMil_Tent": {
+  "builds": []
+ },
+ "CWCcivMil_Tentr": {
+  "builds": []
+ },
+ "CWCcivMil_Tents": {
+  "builds": []
+ },
+ "CWCcivOffice": {
+  "builds": []
+ },
+ "CWCcivPrison": {
+  "builds": []
+ },
+ "CWCcivRadioStation": {
+  "builds": []
+ },
+ "CWCcivSandBagWall01": {
+  "builds": []
+ },
+ "CWCcivSandBagWall02": {
+  "builds": []
+ },
+ "CWCcivSandbagWallEnd": {
+  "builds": []
+ },
+ "CWCcivSkyline01": {
+  "builds": []
+ },
+ "CWCcivSkyline02": {
+  "builds": []
+ },
+ "CWCcivSkyline03": {
+  "builds": []
+ },
+ "CWCcivSkyline04": {
+  "builds": []
+ },
+ "CWCcivSkyline05": {
+  "builds": []
+ },
+ "CWCcivSkyline06": {
+  "builds": []
+ },
+ "CWCcivSkyline07": {
+  "builds": []
+ },
+ "CWCcivSkyline08": {
+  "builds": []
+ },
+ "CWCcivSnowman": {
+  "builds": []
+ },
+ "CWCcivStadtschild01": {
+  "builds": []
+ },
+ "CWCcivTechRadarStation": {
+  "builds": []
+ },
+ "CWCcivTechRadarStationPing": {
+  "builds": []
+ },
+ "CWCcivTnkTarget": {
+  "builds": []
+ },
+ "CWCcivTrainCar": {
+  "builds": []
+ },
+ "CWCcivTrainCarBack": {
+  "builds": []
+ },
+ "CWCcivTrainEngine": {
+  "builds": []
+ },
+ "CWCcivWoodFence": {
+  "builds": []
+ },
+ "CWCcivWoodFence2": {
+  "builds": []
+ },
+ "CWCcivWoodFence3": {
+  "builds": []
+ },
+ "CWCeuLeo2A4": {
+  "builds": []
+ },
+ "CWCeuLeo2A4_MGGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCgen40mmGrenade": {
+  "builds": []
+ },
+ "CWCgen40mmGrenade_01": {
+  "builds": []
+ },
+ "CWCgen40mmGrenade_02": {
+  "builds": []
+ },
+ "CWCgen40mmGrenade_03": {
+  "builds": []
+ },
+ "CWCgen40mmGrenade_04": {
+  "builds": []
+ },
+ "CWCgen40mmGrenade_05": {
+  "builds": []
+ },
+ "CWCgen80mmGrenade": {
+  "builds": []
+ },
+ "CWCgenAIMarker1": {
+  "builds": []
+ },
+ "CWCgenAIMarker10": {
+  "builds": []
+ },
+ "CWCgenAIMarker11": {
+  "builds": []
+ },
+ "CWCgenAIMarker12": {
+  "builds": []
+ },
+ "CWCgenAIMarker13": {
+  "builds": []
+ },
+ "CWCgenAIMarker14": {
+  "builds": []
+ },
+ "CWCgenAIMarker15": {
+  "builds": []
+ },
+ "CWCgenAIMarker16": {
+  "builds": []
+ },
+ "CWCgenAIMarker17": {
+  "builds": []
+ },
+ "CWCgenAIMarker18": {
+  "builds": []
+ },
+ "CWCgenAIMarker19": {
+  "builds": []
+ },
+ "CWCgenAIMarker2": {
+  "builds": []
+ },
+ "CWCgenAIMarker20": {
+  "builds": []
+ },
+ "CWCgenAIMarker3": {
+  "builds": []
+ },
+ "CWCgenAIMarker4": {
+  "builds": []
+ },
+ "CWCgenAIMarker5": {
+  "builds": []
+ },
+ "CWCgenAIMarker6": {
+  "builds": []
+ },
+ "CWCgenAIMarker7": {
+  "builds": []
+ },
+ "CWCgenAIMarker8": {
+  "builds": []
+ },
+ "CWCgenAIMarker9": {
+  "builds": []
+ },
+ "CWCgenAISensor": {
+  "builds": []
+ },
+ "CWCgenAirSuicideWeaponDummy": {
+  "builds": []
+ },
+ "CWCgenAircraftDisabler": {
+  "builds": []
+ },
+ "CWCgenAircraftSpotter": {
+  "builds": []
+ },
+ "CWCgenAircraftSpotterMissile": {
+  "builds": []
+ },
+ "CWCgenAirfieldDrone": {
+  "builds": []
+ },
+ "CWCgenAntiRadarDrone": {
+  "builds": []
+ },
+ "CWCgenArtilleryShell": {
+  "builds": []
+ },
+ "CWCgenArtilleryShell_01": {
+  "builds": []
+ },
+ "CWCgenArtilleryShell_02": {
+  "builds": []
+ },
+ "CWCgenArtillerySpotter": {
+  "builds": []
+ },
+ "CWCgenCarpetBombExplosion1": {
+  "builds": []
+ },
+ "CWCgenCarpetBombExplosion2": {
+  "builds": []
+ },
+ "CWCgenDirectArtilleryShell": {
+  "builds": []
+ },
+ "CWCgenExplosiveShell": {
+  "builds": []
+ },
+ "CWCgenExplosiveShellAir": {
+  "builds": []
+ },
+ "CWCgenExplosiveShell_Spectre_105mm": {
+  "builds": []
+ },
+ "CWCgenExplosiveShell_Spectre_20mm": {
+  "builds": []
+ },
+ "CWCgenExplosiveShell_Spectre_40mm": {
+  "builds": []
+ },
+ "CWCgenFireTestObject": {
+  "builds": []
+ },
+ "CWCgenFlagConquestChopper_North": {
+  "builds": []
+ },
+ "CWCgenFlagConquestChopper_South": {
+  "builds": []
+ },
+ "CWCgenFlagConquestHeavy_North": {
+  "builds": []
+ },
+ "CWCgenFlagConquestHeavy_South": {
+  "builds": []
+ },
+ "CWCgenFlagConquestLight_North": {
+  "builds": []
+ },
+ "CWCgenFlagConquestLight_South": {
+  "builds": []
+ },
+ "CWCgenFlagConquestMedium_East": {
+  "builds": []
+ },
+ "CWCgenFlagConquestMedium_West": {
+  "builds": []
+ },
+ "CWCgenHEATTankShell": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_01": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_02": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_03": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_04": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_05": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_06": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_07": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_08": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_09": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Prone_10": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_01": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_02": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_03": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_04": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_05": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_06": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_07": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_08": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_09": {
+  "builds": []
+ },
+ "CWCgenHeavySniperBullet_Stand_10": {
+  "builds": []
+ },
+ "CWCgenInfBlood": {
+  "builds": []
+ },
+ "CWCgenLockOnCursor": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_01": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_02": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_03": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_04": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_05": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_06": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_07": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_08": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_09": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_10": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_11": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_12": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_13": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_14": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_15": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_16": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_17": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_18": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_19": {
+  "builds": []
+ },
+ "CWCgenMachineCannonShell_BRDM2_20": {
+  "builds": []
+ },
+ "CWCgenMachineGunBullet": {
+  "builds": []
+ },
+ "CWCgenMachineGunShell": {
+  "builds": []
+ },
+ "CWCgenMachineGunShellAir": {
+  "builds": []
+ },
+ "CWCgenMachineGunShellBarrage": {
+  "builds": []
+ },
+ "CWCgenMissionMap": {
+  "builds": []
+ },
+ "CWCgenMissionMarker": {
+  "builds": []
+ },
+ "CWCgenRadarDrone": {
+  "builds": []
+ },
+ "CWCgenSABOTTankShell": {
+  "builds": []
+ },
+ "CWCgenSmallSuicideWeaponDummy": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_01": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_02": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_03": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_04": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_05": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_06": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_07": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_08": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_09": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Prone_10": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_01": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_02": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_03": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_04": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_05": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_06": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_07": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_08": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_09": {
+  "builds": []
+ },
+ "CWCgenSniperBullet_Stand_10": {
+  "builds": []
+ },
+ "CWCgenSuicideWeaponDummy": {
+  "builds": []
+ },
+ "CWCgenSupplyDropCrate": {
+  "builds": []
+ },
+ "CWCgenTinySuicideWeaponDummy": {
+  "builds": []
+ },
+ "CWCgenTreesOnFire": {
+  "builds": []
+ },
+ "CWCgenTreesOnFire_Major": {
+  "builds": []
+ },
+ "CWCgenTreesOnFire_Minor": {
+  "builds": []
+ },
+ "CWCnatBear": {
+  "builds": []
+ },
+ "CWCnatBird01": {
+  "builds": []
+ },
+ "CWCnatBird02": {
+  "builds": []
+ },
+ "CWCnatBombCrater01_Big": {
+  "builds": []
+ },
+ "CWCnatBombCrater01_Middle": {
+  "builds": []
+ },
+ "CWCnatBombCrater01_Small": {
+  "builds": []
+ },
+ "CWCnatBombFire": {
+  "builds": []
+ },
+ "CWCnatBombLightSmokeBig": {
+  "builds": []
+ },
+ "CWCnatBombLightSmokeMiddle": {
+  "builds": []
+ },
+ "CWCnatBombLightSmokeSmall": {
+  "builds": []
+ },
+ "CWCnatBombSmokeBig": {
+  "builds": []
+ },
+ "CWCnatBombSmokeMiddle": {
+  "builds": []
+ },
+ "CWCnatBombSmokeSmall": {
+  "builds": []
+ },
+ "CWCnatBrownGrass": {
+  "builds": []
+ },
+ "CWCnatBrownGrass01": {
+  "builds": []
+ },
+ "CWCnatBurningEmber": {
+  "builds": []
+ },
+ "CWCnatBush01": {
+  "builds": []
+ },
+ "CWCnatClouds_B": {
+  "builds": []
+ },
+ "CWCnatClouds_M": {
+  "builds": []
+ },
+ "CWCnatClouds_T": {
+  "builds": []
+ },
+ "CWCnatCow": {
+  "builds": []
+ },
+ "CWCnatFish": {
+  "builds": []
+ },
+ "CWCnatFlamingBush01": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeBurnedStump": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeCherryBlossom01": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeCherryBlossom02": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeFir01B": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeMapleStump": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeOakStump": {
+  "builds": []
+ },
+ "CWCnatFlamingTreePineStump": {
+  "builds": []
+ },
+ "CWCnatFlamingTreeSpruceStump": {
+  "builds": []
+ },
+ "CWCnatGenericFlamingTree": {
+  "builds": []
+ },
+ "CWCnatGenericGrass": {
+  "builds": []
+ },
+ "CWCnatGenericModelGrass": {
+  "builds": []
+ },
+ "CWCnatGenericModelGrass01": {
+  "builds": []
+ },
+ "CWCnatGenericTree": {
+  "builds": []
+ },
+ "CWCnatGenericTree_Toppled": {
+  "builds": []
+ },
+ "CWCnatGreenGrass": {
+  "builds": []
+ },
+ "CWCnatGreenGrass01": {
+  "builds": []
+ },
+ "CWCnatIceBear": {
+  "builds": []
+ },
+ "CWCnatReedGreen": {
+  "builds": []
+ },
+ "CWCnatReedGreen2": {
+  "builds": []
+ },
+ "CWCnatSky": {
+  "builds": []
+ },
+ "CWCnatTreeBurnedStump": {
+  "builds": []
+ },
+ "CWCnatTreeCherryBlossom01": {
+  "builds": []
+ },
+ "CWCnatTreeCherryBlossom02": {
+  "builds": []
+ },
+ "CWCnatTreeFir01B": {
+  "builds": []
+ },
+ "CWCnatTreeFlamer": {
+  "builds": []
+ },
+ "CWCnatTreeMapleStump": {
+  "builds": []
+ },
+ "CWCnatTreeOakStump": {
+  "builds": []
+ },
+ "CWCnatTreePineStump": {
+  "builds": []
+ },
+ "CWCnatTreeSpruceStump": {
+  "builds": []
+ },
+ "CWCnatVinesBrown": {
+  "builds": []
+ },
+ "CWCnatVinesGreen": {
+  "builds": []
+ },
+ "CWCru2S1": {
+  "builds": []
+ },
+ "CWCruAT5": {
+  "builds": []
+ },
+ "CWCruAT5_Convoy": {
+  "builds": []
+ },
+ "CWCruATMine": {
+  "builds": []
+ },
+ "CWCruATMineTimer": {
+  "builds": []
+ },
+ "CWCruAirField": {
+  "builds": [
+   "CWCruMi8",
+   "CWCruMi24",
+   "CWCruMi26",
+   "CWCruSu25",
+   "CWCruSu25T",
+   "CWCruMiG29",
+   "CWCruSu27"
+  ],
+  "canCapture": true
+ },
+ "CWCruAirField_spawned": {
+  "builds": []
+ },
+ "CWCruBM21": {
+  "builds": []
+ },
+ "CWCruBM21Mine": {
+  "builds": []
+ },
+ "CWCruBM21MineBouncingDummy": {
+  "builds": []
+ },
+ "CWCruBM21MineDummy": {
+  "builds": []
+ },
+ "CWCruBM21MineMissile": {
+  "builds": []
+ },
+ "CWCruBM21Missile": {
+  "builds": []
+ },
+ "CWCruBM21_CWCruMission01": {
+  "builds": []
+ },
+ "CWCruBMD1": {
+  "builds": []
+ },
+ "CWCruBMD1Missile": {
+  "builds": []
+ },
+ "CWCruBMD1Missile01": {
+  "builds": []
+ },
+ "CWCruBMD1Missile02": {
+  "builds": []
+ },
+ "CWCruBMD1Missile03": {
+  "builds": []
+ },
+ "CWCruBMP2": {
+  "builds": []
+ },
+ "CWCruBMP2Missile": {
+  "builds": []
+ },
+ "CWCruBMP2Missile01": {
+  "builds": []
+ },
+ "CWCruBMP2Missile02": {
+  "builds": []
+ },
+ "CWCruBMP2Missile03": {
+  "builds": []
+ },
+ "CWCruBMP2Missile04": {
+  "builds": []
+ },
+ "CWCruBMP2_Convoy": {
+  "builds": []
+ },
+ "CWCruBRDM2": {
+  "builds": []
+ },
+ "CWCruBRDM2_Convoy": {
+  "builds": []
+ },
+ "CWCruBTR80": {
+  "builds": []
+ },
+ "CWCruBTR80SmokeGrenadeDummy": {
+  "builds": []
+ },
+ "CWCruBTR80SmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCruBTR80pPropagandaSpeakerDummy": {
+  "builds": []
+ },
+ "CWCruBTR80pPropagandaSpeakerDummy_InvisibleMarker": {
+  "builds": []
+ },
+ "CWCruBarracks": {
+  "builds": [
+   "CWCruInfAssault",
+   "CWCruInfHeavyAssault",
+   "CWCruInfAntiTank",
+   "CWCruInfAntiAir",
+   "CWCruInfMedic",
+   "CWCruInfEngineer",
+   "CWCruInfSniper",
+   "CWCruInfAntiMaterial",
+   "CWCruInfOfficer",
+   "CWCruInfSpetsnaz",
+   "CWCruUral"
+  ],
+  "canCapture": true
+ },
+ "CWCruBarracks_spawned": {
+  "builds": []
+ },
+ "CWCruCargoParachute": {
+  "builds": []
+ },
+ "CWCruCommandCenter": {
+  "builds": [
+   "CWCruDozer",
+   "CWCruUralRadar"
+  ],
+  "canCapture": true
+ },
+ "CWCruCommandCenter_spawned": {
+  "builds": []
+ },
+ "CWCruConquestDrone": {
+  "builds": []
+ },
+ "CWCruConvoyDrone": {
+  "builds": []
+ },
+ "CWCruCountermeasureFlare": {
+  "builds": []
+ },
+ "CWCruCruiseMissile": {
+  "builds": []
+ },
+ "CWCruCruiseMissileWeaponDummy": {
+  "builds": []
+ },
+ "CWCruDozer": {
+  "builds": [
+   "CWCruSmallFuelDepot",
+   "CWCruLargeFuelDepot",
+   "CWCruBarracks",
+   "CWCruWarFactory",
+   "CWCruAirField",
+   "CWCruCommandCenter",
+   "CWCruFortInf",
+   "CWCruFortTank",
+   "CWCruFortSA6"
+  ]
+ },
+ "CWCruDropzoneDrone": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone0": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone1": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone2": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone3": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone4": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone5": {
+  "builds": []
+ },
+ "CWCruEmergencyFuelDrone6": {
+  "builds": []
+ },
+ "CWCruFAB1000": {
+  "builds": []
+ },
+ "CWCruFakeRider_EmptyDeployed": {
+  "builds": []
+ },
+ "CWCruFakeRider_EmptyFortTank": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Prone": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Prone_Elite": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Prone_Veteran": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_AA": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_AT": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_Elite": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_GR": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_GR_Veteran": {
+  "builds": []
+ },
+ "CWCruFakeRider_Inf_Stand_Veteran": {
+  "builds": []
+ },
+ "CWCruFlag": {
+  "builds": []
+ },
+ "CWCruFortInf": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruFortInf_spawned": {
+  "builds": []
+ },
+ "CWCruFortSA6": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruFortSA6_spawned": {
+  "builds": []
+ },
+ "CWCruFortTank": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruFortTank_spawned": {
+  "builds": []
+ },
+ "CWCruHelipad": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruInfAntiAir": {
+  "builds": []
+ },
+ "CWCruInfAntiAirDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfAntiMaterial": {
+  "builds": []
+ },
+ "CWCruInfAntiMaterialDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfAntiTank": {
+  "builds": []
+ },
+ "CWCruInfAntiTankDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfAssault": {
+  "builds": []
+ },
+ "CWCruInfAssaultDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfEngineer": {
+  "builds": []
+ },
+ "CWCruInfEngineerDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfHeavyAssault": {
+  "builds": []
+ },
+ "CWCruInfHeavyAssaultDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfMedic": {
+  "builds": []
+ },
+ "CWCruInfMedicDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfOfficer": {
+  "builds": []
+ },
+ "CWCruInfOfficerBinocularsDummy": {
+  "builds": []
+ },
+ "CWCruInfOfficerBinocularsDummyShell": {
+  "builds": []
+ },
+ "CWCruInfOfficerDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfOfficerSmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCruInfPilot": {
+  "builds": []
+ },
+ "CWCruInfPilotCrate": {
+  "builds": []
+ },
+ "CWCruInfRPGAntiTankMissile": {
+  "builds": []
+ },
+ "CWCruInfRPOAntiMaterialMissile": {
+  "builds": []
+ },
+ "CWCruInfRPOAntiMaterialMissile_01": {
+  "builds": []
+ },
+ "CWCruInfRPOAntiMaterialMissile_02": {
+  "builds": []
+ },
+ "CWCruInfSniper": {
+  "builds": []
+ },
+ "CWCruInfSniperDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfSpetsnaz": {
+  "builds": []
+ },
+ "CWCruInfSpetsnazDeathRider1": {
+  "builds": []
+ },
+ "CWCruInfSpetsnazRemoteCharge": {
+  "builds": []
+ },
+ "CWCruInfSpetsnaz_CWCruMission02": {
+  "builds": []
+ },
+ "CWCruInfStrelaAntiAirMissile": {
+  "builds": []
+ },
+ "CWCruInfStrelaAntiAirMissile_01": {
+  "builds": []
+ },
+ "CWCruInfStrelaAntiAirMissile_02": {
+  "builds": []
+ },
+ "CWCruInfStrelaAntiAirMissile_03": {
+  "builds": []
+ },
+ "CWCruInvisibleCountermeasureFlare": {
+  "builds": []
+ },
+ "CWCruInvisibleCountermeasureFlare_CMs": {
+  "builds": []
+ },
+ "CWCruLargeFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruLargeFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCruMi24": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile01": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile02": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile03": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile04": {
+  "builds": []
+ },
+ "CWCruMi24AntiTankMissile05": {
+  "builds": []
+ },
+ "CWCruMi24HEMissile": {
+  "builds": []
+ },
+ "CWCruMi26": {
+  "builds": []
+ },
+ "CWCruMi26_CalledIn": {
+  "builds": []
+ },
+ "CWCruMi26_CalledIn_Paradrop": {
+  "builds": []
+ },
+ "CWCruMi26_CalledIn_SupplyDropDZ": {
+  "builds": []
+ },
+ "CWCruMi26_k": {
+  "builds": []
+ },
+ "CWCruMi28": {
+  "builds": []
+ },
+ "CWCruMi8": {
+  "builds": []
+ },
+ "CWCruMi8_k": {
+  "builds": []
+ },
+ "CWCruMiG25": {
+  "builds": []
+ },
+ "CWCruMiG29": {
+  "builds": []
+ },
+ "CWCruMiG29_SD_R73s": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruMiG29_k": {
+  "builds": []
+ },
+ "CWCruNSVT": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruOffMapArtillery": {
+  "builds": []
+ },
+ "CWCruParachute": {
+  "builds": []
+ },
+ "CWCruParachuteVeterancyCrate": {
+  "builds": []
+ },
+ "CWCruParadropBeacon": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruR60MMissile": {
+  "builds": []
+ },
+ "CWCruRBK500": {
+  "builds": []
+ },
+ "CWCruRBK500Clusters": {
+  "builds": []
+ },
+ "CWCruRBK500StageOne": {
+  "builds": []
+ },
+ "CWCruRBK500StageTwo": {
+  "builds": []
+ },
+ "CWCruS300": {
+  "builds": []
+ },
+ "CWCruS300Missile": {
+  "builds": []
+ },
+ "CWCruSA11": {
+  "builds": []
+ },
+ "CWCruSA11Missile": {
+  "builds": []
+ },
+ "CWCruSA11_CWCusMission03": {
+  "builds": []
+ },
+ "CWCruSA11_Deployable": {
+  "builds": []
+ },
+ "CWCruSA11_Deployed": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruSA6Missile": {
+  "builds": []
+ },
+ "CWCruSA9": {
+  "builds": []
+ },
+ "CWCruSA9Missile": {
+  "builds": []
+ },
+ "CWCruSA9_Convoy": {
+  "builds": []
+ },
+ "CWCruSS20": {
+  "builds": []
+ },
+ "CWCruSS20Missile": {
+  "builds": []
+ },
+ "CWCruSatchelCharge": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruShilka": {
+  "builds": []
+ },
+ "CWCruShilkaGunMissile": {
+  "builds": []
+ },
+ "CWCruSmallFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruSmallFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCruSmerchBattery": {
+  "builds": []
+ },
+ "CWCruSmerchBatteryMissile": {
+  "builds": []
+ },
+ "CWCruStrikeMissile": {
+  "builds": []
+ },
+ "CWCruSu24": {
+  "builds": []
+ },
+ "CWCruSu24AS14KedgeMissile": {
+  "builds": []
+ },
+ "CWCruSu24_M": {
+  "builds": []
+ },
+ "CWCruSu25": {
+  "builds": []
+ },
+ "CWCruSu25FlareDummy": {
+  "builds": []
+ },
+ "CWCruSu25GatlingMissile": {
+  "builds": []
+ },
+ "CWCruSu25HEMissile": {
+  "builds": []
+ },
+ "CWCruSu25T": {
+  "builds": []
+ },
+ "CWCruSu25VikhrMissileLeft": {
+  "builds": []
+ },
+ "CWCruSu25VikhrMissileRight": {
+  "builds": []
+ },
+ "CWCruSu25_C": {
+  "builds": []
+ },
+ "CWCruSu25_SD_R60Ms": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruSu27": {
+  "builds": []
+ },
+ "CWCruSu27R27Missile": {
+  "builds": []
+ },
+ "CWCruSu27R73Missile": {
+  "builds": []
+ },
+ "CWCruSu27_SD_R73s": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruSupplyDropDrone": {
+  "builds": []
+ },
+ "CWCruT64": {
+  "builds": []
+ },
+ "CWCruT64_MachineGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT64_R": {
+  "builds": []
+ },
+ "CWCruT72": {
+  "builds": []
+ },
+ "CWCruT72_MachineGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT72_k3": {
+  "builds": []
+ },
+ "CWCruT80BV": {
+  "builds": []
+ },
+ "CWCruT80BVMissile": {
+  "builds": []
+ },
+ "CWCruT80BVMissile01": {
+  "builds": []
+ },
+ "CWCruT80BVMissile02": {
+  "builds": []
+ },
+ "CWCruT80BVMissile03": {
+  "builds": []
+ },
+ "CWCruT80BVMissile04": {
+  "builds": []
+ },
+ "CWCruT80BVMissile05": {
+  "builds": []
+ },
+ "CWCruT80BVMissile06": {
+  "builds": []
+ },
+ "CWCruT80BV_AAGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT80U": {
+  "builds": []
+ },
+ "CWCruT80UK": {
+  "builds": []
+ },
+ "CWCruT80UKMissile": {
+  "builds": []
+ },
+ "CWCruT80UKSmokeGrenadeDummy": {
+  "builds": []
+ },
+ "CWCruT80UKSmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCruT80UKTargetDesignatorLaserBeam": {
+  "builds": []
+ },
+ "CWCruT80UK_AWSystem": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT80UK_AWSystem2": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT80UK_GR": {
+  "builds": []
+ },
+ "CWCruT80UK_Shtora": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCruT80USmokeGrenadeDummy": {
+  "builds": []
+ },
+ "CWCruT80USmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCruTu160": {
+  "builds": []
+ },
+ "CWCruTu95": {
+  "builds": []
+ },
+ "CWCruTu95MOV01": {
+  "builds": []
+ },
+ "CWCruTu95MOV02": {
+  "builds": []
+ },
+ "CWCruUAZ": {
+  "builds": []
+ },
+ "CWCruUral": {
+  "builds": []
+ },
+ "CWCruUralRadar": {
+  "builds": []
+ },
+ "CWCruUral_Convoy": {
+  "builds": []
+ },
+ "CWCruWarFactory": {
+  "builds": [
+   "CWCruBRDM2",
+   "CWCruAT5",
+   "CWCruSA9",
+   "CWCruBMP2",
+   "CWCruBTR80",
+   "CWCruShilka",
+   "CWCruT72",
+   "CWCruSA11_Deployable",
+   "CWCruT64",
+   "CWCru2S1",
+   "CWCruT80BV",
+   "CWCruBM21",
+   "CWCruT80UK",
+   "CWCruSA11"
+  ],
+  "canCapture": true
+ },
+ "CWCruWarFactory_spawned": {
+  "builds": []
+ },
+ "CWCruZAB500": {
+  "builds": []
+ },
+ "CWCruZAB500Firestorm": {
+  "builds": []
+ },
+ "CWCruZAB500StageOne": {
+  "builds": []
+ },
+ "CWCruZAB500StageTwo": {
+  "builds": []
+ },
+ "CWCru_AirField": {
+  "builds": [
+   "CWCruMi8",
+   "CWCruMi24",
+   "CWCruMi26",
+   "CWCruSu25",
+   "CWCruSu25T",
+   "CWCruMiG29",
+   "CWCruSu27"
+  ],
+  "canCapture": true
+ },
+ "CWCru_AirField_spawned": {
+  "builds": []
+ },
+ "CWCru_Barracks": {
+  "builds": [
+   "CWCruInfAssault",
+   "CWCruInfHeavyAssault",
+   "CWCruInfAntiTank",
+   "CWCruInfAntiAir",
+   "CWCruInfMedic",
+   "CWCruInfEngineer",
+   "CWCruInfSniper",
+   "CWCruInfAntiMaterial",
+   "CWCruInfOfficer",
+   "CWCruInfSpetsnaz",
+   "CWCruUral"
+  ],
+  "canCapture": true
+ },
+ "CWCru_Barracks_spawned": {
+  "builds": []
+ },
+ "CWCru_CommandCenter": {
+  "builds": [
+   "CWCru_Dozer",
+   "CWCruUralRadar"
+  ],
+  "canCapture": true
+ },
+ "CWCru_CommandCenter_spawned": {
+  "builds": []
+ },
+ "CWCru_Dozer": {
+  "builds": [
+   "CWCru_SmallFuelDepot",
+   "CWCru_LargeFuelDepot",
+   "CWCru_Barracks",
+   "CWCru_WarFactory",
+   "CWCru_Helipad",
+   "CWCru_AirField",
+   "CWCru_CommandCenter"
+  ]
+ },
+ "CWCru_Helipad": {
+  "builds": [
+   "CWCruMi8",
+   "CWCruMi24",
+   "CWCruMi26"
+  ],
+  "canCapture": true
+ },
+ "CWCru_Helipad_spawned": {
+  "builds": []
+ },
+ "CWCru_LargeFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCru_LargeFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCru_SmallFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCru_SmallFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCru_WarFactory": {
+  "builds": [
+   "CWCruBRDM2",
+   "CWCruAT5",
+   "CWCruSA9",
+   "CWCruBMP2",
+   "CWCruBTR80",
+   "CWCruShilka",
+   "CWCruT72",
+   "CWCruSA11",
+   "CWCruT64",
+   "CWCru2S1",
+   "CWCruT80BV",
+   "CWCruBM21",
+   "CWCruT80UK"
+  ],
+  "canCapture": true
+ },
+ "CWCru_WarFactory_spawned": {
+  "builds": []
+ },
+ "CWCusA10": {
+  "builds": []
+ },
+ "CWCusA10GatlingMissile": {
+  "builds": []
+ },
+ "CWCusA10MaverickMissile": {
+  "builds": []
+ },
+ "CWCusA10_SD_Sidewinders": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusA10_k": {
+  "builds": []
+ },
+ "CWCusAC130": {
+  "builds": []
+ },
+ "CWCusAC130_CWCusMission05": {
+  "builds": []
+ },
+ "CWCusAC130_Minigun_BOFOR": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusAH1": {
+  "builds": []
+ },
+ "CWCusAH1MachineCannonMissile": {
+  "builds": []
+ },
+ "CWCusAH1TowMissile": {
+  "builds": []
+ },
+ "CWCusAH1_k": {
+  "builds": []
+ },
+ "CWCusAH6": {
+  "builds": []
+ },
+ "CWCusAH64": {
+  "builds": []
+ },
+ "CWCusAH64FFARMissile": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile01": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile02": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile03": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile04": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile05": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile06": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile07": {
+  "builds": []
+ },
+ "CWCusAH64HellfireMissile08": {
+  "builds": []
+ },
+ "CWCusAH64MachineCannonMissile": {
+  "builds": []
+ },
+ "CWCusAH6_F": {
+  "builds": []
+ },
+ "CWCusATMine": {
+  "builds": []
+ },
+ "CWCusATMineTimer": {
+  "builds": []
+ },
+ "CWCusAirField": {
+  "builds": [
+   "CWCusA10",
+   "CWCusF4G",
+   "CWCusF111",
+   "CWCusEF111",
+   "CWCusF16",
+   "CWCusF15"
+  ],
+  "canCapture": true
+ },
+ "CWCusAirField_spawned": {
+  "builds": []
+ },
+ "CWCusB1B": {
+  "builds": []
+ },
+ "CWCusB1BMK84": {
+  "builds": []
+ },
+ "CWCusB52": {
+  "builds": []
+ },
+ "CWCusBarracks": {
+  "builds": [
+   "CWCusInfAssault",
+   "CWCusInfHeavyAssault",
+   "CWCusInfAntiTank",
+   "CWCusInfAntiAir",
+   "CWCusInfMedic",
+   "CWCusInfEngineer",
+   "CWCusInfSniper",
+   "CWCusInfHeavySniper",
+   "CWCusInfOfficer",
+   "CWCusInfGreenBeret",
+   "CWCusM939"
+  ],
+  "canCapture": true
+ },
+ "CWCusBarracks_spawned": {
+  "builds": []
+ },
+ "CWCusC130": {
+  "builds": []
+ },
+ "CWCusC130_Paradrop": {
+  "builds": []
+ },
+ "CWCusC130_SupplyDropDZ": {
+  "builds": []
+ },
+ "CWCusC130_crashed": {
+  "builds": []
+ },
+ "CWCusCBU81": {
+  "builds": []
+ },
+ "CWCusCBU89Mine": {
+  "builds": []
+ },
+ "CWCusCBU89MineBouncingDummy": {
+  "builds": []
+ },
+ "CWCusCBU89MineDummy": {
+  "builds": []
+ },
+ "CWCusCH47": {
+  "builds": []
+ },
+ "CWCusCH47_SkyCrane": {
+  "builds": [
+   "CWCusSmallFuelDepot",
+   "CWCusLargeFuelDepot",
+   "CWCusBarracks",
+   "CWCusWarFactory",
+   "CWCusHelipad",
+   "CWCusAirField",
+   "CWCusRadarStation",
+   "CWCusCommandCenter",
+   "CWCusDropzone"
+  ]
+ },
+ "CWCusCH47_k": {
+  "builds": []
+ },
+ "CWCusCargoParachute": {
+  "builds": []
+ },
+ "CWCusCommandCenter": {
+  "builds": [
+   "CWCusDozer"
+  ],
+  "canCapture": true
+ },
+ "CWCusCommandCenter_spawned": {
+  "builds": []
+ },
+ "CWCusConquestDrone": {
+  "builds": []
+ },
+ "CWCusConvoyDrone": {
+  "builds": []
+ },
+ "CWCusCountermeasureFlare": {
+  "builds": []
+ },
+ "CWCusCruiseMissile": {
+  "builds": []
+ },
+ "CWCusCruiseMissileWeaponDummy": {
+  "builds": []
+ },
+ "CWCusDeltaParachute": {
+  "builds": []
+ },
+ "CWCusDozer": {
+  "builds": [
+   "CWCusSmallFuelDepot",
+   "CWCusLargeFuelDepot",
+   "CWCusBarracks",
+   "CWCusWarFactory",
+   "CWCusHelipad",
+   "CWCusAirField",
+   "CWCusRadarStation",
+   "CWCusCommandCenter",
+   "CWCusDropzone",
+   "CWCusFortM2",
+   "CWCusFortTOW",
+   "CWCusFortChap",
+   "CWCusFortMortar"
+  ]
+ },
+ "CWCusDropzone": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusDropzoneDrone": {
+  "builds": []
+ },
+ "CWCusDropzone_spawned": {
+  "builds": []
+ },
+ "CWCusE3": {
+  "builds": []
+ },
+ "CWCusE3_Patrol": {
+  "builds": []
+ },
+ "CWCusEF111": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone0": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone1": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone2": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone3": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone4": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone5": {
+  "builds": []
+ },
+ "CWCusEmergencyFuelDrone6": {
+  "builds": []
+ },
+ "CWCusF111": {
+  "builds": []
+ },
+ "CWCusF111CBU89StageOne": {
+  "builds": []
+ },
+ "CWCusF111CBU89StageTwo": {
+  "builds": []
+ },
+ "CWCusF111MK82StageOne": {
+  "builds": []
+ },
+ "CWCusF111MK82StageTwo": {
+  "builds": []
+ },
+ "CWCusF111_B": {
+  "builds": []
+ },
+ "CWCusF111_M": {
+  "builds": []
+ },
+ "CWCusF117": {
+  "builds": []
+ },
+ "CWCusF117GBU27": {
+  "builds": []
+ },
+ "CWCusF15": {
+  "builds": []
+ },
+ "CWCusF15AnalogDataStream": {
+  "builds": []
+ },
+ "CWCusF15_Patrol": {
+  "builds": []
+ },
+ "CWCusF15_SD_Sidewinders": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusF16": {
+  "builds": []
+ },
+ "CWCusF16_SD_Sidewinders": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusF4G": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusAIM9M_Sidewinder_SRAAM_AH6": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusAIM9M_Sidewinder_SRAAM_AH6_Ground": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusFFAR_70mm_Rocket": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusFFAR_70mm_Rocket_Ground": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusM134_7_62mm_Minigun": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusM134_7_62mm_Minigun_Ground": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusM220_ATGM_Launcher_AH6": {
+  "builds": []
+ },
+ "CWCusFakeRider_CWCusM220_ATGM_Launcher_AH6_Ground": {
+  "builds": []
+ },
+ "CWCusFakeRider_DropCargo": {
+  "builds": []
+ },
+ "CWCusFakeRider_EmptyDeployed": {
+  "builds": []
+ },
+ "CWCusFakeRider_FlyMode": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Prone": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Prone_Elite": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Prone_Veteran": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_AA": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_AT": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_Elite": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_GR": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_GR_Veteran": {
+  "builds": []
+ },
+ "CWCusFakeRider_Inf_Stand_Veteran": {
+  "builds": []
+ },
+ "CWCusFlag": {
+  "builds": []
+ },
+ "CWCusFortChap": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusFortChap_spawned": {
+  "builds": []
+ },
+ "CWCusFortM2": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusFortM2_spawned": {
+  "builds": []
+ },
+ "CWCusFortMortar": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusFortMortar_spawned": {
+  "builds": []
+ },
+ "CWCusFortTOW": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusFortTOW_spawned": {
+  "builds": []
+ },
+ "CWCusGBU10": {
+  "builds": []
+ },
+ "CWCusGBU12": {
+  "builds": []
+ },
+ "CWCusGCAirField": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusGCAirfield_ComVehicle": {
+  "builds": []
+ },
+ "CWCusGCAirfield_Tent": {
+  "builds": []
+ },
+ "CWCusHARMMissile": {
+  "builds": []
+ },
+ "CWCusHelipad": {
+  "builds": [
+   "CWCusUH60",
+   "CWCusAH6_F",
+   "CWCusCH47_SkyCrane",
+   "CWCusAH1",
+   "CWCusAH64",
+   "CWCusAH6"
+  ],
+  "canCapture": true
+ },
+ "CWCusHelipad_spawned": {
+  "builds": []
+ },
+ "CWCusInfAntiAir": {
+  "builds": []
+ },
+ "CWCusInfAntiAirDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfAntiTank": {
+  "builds": []
+ },
+ "CWCusInfAntiTankDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfAntiTankDeathRider1_CWCusMission03": {
+  "builds": []
+ },
+ "CWCusInfAntiTankWhite01": {
+  "builds": []
+ },
+ "CWCusInfAssault": {
+  "builds": []
+ },
+ "CWCusInfAssaultDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfAssaultDeathRider1_CWCusMission03": {
+  "builds": []
+ },
+ "CWCusInfDelta": {
+  "builds": []
+ },
+ "CWCusInfDeltaDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfDelta_Demolition": {
+  "builds": []
+ },
+ "CWCusInfDelta_DemolitionDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfDelta_Medic": {
+  "builds": []
+ },
+ "CWCusInfDelta_MedicDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfDelta_Medic_CWCusMission02": {
+  "builds": []
+ },
+ "CWCusInfDelta_Sniper": {
+  "builds": []
+ },
+ "CWCusInfDelta_SniperDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfDelta_Sniper_CWCusMission02": {
+  "builds": []
+ },
+ "CWCusInfEngineer": {
+  "builds": []
+ },
+ "CWCusInfEngineerDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfEngineerDeathRider1_CWCusMission03": {
+  "builds": []
+ },
+ "CWCusInfGreenBeret": {
+  "builds": []
+ },
+ "CWCusInfGreenBeretDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfGreenBeretRemoteCharge": {
+  "builds": []
+ },
+ "CWCusInfGreenBeret_CWCusMission02": {
+  "builds": []
+ },
+ "CWCusInfHeavyAssault": {
+  "builds": []
+ },
+ "CWCusInfHeavyAssaultDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfHeavyAssaultDeathRider1_CWCusMission03": {
+  "builds": []
+ },
+ "CWCusInfHeavyAssaultWhite01": {
+  "builds": []
+ },
+ "CWCusInfHeavySniper": {
+  "builds": []
+ },
+ "CWCusInfHeavySniperDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfLAWAntiTankMissile": {
+  "builds": []
+ },
+ "CWCusInfM2Man": {
+  "builds": []
+ },
+ "CWCusInfM4AssaultRifle_LaserDesignator": {
+  "builds": []
+ },
+ "CWCusInfM4AssaultRifle_LaserDesignatorDummyShell": {
+  "builds": []
+ },
+ "CWCusInfM4AssaultRifle_LaserDesignatorTimer": {
+  "builds": []
+ },
+ "CWCusInfMedic": {
+  "builds": []
+ },
+ "CWCusInfMedicDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfMortarMan": {
+  "builds": []
+ },
+ "CWCusInfOfficer": {
+  "builds": []
+ },
+ "CWCusInfOfficerBinocularsDummy": {
+  "builds": []
+ },
+ "CWCusInfOfficerBinocularsDummyShell": {
+  "builds": []
+ },
+ "CWCusInfOfficerDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfOfficerDeathRider1_CWCusMission03": {
+  "builds": []
+ },
+ "CWCusInfOfficerSmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCusInfPilot": {
+  "builds": []
+ },
+ "CWCusInfPilotCrate": {
+  "builds": []
+ },
+ "CWCusInfSniper": {
+  "builds": []
+ },
+ "CWCusInfSniperDeathRider1": {
+  "builds": []
+ },
+ "CWCusInfSniperWhite01": {
+  "builds": []
+ },
+ "CWCusInfStingerAntiAirMissile": {
+  "builds": []
+ },
+ "CWCusInfStingerAntiAirMissile_01": {
+  "builds": []
+ },
+ "CWCusInfStingerAntiAirMissile_02": {
+  "builds": []
+ },
+ "CWCusInfStingerAntiAirMissile_03": {
+  "builds": []
+ },
+ "CWCusInfTOWMan": {
+  "builds": []
+ },
+ "CWCusInvisibleCountermeasureFlare": {
+  "builds": []
+ },
+ "CWCusInvisibleCountermeasureFlare_CMs": {
+  "builds": []
+ },
+ "CWCusLargeFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusLargeFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCusM109": {
+  "builds": []
+ },
+ "CWCusM109AnalogDataStream": {
+  "builds": []
+ },
+ "CWCusM109_AAGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusM113": {
+  "builds": []
+ },
+ "CWCusM113ChassisOne": {
+  "builds": []
+ },
+ "CWCusM113ChassisOne_Convoy": {
+  "builds": []
+ },
+ "CWCusM113_Convoy": {
+  "builds": []
+ },
+ "CWCusM163": {
+  "builds": []
+ },
+ "CWCusM163ChassisOne": {
+  "builds": []
+ },
+ "CWCusM163VulcanCannonMissile": {
+  "builds": []
+ },
+ "CWCusM1A1": {
+  "builds": []
+ },
+ "CWCusM1A1SmokeGrenadeDummy": {
+  "builds": []
+ },
+ "CWCusM1A1SmokeGrenadeField": {
+  "builds": []
+ },
+ "CWCusM1A1_AAGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusM2A1": {
+  "builds": []
+ },
+ "CWCusM2A1_Convoy": {
+  "builds": []
+ },
+ "CWCusM48": {
+  "builds": []
+ },
+ "CWCusM48Missile": {
+  "builds": []
+ },
+ "CWCusM48_Deployable": {
+  "builds": []
+ },
+ "CWCusM48_Deployed": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusM48_Deployed_Stealthed": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusM60A3": {
+  "builds": []
+ },
+ "CWCusM60A3_AAGun": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusM939": {
+  "builds": []
+ },
+ "CWCusM939_Convoy": {
+  "builds": []
+ },
+ "CWCusM998": {
+  "builds": []
+ },
+ "CWCusM998_Convoy": {
+  "builds": []
+ },
+ "CWCusM998_M2": {
+  "builds": []
+ },
+ "CWCusM998_M2_Convoy": {
+  "builds": []
+ },
+ "CWCusM998_M2_Scout": {
+  "builds": []
+ },
+ "CWCusM998_Mk19": {
+  "builds": []
+ },
+ "CWCusM998_Mk19_Convoy": {
+  "builds": []
+ },
+ "CWCusM998_TOW": {
+  "builds": []
+ },
+ "CWCusM998_TOW_Convoy": {
+  "builds": []
+ },
+ "CWCusMLRS": {
+  "builds": []
+ },
+ "CWCusMLRSMissile": {
+  "builds": []
+ },
+ "CWCusParachute": {
+  "builds": []
+ },
+ "CWCusParachuteVeterancyCrate": {
+  "builds": []
+ },
+ "CWCusParadropBeacon": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusRadarStation": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusRadarStation_spawned": {
+  "builds": []
+ },
+ "CWCusSR71": {
+  "builds": []
+ },
+ "CWCusSatchelCharge": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusSidewinderMissile": {
+  "builds": []
+ },
+ "CWCusSmallFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCusSmallFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCusSparrowMissile": {
+  "builds": []
+ },
+ "CWCusSpecialChute01": {
+  "builds": []
+ },
+ "CWCusSpecialChute02": {
+  "builds": []
+ },
+ "CWCusSupplyDropDrone": {
+  "builds": []
+ },
+ "CWCusTOWMissile": {
+  "builds": []
+ },
+ "CWCusTOWMissile01": {
+  "builds": []
+ },
+ "CWCusTOWMissile02": {
+  "builds": []
+ },
+ "CWCusTOWMissile03": {
+  "builds": []
+ },
+ "CWCusTOWMissile04": {
+  "builds": []
+ },
+ "CWCusTOWMissile05": {
+  "builds": []
+ },
+ "CWCusUH60": {
+  "builds": [],
+  "repair": true
+ },
+ "CWCusUH60MinigunMissile": {
+  "builds": []
+ },
+ "CWCusWarFactory": {
+  "builds": [
+   "CWCusM998_M2",
+   "CWCusM998_TOW",
+   "CWCusM998_Mk19",
+   "CWCusM2A1",
+   "CWCusM113",
+   "CWCusM163",
+   "CWCusM60A3",
+   "CWCusM48_Deployable",
+   "CWCusM1A1",
+   "CWCusM109",
+   "CWCusMLRS",
+   "CWCusM48"
+  ],
+  "canCapture": true
+ },
+ "CWCusWarFactory_spawned": {
+  "builds": []
+ },
+ "CWCus_AirField": {
+  "builds": [
+   "CWCusA10",
+   "CWCusF4G",
+   "CWCusF111",
+   "CWCusEF111",
+   "CWCusF16",
+   "CWCusF15"
+  ],
+  "canCapture": true
+ },
+ "CWCus_AirField_spawned": {
+  "builds": []
+ },
+ "CWCus_Barracks": {
+  "builds": [
+   "CWCusInfAssault",
+   "CWCusInfHeavyAssault",
+   "CWCusInfAntiTank",
+   "CWCusInfAntiAir",
+   "CWCusInfMedic",
+   "CWCusInfEngineer",
+   "CWCusInfSniper",
+   "CWCusInfHeavySniper",
+   "CWCusInfOfficer",
+   "CWCusInfGreenBeret",
+   "CWCusM939"
+  ],
+  "canCapture": true
+ },
+ "CWCus_Barracks_spawned": {
+  "builds": []
+ },
+ "CWCus_CH47_SkyCrane": {
+  "builds": [
+   "CWCus_SmallFuelDepot",
+   "CWCus_LargeFuelDepot",
+   "CWCus_Barracks",
+   "CWCus_WarFactory",
+   "CWCus_Helipad",
+   "CWCus_AirField",
+   "CWCus_RadarStation",
+   "CWCus_CommandCenter",
+   "CWCus_Dropzone"
+  ]
+ },
+ "CWCus_CommandCenter": {
+  "builds": [
+   "CWCus_Dozer"
+  ],
+  "canCapture": true
+ },
+ "CWCus_CommandCenter_spawned": {
+  "builds": []
+ },
+ "CWCus_Dozer": {
+  "builds": [
+   "CWCus_SmallFuelDepot",
+   "CWCus_LargeFuelDepot",
+   "CWCus_Barracks",
+   "CWCus_WarFactory",
+   "CWCus_Helipad",
+   "CWCus_AirField",
+   "CWCus_RadarStation",
+   "CWCus_CommandCenter",
+   "CWCus_Dropzone"
+  ]
+ },
+ "CWCus_Dropzone": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCus_Dropzone_spawned": {
+  "builds": []
+ },
+ "CWCus_Helipad": {
+  "builds": [
+   "CWCusUH60",
+   "CWCusAH6",
+   "CWCus_CH47_SkyCrane",
+   "CWCusAH1",
+   "CWCusAH64"
+  ],
+  "canCapture": true
+ },
+ "CWCus_Helipad_spawned": {
+  "builds": []
+ },
+ "CWCus_LargeFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCus_LargeFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCus_RadarStation": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCus_RadarStation_spawned": {
+  "builds": []
+ },
+ "CWCus_SmallFuelDepot": {
+  "builds": [],
+  "canCapture": true
+ },
+ "CWCus_SmallFuelDepot_spawned": {
+  "builds": []
+ },
+ "CWCus_WarFactory": {
+  "builds": [
+   "CWCusM998_M2",
+   "CWCusM998_TOW",
+   "CWCusM998_Mk19",
+   "CWCusM2A1",
+   "CWCusM113",
+   "CWCusM163",
+   "CWCusM60A3",
+   "CWCusM48",
+   "CWCusM1A1",
+   "CWCusM109",
+   "CWCusMLRS"
+  ],
+  "canCapture": true
+ },
+ "CWCus_WarFactory_spawned": {
+  "builds": []
+ },
+ "WoodWall01SeeThrough": {
+  "builds": []
+ }
+}

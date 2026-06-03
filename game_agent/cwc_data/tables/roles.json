@@ -1,0 +1,1812 @@
+{
+ "BrickWall01SeeThrough": [],
+ "CWCcivBBT": [],
+ "CWCcivBus": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCcivCampFire": [],
+ "CWCcivCar01": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCcivCar02": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCcivCar03": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCcivCar04": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCcivChurch": [
+  "structure"
+ ],
+ "CWCcivChurchDebris01": [],
+ "CWCcivConveyor": [],
+ "CWCcivCrossingGuard": [],
+ "CWCcivEuropeanLandmarkBridge": [
+  "structure"
+ ],
+ "CWCcivEuropeanLandmarkBridgeRubble": [],
+ "CWCcivFakeRider_1": [
+  "infantry"
+ ],
+ "CWCcivFakeRider_2": [
+  "infantry"
+ ],
+ "CWCcivFishHut": [
+  "structure"
+ ],
+ "CWCcivFishHut_2": [
+  "structure"
+ ],
+ "CWCcivFishHut_3": [
+  "structure"
+ ],
+ "CWCcivFlag_Large": [
+  "structure"
+ ],
+ "CWCcivFlag_Small": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_ConsumerDrone": [],
+ "CWCcivFuel_Large_OilDepot": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilRefinery01": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilRefinery02": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilStorageTank01": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilStorageTank02": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilTank01": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_OilTank02": [
+  "structure"
+ ],
+ "CWCcivFuel_Large_StealDrone": [],
+ "CWCcivFuel_Medium_GasStation01": [
+  "structure"
+ ],
+ "CWCcivFuel_Medium_GasStation02": [
+  "structure"
+ ],
+ "CWCcivFuel_Medium_OilDerrick": [
+  "structure"
+ ],
+ "CWCcivFuel_Small_ConsumerDrone": [],
+ "CWCcivFuel_Small_GasStation01": [
+  "structure"
+ ],
+ "CWCcivFuel_Small_OilStorageTank01": [
+  "structure"
+ ],
+ "CWCcivHolz01": [],
+ "CWCcivHolzstoss": [],
+ "CWCcivInfTarget": [],
+ "CWCcivL_house": [
+  "structure"
+ ],
+ "CWCcivLeitplanke": [
+  "vehicle"
+ ],
+ "CWCcivLeitplankeLeftEnd": [
+  "vehicle"
+ ],
+ "CWCcivLeitplankeLeftEnd_Autobahn": [
+  "vehicle"
+ ],
+ "CWCcivLeitplankeRightEnd": [
+  "vehicle"
+ ],
+ "CWCcivLeitplankeRightEnd_Autobahn": [
+  "vehicle"
+ ],
+ "CWCcivLeitplanke_Autobahn": [
+  "vehicle"
+ ],
+ "CWCcivMil_Tent": [
+  "structure"
+ ],
+ "CWCcivMil_Tentr": [
+  "structure"
+ ],
+ "CWCcivMil_Tents": [
+  "structure"
+ ],
+ "CWCcivOffice": [
+  "structure"
+ ],
+ "CWCcivPrison": [
+  "structure"
+ ],
+ "CWCcivRadioStation": [
+  "structure"
+ ],
+ "CWCcivSandBagWall01": [],
+ "CWCcivSandBagWall02": [],
+ "CWCcivSandbagWallEnd": [],
+ "CWCcivSkyline01": [
+  "structure"
+ ],
+ "CWCcivSkyline02": [
+  "structure"
+ ],
+ "CWCcivSkyline03": [
+  "structure"
+ ],
+ "CWCcivSkyline04": [
+  "structure"
+ ],
+ "CWCcivSkyline05": [
+  "structure"
+ ],
+ "CWCcivSkyline06": [
+  "structure"
+ ],
+ "CWCcivSkyline07": [
+  "structure"
+ ],
+ "CWCcivSkyline08": [
+  "structure"
+ ],
+ "CWCcivSnowman": [],
+ "CWCcivStadtschild01": [],
+ "CWCcivTechRadarStation": [
+  "structure"
+ ],
+ "CWCcivTechRadarStationPing": [],
+ "CWCcivTnkTarget": [],
+ "CWCcivTrainCar": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCcivTrainCarBack": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCcivTrainEngine": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCcivWoodFence": [
+  "vehicle"
+ ],
+ "CWCcivWoodFence2": [],
+ "CWCcivWoodFence3": [],
+ "CWCeuLeo2A4": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCeuLeo2A4_MGGun": [
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCgen40mmGrenade": [],
+ "CWCgen40mmGrenade_01": [],
+ "CWCgen40mmGrenade_02": [],
+ "CWCgen40mmGrenade_03": [],
+ "CWCgen40mmGrenade_04": [],
+ "CWCgen40mmGrenade_05": [],
+ "CWCgen80mmGrenade": [],
+ "CWCgenAIMarker1": [],
+ "CWCgenAIMarker10": [],
+ "CWCgenAIMarker11": [],
+ "CWCgenAIMarker12": [],
+ "CWCgenAIMarker13": [],
+ "CWCgenAIMarker14": [],
+ "CWCgenAIMarker15": [],
+ "CWCgenAIMarker16": [],
+ "CWCgenAIMarker17": [],
+ "CWCgenAIMarker18": [],
+ "CWCgenAIMarker19": [],
+ "CWCgenAIMarker2": [],
+ "CWCgenAIMarker20": [],
+ "CWCgenAIMarker3": [],
+ "CWCgenAIMarker4": [],
+ "CWCgenAIMarker5": [],
+ "CWCgenAIMarker6": [],
+ "CWCgenAIMarker7": [],
+ "CWCgenAIMarker8": [],
+ "CWCgenAIMarker9": [],
+ "CWCgenAISensor": [],
+ "CWCgenAirSuicideWeaponDummy": [],
+ "CWCgenAircraftDisabler": [],
+ "CWCgenAircraftSpotter": [],
+ "CWCgenAircraftSpotterMissile": [],
+ "CWCgenAirfieldDrone": [],
+ "CWCgenAntiRadarDrone": [],
+ "CWCgenArtilleryShell": [],
+ "CWCgenArtilleryShell_01": [],
+ "CWCgenArtilleryShell_02": [],
+ "CWCgenArtillerySpotter": [],
+ "CWCgenCarpetBombExplosion1": [],
+ "CWCgenCarpetBombExplosion2": [],
+ "CWCgenDirectArtilleryShell": [],
+ "CWCgenExplosiveShell": [],
+ "CWCgenExplosiveShellAir": [],
+ "CWCgenExplosiveShell_Spectre_105mm": [],
+ "CWCgenExplosiveShell_Spectre_20mm": [],
+ "CWCgenExplosiveShell_Spectre_40mm": [],
+ "CWCgenFireTestObject": [],
+ "CWCgenFlagConquestChopper_North": [
+  "structure"
+ ],
+ "CWCgenFlagConquestChopper_South": [
+  "structure"
+ ],
+ "CWCgenFlagConquestHeavy_North": [
+  "structure"
+ ],
+ "CWCgenFlagConquestHeavy_South": [
+  "structure"
+ ],
+ "CWCgenFlagConquestLight_North": [
+  "structure"
+ ],
+ "CWCgenFlagConquestLight_South": [
+  "structure"
+ ],
+ "CWCgenFlagConquestMedium_East": [
+  "structure"
+ ],
+ "CWCgenFlagConquestMedium_West": [
+  "structure"
+ ],
+ "CWCgenHEATTankShell": [],
+ "CWCgenHeavySniperBullet_Prone": [],
+ "CWCgenHeavySniperBullet_Prone_01": [],
+ "CWCgenHeavySniperBullet_Prone_02": [],
+ "CWCgenHeavySniperBullet_Prone_03": [],
+ "CWCgenHeavySniperBullet_Prone_04": [],
+ "CWCgenHeavySniperBullet_Prone_05": [],
+ "CWCgenHeavySniperBullet_Prone_06": [],
+ "CWCgenHeavySniperBullet_Prone_07": [],
+ "CWCgenHeavySniperBullet_Prone_08": [],
+ "CWCgenHeavySniperBullet_Prone_09": [],
+ "CWCgenHeavySniperBullet_Prone_10": [],
+ "CWCgenHeavySniperBullet_Stand": [],
+ "CWCgenHeavySniperBullet_Stand_01": [],
+ "CWCgenHeavySniperBullet_Stand_02": [],
+ "CWCgenHeavySniperBullet_Stand_03": [],
+ "CWCgenHeavySniperBullet_Stand_04": [],
+ "CWCgenHeavySniperBullet_Stand_05": [],
+ "CWCgenHeavySniperBullet_Stand_06": [],
+ "CWCgenHeavySniperBullet_Stand_07": [],
+ "CWCgenHeavySniperBullet_Stand_08": [],
+ "CWCgenHeavySniperBullet_Stand_09": [],
+ "CWCgenHeavySniperBullet_Stand_10": [],
+ "CWCgenInfBlood": [],
+ "CWCgenLockOnCursor": [],
+ "CWCgenMachineCannonShell": [],
+ "CWCgenMachineCannonShell_BRDM2": [],
+ "CWCgenMachineCannonShell_BRDM2_01": [],
+ "CWCgenMachineCannonShell_BRDM2_02": [],
+ "CWCgenMachineCannonShell_BRDM2_03": [],
+ "CWCgenMachineCannonShell_BRDM2_04": [],
+ "CWCgenMachineCannonShell_BRDM2_05": [],
+ "CWCgenMachineCannonShell_BRDM2_06": [],
+ "CWCgenMachineCannonShell_BRDM2_07": [],
+ "CWCgenMachineCannonShell_BRDM2_08": [],
+ "CWCgenMachineCannonShell_BRDM2_09": [],
+ "CWCgenMachineCannonShell_BRDM2_10": [],
+ "CWCgenMachineCannonShell_BRDM2_11": [],
+ "CWCgenMachineCannonShell_BRDM2_12": [],
+ "CWCgenMachineCannonShell_BRDM2_13": [],
+ "CWCgenMachineCannonShell_BRDM2_14": [],
+ "CWCgenMachineCannonShell_BRDM2_15": [],
+ "CWCgenMachineCannonShell_BRDM2_16": [],
+ "CWCgenMachineCannonShell_BRDM2_17": [],
+ "CWCgenMachineCannonShell_BRDM2_18": [],
+ "CWCgenMachineCannonShell_BRDM2_19": [],
+ "CWCgenMachineCannonShell_BRDM2_20": [],
+ "CWCgenMachineGunBullet": [],
+ "CWCgenMachineGunShell": [],
+ "CWCgenMachineGunShellAir": [],
+ "CWCgenMachineGunShellBarrage": [],
+ "CWCgenMissionMap": [],
+ "CWCgenMissionMarker": [],
+ "CWCgenRadarDrone": [],
+ "CWCgenSABOTTankShell": [],
+ "CWCgenSmallSuicideWeaponDummy": [],
+ "CWCgenSniperBullet_Prone": [],
+ "CWCgenSniperBullet_Prone_01": [],
+ "CWCgenSniperBullet_Prone_02": [],
+ "CWCgenSniperBullet_Prone_03": [],
+ "CWCgenSniperBullet_Prone_04": [],
+ "CWCgenSniperBullet_Prone_05": [],
+ "CWCgenSniperBullet_Prone_06": [],
+ "CWCgenSniperBullet_Prone_07": [],
+ "CWCgenSniperBullet_Prone_08": [],
+ "CWCgenSniperBullet_Prone_09": [],
+ "CWCgenSniperBullet_Prone_10": [],
+ "CWCgenSniperBullet_Stand": [],
+ "CWCgenSniperBullet_Stand_01": [],
+ "CWCgenSniperBullet_Stand_02": [],
+ "CWCgenSniperBullet_Stand_03": [],
+ "CWCgenSniperBullet_Stand_04": [],
+ "CWCgenSniperBullet_Stand_05": [],
+ "CWCgenSniperBullet_Stand_06": [],
+ "CWCgenSniperBullet_Stand_07": [],
+ "CWCgenSniperBullet_Stand_08": [],
+ "CWCgenSniperBullet_Stand_09": [],
+ "CWCgenSniperBullet_Stand_10": [],
+ "CWCgenSuicideWeaponDummy": [],
+ "CWCgenSupplyDropCrate": [],
+ "CWCgenTinySuicideWeaponDummy": [],
+ "CWCgenTreesOnFire": [],
+ "CWCgenTreesOnFire_Major": [],
+ "CWCgenTreesOnFire_Minor": [],
+ "CWCnatBear": [
+  "infantry"
+ ],
+ "CWCnatBird01": [],
+ "CWCnatBird02": [],
+ "CWCnatBombCrater01_Big": [],
+ "CWCnatBombCrater01_Middle": [],
+ "CWCnatBombCrater01_Small": [],
+ "CWCnatBombFire": [],
+ "CWCnatBombLightSmokeBig": [],
+ "CWCnatBombLightSmokeMiddle": [],
+ "CWCnatBombLightSmokeSmall": [],
+ "CWCnatBombSmokeBig": [],
+ "CWCnatBombSmokeMiddle": [],
+ "CWCnatBombSmokeSmall": [],
+ "CWCnatBrownGrass": [],
+ "CWCnatBrownGrass01": [],
+ "CWCnatBurningEmber": [],
+ "CWCnatBush01": [],
+ "CWCnatClouds_B": [],
+ "CWCnatClouds_M": [],
+ "CWCnatClouds_T": [],
+ "CWCnatCow": [
+  "infantry"
+ ],
+ "CWCnatFish": [
+  "infantry"
+ ],
+ "CWCnatFlamingBush01": [],
+ "CWCnatFlamingTreeBurnedStump": [],
+ "CWCnatFlamingTreeCherryBlossom01": [],
+ "CWCnatFlamingTreeCherryBlossom02": [],
+ "CWCnatFlamingTreeFir01B": [],
+ "CWCnatFlamingTreeMapleStump": [],
+ "CWCnatFlamingTreeOakStump": [],
+ "CWCnatFlamingTreePineStump": [],
+ "CWCnatFlamingTreeSpruceStump": [],
+ "CWCnatGenericFlamingTree": [],
+ "CWCnatGenericGrass": [],
+ "CWCnatGenericModelGrass": [],
+ "CWCnatGenericModelGrass01": [],
+ "CWCnatGenericTree": [],
+ "CWCnatGenericTree_Toppled": [],
+ "CWCnatGreenGrass": [],
+ "CWCnatGreenGrass01": [],
+ "CWCnatIceBear": [
+  "infantry"
+ ],
+ "CWCnatReedGreen": [],
+ "CWCnatReedGreen2": [],
+ "CWCnatSky": [],
+ "CWCnatTreeBurnedStump": [],
+ "CWCnatTreeCherryBlossom01": [],
+ "CWCnatTreeCherryBlossom02": [],
+ "CWCnatTreeFir01B": [],
+ "CWCnatTreeFlamer": [],
+ "CWCnatTreeMapleStump": [],
+ "CWCnatTreeOakStump": [],
+ "CWCnatTreePineStump": [],
+ "CWCnatTreeSpruceStump": [],
+ "CWCnatVinesBrown": [],
+ "CWCnatVinesGreen": [],
+ "CWCru2S1": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruAT5": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruAT5_Convoy": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruATMine": [],
+ "CWCruATMineTimer": [],
+ "CWCruAirField": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruAirField_spawned": [],
+ "CWCruBM21": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruBM21Mine": [],
+ "CWCruBM21MineBouncingDummy": [],
+ "CWCruBM21MineDummy": [],
+ "CWCruBM21MineMissile": [],
+ "CWCruBM21Missile": [],
+ "CWCruBM21_CWCruMission01": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruBMD1": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBMD1Missile": [],
+ "CWCruBMD1Missile01": [],
+ "CWCruBMD1Missile02": [],
+ "CWCruBMD1Missile03": [],
+ "CWCruBMP2": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBMP2Missile": [],
+ "CWCruBMP2Missile01": [],
+ "CWCruBMP2Missile02": [],
+ "CWCruBMP2Missile03": [],
+ "CWCruBMP2Missile04": [],
+ "CWCruBMP2_Convoy": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBRDM2": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBRDM2_Convoy": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBTR80": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruBTR80SmokeGrenadeDummy": [],
+ "CWCruBTR80SmokeGrenadeField": [],
+ "CWCruBTR80pPropagandaSpeakerDummy": [],
+ "CWCruBTR80pPropagandaSpeakerDummy_InvisibleMarker": [],
+ "CWCruBarracks": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruBarracks_spawned": [],
+ "CWCruCargoParachute": [],
+ "CWCruCommandCenter": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruCommandCenter_spawned": [],
+ "CWCruConquestDrone": [
+  "infantry"
+ ],
+ "CWCruConvoyDrone": [
+  "infantry"
+ ],
+ "CWCruCountermeasureFlare": [],
+ "CWCruCruiseMissile": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruCruiseMissileWeaponDummy": [],
+ "CWCruDozer": [
+  "dozer",
+  "vehicle"
+ ],
+ "CWCruDropzoneDrone": [
+  "infantry"
+ ],
+ "CWCruEmergencyFuelDrone0": [],
+ "CWCruEmergencyFuelDrone1": [],
+ "CWCruEmergencyFuelDrone2": [],
+ "CWCruEmergencyFuelDrone3": [],
+ "CWCruEmergencyFuelDrone4": [],
+ "CWCruEmergencyFuelDrone5": [],
+ "CWCruEmergencyFuelDrone6": [],
+ "CWCruFAB1000": [],
+ "CWCruFakeRider_EmptyDeployed": [
+  "vehicle"
+ ],
+ "CWCruFakeRider_EmptyFortTank": [
+  "vehicle"
+ ],
+ "CWCruFakeRider_Inf_Prone": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Prone_Elite": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Prone_Veteran": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_AA": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_AT": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_Elite": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_GR": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_GR_Veteran": [
+  "infantry"
+ ],
+ "CWCruFakeRider_Inf_Stand_Veteran": [
+  "infantry"
+ ],
+ "CWCruFlag": [],
+ "CWCruFortInf": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruFortInf_spawned": [],
+ "CWCruFortSA6": [
+  "aa",
+  "anti_tank",
+  "capturer",
+  "structure"
+ ],
+ "CWCruFortSA6_spawned": [],
+ "CWCruFortTank": [
+  "anti_tank",
+  "capturer",
+  "structure",
+  "transport"
+ ],
+ "CWCruFortTank_spawned": [],
+ "CWCruHelipad": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruInfAntiAir": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfAntiAirDeathRider1": [],
+ "CWCruInfAntiMaterial": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfAntiMaterialDeathRider1": [],
+ "CWCruInfAntiTank": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfAntiTankDeathRider1": [],
+ "CWCruInfAssault": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfAssaultDeathRider1": [],
+ "CWCruInfEngineer": [
+  "anti_inf",
+  "anti_tank",
+  "engineer",
+  "infantry",
+  "repair"
+ ],
+ "CWCruInfEngineerDeathRider1": [
+  "engineer",
+  "repair"
+ ],
+ "CWCruInfHeavyAssault": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfHeavyAssaultDeathRider1": [],
+ "CWCruInfMedic": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfMedicDeathRider1": [],
+ "CWCruInfOfficer": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfOfficerBinocularsDummy": [],
+ "CWCruInfOfficerBinocularsDummyShell": [],
+ "CWCruInfOfficerDeathRider1": [],
+ "CWCruInfOfficerSmokeGrenadeField": [],
+ "CWCruInfPilot": [
+  "infantry"
+ ],
+ "CWCruInfPilotCrate": [],
+ "CWCruInfRPGAntiTankMissile": [],
+ "CWCruInfRPOAntiMaterialMissile": [],
+ "CWCruInfRPOAntiMaterialMissile_01": [],
+ "CWCruInfRPOAntiMaterialMissile_02": [],
+ "CWCruInfSniper": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfSniperDeathRider1": [],
+ "CWCruInfSpetsnaz": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfSpetsnazDeathRider1": [],
+ "CWCruInfSpetsnazRemoteCharge": [],
+ "CWCruInfSpetsnaz_CWCruMission02": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCruInfStrelaAntiAirMissile": [],
+ "CWCruInfStrelaAntiAirMissile_01": [],
+ "CWCruInfStrelaAntiAirMissile_02": [],
+ "CWCruInfStrelaAntiAirMissile_03": [],
+ "CWCruInvisibleCountermeasureFlare": [],
+ "CWCruInvisibleCountermeasureFlare_CMs": [],
+ "CWCruLargeFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruLargeFuelDepot_spawned": [],
+ "CWCruMi24": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi24AntiTankMissile": [],
+ "CWCruMi24AntiTankMissile01": [],
+ "CWCruMi24AntiTankMissile02": [],
+ "CWCruMi24AntiTankMissile03": [],
+ "CWCruMi24AntiTankMissile04": [],
+ "CWCruMi24AntiTankMissile05": [],
+ "CWCruMi24HEMissile": [],
+ "CWCruMi26": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi26_CalledIn": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi26_CalledIn_Paradrop": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi26_CalledIn_SupplyDropDZ": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi26_k": [],
+ "CWCruMi28": [],
+ "CWCruMi8": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruMi8_k": [],
+ "CWCruMiG25": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruMiG29": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruMiG29_SD_R73s": [
+  "capturer"
+ ],
+ "CWCruMiG29_k": [],
+ "CWCruNSVT": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruOffMapArtillery": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruParachute": [],
+ "CWCruParachuteVeterancyCrate": [],
+ "CWCruParadropBeacon": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruR60MMissile": [],
+ "CWCruRBK500": [],
+ "CWCruRBK500Clusters": [],
+ "CWCruRBK500StageOne": [],
+ "CWCruRBK500StageTwo": [],
+ "CWCruS300": [
+  "aa",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruS300Missile": [],
+ "CWCruSA11": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSA11Missile": [],
+ "CWCruSA11_CWCusMission03": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSA11_Deployable": [
+  "vehicle"
+ ],
+ "CWCruSA11_Deployed": [
+  "aa",
+  "anti_tank",
+  "capturer",
+  "structure",
+  "transport"
+ ],
+ "CWCruSA6Missile": [],
+ "CWCruSA9": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSA9Missile": [],
+ "CWCruSA9_Convoy": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSS20": [
+  "vehicle"
+ ],
+ "CWCruSS20Missile": [],
+ "CWCruSatchelCharge": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruShilka": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruShilkaGunMissile": [],
+ "CWCruSmallFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruSmallFuelDepot_spawned": [],
+ "CWCruSmerchBattery": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruSmerchBatteryMissile": [],
+ "CWCruStrikeMissile": [],
+ "CWCruSu24": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruSu24AS14KedgeMissile": [],
+ "CWCruSu24_M": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruSu25": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSu25FlareDummy": [],
+ "CWCruSu25GatlingMissile": [],
+ "CWCruSu25HEMissile": [],
+ "CWCruSu25T": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruSu25VikhrMissileLeft": [],
+ "CWCruSu25VikhrMissileRight": [],
+ "CWCruSu25_C": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruSu25_SD_R60Ms": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruSu27": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCruSu27R27Missile": [],
+ "CWCruSu27R73Missile": [],
+ "CWCruSu27_SD_R73s": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruSupplyDropDrone": [
+  "infantry"
+ ],
+ "CWCruT64": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT64_MachineGun": [
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruT64_R": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT72": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT72_MachineGun": [
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruT72_k3": [],
+ "CWCruT80BV": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT80BVMissile": [],
+ "CWCruT80BVMissile01": [],
+ "CWCruT80BVMissile02": [],
+ "CWCruT80BVMissile03": [],
+ "CWCruT80BVMissile04": [],
+ "CWCruT80BVMissile05": [],
+ "CWCruT80BVMissile06": [],
+ "CWCruT80BV_AAGun": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruT80U": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT80UK": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT80UKMissile": [],
+ "CWCruT80UKSmokeGrenadeDummy": [],
+ "CWCruT80UKSmokeGrenadeField": [],
+ "CWCruT80UKTargetDesignatorLaserBeam": [],
+ "CWCruT80UK_AWSystem": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCruT80UK_AWSystem2": [
+  "capturer"
+ ],
+ "CWCruT80UK_GR": [
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCruT80UK_Shtora": [
+  "capturer"
+ ],
+ "CWCruT80USmokeGrenadeDummy": [],
+ "CWCruT80USmokeGrenadeField": [],
+ "CWCruTu160": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCruTu95": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruTu95MOV01": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruTu95MOV02": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCruUAZ": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCruUral": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCruUralRadar": [
+  "vehicle"
+ ],
+ "CWCruUral_Convoy": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCruWarFactory": [
+  "capturer",
+  "structure"
+ ],
+ "CWCruWarFactory_spawned": [],
+ "CWCruZAB500": [],
+ "CWCruZAB500Firestorm": [],
+ "CWCruZAB500StageOne": [],
+ "CWCruZAB500StageTwo": [],
+ "CWCru_AirField": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_AirField_spawned": [],
+ "CWCru_Barracks": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_Barracks_spawned": [],
+ "CWCru_CommandCenter": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_CommandCenter_spawned": [],
+ "CWCru_Dozer": [
+  "dozer",
+  "vehicle"
+ ],
+ "CWCru_Helipad": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_Helipad_spawned": [],
+ "CWCru_LargeFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_LargeFuelDepot_spawned": [],
+ "CWCru_SmallFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_SmallFuelDepot_spawned": [],
+ "CWCru_WarFactory": [
+  "capturer",
+  "structure"
+ ],
+ "CWCru_WarFactory_spawned": [],
+ "CWCusA10": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusA10GatlingMissile": [],
+ "CWCusA10MaverickMissile": [],
+ "CWCusA10_SD_Sidewinders": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusA10_k": [],
+ "CWCusAC130": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusAC130_CWCusMission05": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusAC130_Minigun_BOFOR": [
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusAH1": [
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusAH1MachineCannonMissile": [],
+ "CWCusAH1TowMissile": [],
+ "CWCusAH1_k": [],
+ "CWCusAH6": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusAH64": [
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusAH64FFARMissile": [],
+ "CWCusAH64HellfireMissile": [],
+ "CWCusAH64HellfireMissile01": [],
+ "CWCusAH64HellfireMissile02": [],
+ "CWCusAH64HellfireMissile03": [],
+ "CWCusAH64HellfireMissile04": [],
+ "CWCusAH64HellfireMissile05": [],
+ "CWCusAH64HellfireMissile06": [],
+ "CWCusAH64HellfireMissile07": [],
+ "CWCusAH64HellfireMissile08": [],
+ "CWCusAH64MachineCannonMissile": [],
+ "CWCusAH6_F": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusATMine": [],
+ "CWCusATMineTimer": [],
+ "CWCusAirField": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusAirField_spawned": [],
+ "CWCusB1B": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusB1BMK84": [],
+ "CWCusB52": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusBarracks": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusBarracks_spawned": [],
+ "CWCusC130": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusC130_Paradrop": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusC130_SupplyDropDZ": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusC130_crashed": [
+  "structure"
+ ],
+ "CWCusCBU81": [],
+ "CWCusCBU89Mine": [],
+ "CWCusCBU89MineBouncingDummy": [],
+ "CWCusCBU89MineDummy": [],
+ "CWCusCH47": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusCH47_SkyCrane": [
+  "aircraft",
+  "dozer",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusCH47_k": [],
+ "CWCusCargoParachute": [],
+ "CWCusCommandCenter": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusCommandCenter_spawned": [],
+ "CWCusConquestDrone": [
+  "infantry"
+ ],
+ "CWCusConvoyDrone": [
+  "infantry"
+ ],
+ "CWCusCountermeasureFlare": [],
+ "CWCusCruiseMissile": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusCruiseMissileWeaponDummy": [],
+ "CWCusDeltaParachute": [],
+ "CWCusDozer": [
+  "dozer",
+  "vehicle"
+ ],
+ "CWCusDropzone": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusDropzoneDrone": [
+  "infantry"
+ ],
+ "CWCusDropzone_spawned": [],
+ "CWCusE3": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusE3_Patrol": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusEF111": [
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusEmergencyFuelDrone0": [],
+ "CWCusEmergencyFuelDrone1": [],
+ "CWCusEmergencyFuelDrone2": [],
+ "CWCusEmergencyFuelDrone3": [],
+ "CWCusEmergencyFuelDrone4": [],
+ "CWCusEmergencyFuelDrone5": [],
+ "CWCusEmergencyFuelDrone6": [],
+ "CWCusF111": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusF111CBU89StageOne": [],
+ "CWCusF111CBU89StageTwo": [],
+ "CWCusF111MK82StageOne": [],
+ "CWCusF111MK82StageTwo": [],
+ "CWCusF111_B": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusF111_M": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusF117": [
+  "aircraft",
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusF117GBU27": [],
+ "CWCusF15": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusF15AnalogDataStream": [],
+ "CWCusF15_Patrol": [
+  "aircraft",
+  "vehicle"
+ ],
+ "CWCusF15_SD_Sidewinders": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusF16": [
+  "aa",
+  "aircraft",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusF16_SD_Sidewinders": [
+  "capturer"
+ ],
+ "CWCusF4G": [
+  "aircraft",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusFakeRider_CWCusAIM9M_Sidewinder_SRAAM_AH6": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusAIM9M_Sidewinder_SRAAM_AH6_Ground": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusFFAR_70mm_Rocket": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusFFAR_70mm_Rocket_Ground": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusM134_7_62mm_Minigun": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusM134_7_62mm_Minigun_Ground": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusM220_ATGM_Launcher_AH6": [
+  "infantry"
+ ],
+ "CWCusFakeRider_CWCusM220_ATGM_Launcher_AH6_Ground": [
+  "infantry"
+ ],
+ "CWCusFakeRider_DropCargo": [
+  "infantry"
+ ],
+ "CWCusFakeRider_EmptyDeployed": [
+  "vehicle"
+ ],
+ "CWCusFakeRider_FlyMode": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Prone": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Prone_Elite": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Prone_Veteran": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_AA": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_AT": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_Elite": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_GR": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_GR_Veteran": [
+  "infantry"
+ ],
+ "CWCusFakeRider_Inf_Stand_Veteran": [
+  "infantry"
+ ],
+ "CWCusFlag": [],
+ "CWCusFortChap": [
+  "aa",
+  "anti_tank",
+  "capturer",
+  "structure"
+ ],
+ "CWCusFortChap_spawned": [],
+ "CWCusFortM2": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusFortM2_spawned": [],
+ "CWCusFortMortar": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusFortMortar_spawned": [],
+ "CWCusFortTOW": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusFortTOW_spawned": [],
+ "CWCusGBU10": [],
+ "CWCusGBU12": [],
+ "CWCusGCAirField": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusGCAirfield_ComVehicle": [
+  "structure"
+ ],
+ "CWCusGCAirfield_Tent": [
+  "structure"
+ ],
+ "CWCusHARMMissile": [],
+ "CWCusHelipad": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusHelipad_spawned": [],
+ "CWCusInfAntiAir": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfAntiAirDeathRider1": [],
+ "CWCusInfAntiTank": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfAntiTankDeathRider1": [],
+ "CWCusInfAntiTankDeathRider1_CWCusMission03": [],
+ "CWCusInfAntiTankWhite01": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfAssault": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfAssaultDeathRider1": [],
+ "CWCusInfAssaultDeathRider1_CWCusMission03": [],
+ "CWCusInfDelta": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfDeltaDeathRider1": [],
+ "CWCusInfDelta_Demolition": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfDelta_DemolitionDeathRider1": [],
+ "CWCusInfDelta_Medic": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfDelta_MedicDeathRider1": [],
+ "CWCusInfDelta_Medic_CWCusMission02": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfDelta_Sniper": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfDelta_SniperDeathRider1": [],
+ "CWCusInfDelta_Sniper_CWCusMission02": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfEngineer": [
+  "anti_inf",
+  "anti_tank",
+  "engineer",
+  "infantry",
+  "repair"
+ ],
+ "CWCusInfEngineerDeathRider1": [
+  "engineer",
+  "repair"
+ ],
+ "CWCusInfEngineerDeathRider1_CWCusMission03": [
+  "engineer",
+  "repair"
+ ],
+ "CWCusInfGreenBeret": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfGreenBeretDeathRider1": [],
+ "CWCusInfGreenBeretRemoteCharge": [],
+ "CWCusInfGreenBeret_CWCusMission02": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfHeavyAssault": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfHeavyAssaultDeathRider1": [],
+ "CWCusInfHeavyAssaultDeathRider1_CWCusMission03": [],
+ "CWCusInfHeavyAssaultWhite01": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfHeavySniper": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfHeavySniperDeathRider1": [],
+ "CWCusInfLAWAntiTankMissile": [],
+ "CWCusInfM2Man": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfM4AssaultRifle_LaserDesignator": [],
+ "CWCusInfM4AssaultRifle_LaserDesignatorDummyShell": [],
+ "CWCusInfM4AssaultRifle_LaserDesignatorTimer": [],
+ "CWCusInfMedic": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfMedicDeathRider1": [],
+ "CWCusInfMortarMan": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "infantry"
+ ],
+ "CWCusInfOfficer": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfOfficerBinocularsDummy": [],
+ "CWCusInfOfficerBinocularsDummyShell": [],
+ "CWCusInfOfficerDeathRider1": [],
+ "CWCusInfOfficerDeathRider1_CWCusMission03": [],
+ "CWCusInfOfficerSmokeGrenadeField": [],
+ "CWCusInfPilot": [
+  "infantry"
+ ],
+ "CWCusInfPilotCrate": [],
+ "CWCusInfSniper": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfSniperDeathRider1": [],
+ "CWCusInfSniperWhite01": [
+  "anti_inf",
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInfStingerAntiAirMissile": [],
+ "CWCusInfStingerAntiAirMissile_01": [],
+ "CWCusInfStingerAntiAirMissile_02": [],
+ "CWCusInfStingerAntiAirMissile_03": [],
+ "CWCusInfTOWMan": [
+  "anti_tank",
+  "infantry"
+ ],
+ "CWCusInvisibleCountermeasureFlare": [],
+ "CWCusInvisibleCountermeasureFlare_CMs": [],
+ "CWCusLargeFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusLargeFuelDepot_spawned": [],
+ "CWCusM109": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusM109AnalogDataStream": [],
+ "CWCusM109_AAGun": [
+  "aa",
+  "anti_inf",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusM113": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM113ChassisOne": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM113ChassisOne_Convoy": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM113_Convoy": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM163": [
+  "vehicle"
+ ],
+ "CWCusM163ChassisOne": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusM163VulcanCannonMissile": [],
+ "CWCusM1A1": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusM1A1SmokeGrenadeDummy": [],
+ "CWCusM1A1SmokeGrenadeField": [],
+ "CWCusM1A1_AAGun": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusM2A1": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM2A1_Convoy": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM48": [
+  "aa",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusM48Missile": [],
+ "CWCusM48_Deployable": [
+  "vehicle"
+ ],
+ "CWCusM48_Deployed": [
+  "aa",
+  "anti_tank",
+  "capturer",
+  "structure",
+  "transport"
+ ],
+ "CWCusM48_Deployed_Stealthed": [
+  "aa",
+  "anti_tank",
+  "capturer",
+  "structure",
+  "transport"
+ ],
+ "CWCusM60A3": [
+  "anti_inf",
+  "anti_tank",
+  "vehicle"
+ ],
+ "CWCusM60A3_AAGun": [
+  "aa",
+  "anti_tank",
+  "capturer"
+ ],
+ "CWCusM939": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM939_Convoy": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_Convoy": [
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_M2": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_M2_Convoy": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_M2_Scout": [
+  "anti_inf",
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_Mk19": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_Mk19_Convoy": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_TOW": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusM998_TOW_Convoy": [
+  "anti_tank",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusMLRS": [
+  "anti_inf",
+  "anti_tank",
+  "artillery",
+  "vehicle"
+ ],
+ "CWCusMLRSMissile": [],
+ "CWCusParachute": [],
+ "CWCusParachuteVeterancyCrate": [],
+ "CWCusParadropBeacon": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusRadarStation": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusRadarStation_spawned": [],
+ "CWCusSR71": [
+  "aircraft",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusSatchelCharge": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusSidewinderMissile": [],
+ "CWCusSmallFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusSmallFuelDepot_spawned": [],
+ "CWCusSparrowMissile": [],
+ "CWCusSpecialChute01": [],
+ "CWCusSpecialChute02": [],
+ "CWCusSupplyDropDrone": [
+  "infantry"
+ ],
+ "CWCusTOWMissile": [],
+ "CWCusTOWMissile01": [],
+ "CWCusTOWMissile02": [],
+ "CWCusTOWMissile03": [],
+ "CWCusTOWMissile04": [],
+ "CWCusTOWMissile05": [],
+ "CWCusUH60": [
+  "aircraft",
+  "repair",
+  "transport",
+  "vehicle"
+ ],
+ "CWCusUH60MinigunMissile": [],
+ "CWCusWarFactory": [
+  "capturer",
+  "structure"
+ ],
+ "CWCusWarFactory_spawned": [],
+ "CWCus_AirField": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_AirField_spawned": [],
+ "CWCus_Barracks": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_Barracks_spawned": [],
+ "CWCus_CH47_SkyCrane": [
+  "aircraft",
+  "dozer",
+  "transport",
+  "vehicle"
+ ],
+ "CWCus_CommandCenter": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_CommandCenter_spawned": [],
+ "CWCus_Dozer": [
+  "dozer",
+  "vehicle"
+ ],
+ "CWCus_Dropzone": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_Dropzone_spawned": [],
+ "CWCus_Helipad": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_Helipad_spawned": [],
+ "CWCus_LargeFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_LargeFuelDepot_spawned": [],
+ "CWCus_RadarStation": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_RadarStation_spawned": [],
+ "CWCus_SmallFuelDepot": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_SmallFuelDepot_spawned": [],
+ "CWCus_WarFactory": [
+  "capturer",
+  "structure"
+ ],
+ "CWCus_WarFactory_spawned": [],
+ "WoodWall01SeeThrough": []
+}

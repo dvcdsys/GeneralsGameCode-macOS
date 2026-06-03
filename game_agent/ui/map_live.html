@@ -33,6 +33,38 @@
   .st-failed{ background:#7a1f1f33; color:#ff7b7b; } .st-cancelled{ background:#55555533; color:#888; }
   .line { color:#9aa3b0; font-size:11.5px; margin:2px 0; border-left:2px solid #2c313c; padding-left:6px; }
   .rationale { color:#bfc6d0; font-size:11.5px; font-style:italic; white-space:pre-wrap; }
+  /* knowledge modal */
+  #kbtn { width:100%; margin-top:6px; }
+  #modal { position:fixed; inset:0; background:#0d0f13ee; z-index:20; display:none; flex-direction:column; padding:14px 18px; box-sizing:border-box; }
+  #modal.open { display:flex; }
+  #modal .mhead { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  #modal h1 { font-size:15px; margin:0; color:#fff; flex:0 0 auto; }
+  #modal .tab { background:#222630; border:1px solid #333b48; padding:4px 12px; border-radius:6px; cursor:pointer; color:#aab; }
+  #modal .tab.on { background:#2d4a7a; color:#fff; border-color:#3a5d96; }
+  #modal .sp { flex:1; }
+  #kfilter { width:200px; }
+  #mbody { flex:1; overflow:auto; border:1px solid #232833; border-radius:6px; background:#12151b; }
+  table.kt { border-collapse:collapse; width:100%; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  table.kt th { position:sticky; top:0; background:#1a1e26; color:#cdd3dc; padding:4px 7px; text-align:left; cursor:pointer; border-bottom:1px solid #2c313c; white-space:nowrap; }
+  table.kt th:hover { color:#fff; }
+  table.kt td { padding:3px 7px; border-bottom:1px solid #1c2029; white-space:nowrap; }
+  table.kt tr:hover td { background:#1a1f29; }
+  .tag { display:inline-block; font-size:9.5px; padding:0 4px; margin:0 2px 1px 0; border-radius:7px; background:#263042; color:#9fc0ff; }
+  .tag.aa{background:#3a2742;color:#e59bff} .tag.anti_tank{background:#402a22;color:#ffb38a}
+  .tag.anti_inf{background:#243a28;color:#8fe6a0} .tag.artillery{background:#403a20;color:#ffe08a}
+  .tag.capturer{background:#1f3a3a;color:#7fe0e0} .tag.repair{background:#22324a;color:#8ab6ff}
+  /* heatmap */
+  #heat { font-size:9px; border-collapse:collapse; }
+  #heat th { position:sticky; top:0; background:#1a1e26; }
+  #heat th.rowh { position:sticky; left:0; z-index:2; text-align:right; padding:2px 5px; background:#1a1e26; }
+  #heat td { width:13px; height:13px; text-align:center; color:#0009; }
+  #heat td.rowh { position:sticky; left:0; background:#1a1e26; color:#cdd3dc; text-align:right; padding:2px 5px; width:auto; white-space:nowrap; }
+  /* intel panel */
+  .bar { height:9px; border-radius:3px; background:#2c313c; overflow:hidden; margin:2px 0; }
+  .bar > span { display:block; height:100%; }
+  .hist { display:flex; align-items:center; gap:5px; margin:1px 0; }
+  .hist .hn { flex:1; color:#bfc6d0; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hist .hc { color:#7f8794; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -61,12 +93,14 @@
     <div class="row"><input type="checkbox" id="L_tech" checked><span class="sw" style="background:#c264ff"></span><label for="L_tech">tech / capturable</label></div>
     <div class="row"><input type="checkbox" id="L_garr" checked><span class="sw" style="background:#ff8c1a"></span><label for="L_garr">garrisonable (bunkers)</label></div>
     <div class="row"><input type="checkbox" id="L_props"><span class="sw" style="background:#556"></span><label for="L_props">props (trees…)</label></div>
+    <div class="row"><input type="checkbox" id="L_sectors"><span class="sw" style="background:#3a5d96"></span><label for="L_sectors">sectors (intel grid)</label></div>
 
     <h2>Players</h2>
     <div id="players" class="num"></div>
 
     <h2>Counts</h2>
     <div id="counts" class="num"></div>
+    <button id="kbtn">📊 Knowledge tables</button>
     <div class="muted" style="margin-top:10px">faded = cached/undefined (last-known, not in sight)<br><span style="color:#ffe14d">●</span> gold pips on a unit = rank (veteran/elite/heroic)<br>wheel = zoom · drag = pan · hover = inspect</div>
   </div>
 
@@ -80,6 +114,12 @@
   <div id="agent">
     <h1>Agent</h1>
     <div id="agentstatus" class="muted">no agent state yet…</div>
+
+    <h2>Commander (subsystems)</h2>
+    <div id="cmdr" class="muted">—</div>
+
+    <h2>Battlefield intel</h2>
+    <div id="intel" class="muted">—</div>
 
     <h2>Commander's intent (directive)</h2>
     <textarea id="directive" placeholder="e.g. Defend my base in the north. Hold the central oil. Don't over-extend."></textarea>
@@ -103,6 +143,20 @@
     <h2>History</h2>
     <div id="history" class="muted">—</div>
   </div>
+</div>
+
+<div id="modal">
+  <div class="mhead">
+    <h1>CWC Knowledge</h1>
+    <span class="tab on" data-tab="units">Units</span>
+    <span class="tab" data-tab="buildings">Buildings</span>
+    <span class="tab" data-tab="matrix">Counter matrix</span>
+    <input id="kfilter" type="text" placeholder="filter (name / role / side)…"/>
+    <span id="kmeta" class="muted"></span>
+    <span class="sp"></span>
+    <button id="kclose">close ✕</button>
+  </div>
+  <div id="mbody"><div class="muted" style="padding:14px">loading tables… (start the commander once so /tmp/gen_agent_static.json is written)</div></div>
 </div>
 
 <script>
@@ -165,12 +219,31 @@ const SHOW = {
   prop:()=>document.getElementById('L_props').checked,
 };
 
+const SECTOR_COL = { home:'#3ce63c', front_edge:'#eb2d2d', flank:'#ffb454', rear:'#36dcdc', contested:'#c264ff', neutral:'#7f8794' };
+let SECTORS=null;   // {n, sectors:[{x,y,w,h,cls,enemy,mine,points}]} from /agent/state
+function drawSectors(){
+  if(!SECTORS || !document.getElementById('L_sectors').checked) return;
+  octx.save(); octx.lineWidth=1; octx.font='9px sans-serif'; octx.textAlign='center';
+  for(const s of SECTORS.sectors){
+    const [sx0,sy0]=worldToScreen(s.x - s.w/2, s.y + s.h/2);   // top-left (north up)
+    const w=s.w/MAP.cellSize*view.scale, h=s.h/MAP.cellSize*view.scale;
+    const col=SECTOR_COL[s.cls]||'#7f8794';
+    octx.globalAlpha=0.10; octx.fillStyle=col; octx.fillRect(sx0,sy0,w,h);
+    octx.globalAlpha=0.55; octx.strokeStyle=col; octx.strokeRect(sx0,sy0,w,h);
+    octx.globalAlpha=0.9; octx.fillStyle='#dfe3ea';
+    const [cx,cy]=worldToScreen(s.x,s.y);
+    if(s.enemy||s.mine||s.points) octx.fillText(`e${s.enemy} m${s.mine} p${s.points}`, cx, cy);
+    octx.fillStyle=col; octx.fillText(s.cls, cx, cy+10);
+  }
+  octx.restore();
+}
 function draw(){
   if(!MAP||!terrainImg) return;
   const {width:W,height:H}=MAP;
   tctx.imageSmoothingEnabled=false; tctx.clearRect(0,0,terrain.width,terrain.height);
   tctx.drawImage(terrainImg, view.panX, view.panY, W*view.scale, H*view.scale);
   octx.clearRect(0,0,overlay.width,overlay.height);
+  drawSectors();
   const counts={};
   for(const u of UNITS){
     if(u.x===undefined) continue;
@@ -247,7 +320,7 @@ stage.addEventListener('mousemove',e=>{ mouse.x=e.offsetX; mouse.y=e.offsetY; mo
 stage.addEventListener('mouseleave',()=>{ mouse.on=false; draw(); });
 document.getElementById('reload').onclick=()=>loadMap();
 document.getElementById('pause').onclick=e=>{ paused=!paused; e.target.textContent=paused?'resume':'pause'; };
-for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_props']) document.getElementById(id).onchange=draw;
+for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_props','L_sectors']) document.getElementById(id).onchange=draw;
 document.getElementById('botview').onchange=e=>{ BOT_VIEW=e.target.checked; UNITS=[]; updateViewInfo(); draw(); };  // next poll (≤450ms) refetches with/without fog
 
 (async()=>{ fit(); try{ await loadMap(); }catch(e){ document.getElementById('status').textContent='no map yet: '+e.message+' (start a match)'; } poll(); })();
@@ -300,6 +373,107 @@ document.getElementById('sendDirective').addEventListener('click', sendDirective
 // prefill the directive box with whatever the agent currently holds
 fetch('/agent/state',{cache:'no-store'}).then(r=>r.json()).then(s=>{ if(s&&s.directive){ document.getElementById('directive').value=s.directive; } }).catch(()=>{});
 setInterval(pollAgent, 1500); pollAgent();
+
+// ---- Commander subsystem detail + battlefield intel (commander writes these) ----
+function renderCmdr(s){
+  const el=document.getElementById('cmdr');
+  const d=s.detail;
+  if(!d || !Object.keys(d).length){ el.innerHTML='<span class="muted">— (run --agent commander)</span>'; return; }
+  el.innerHTML = Object.keys(d).map(k=>`<div class="line"><b>${escAg(k)}:</b> ${escAg(d[k])}</div>`).join('');
+}
+const ROLE_COLS = {air:'#e59bff', aircraft:'#e59bff', infantry:'#8fe6a0', vehicle:'#ffb38a', artillery:'#ffe08a'};
+function renderIntel(s){
+  const el=document.getElementById('intel');
+  const it=s.intel;
+  if(!it){ el.innerHTML='<span class="muted">— (no intel yet)</span>'; return; }
+  let h='';
+  if(it.dominance){ h+='<div style="margin-bottom:5px">';
+    const dm=it.dominance, tot=Object.values(dm).reduce((a,b)=>a+b,0)||1;
+    for(const k of Object.keys(dm)){ const pct=Math.round(100*dm[k]/tot);
+      h+=`<div class="hist"><span class="hn">${escAg(k)}</span><span class="hc">${pct}%</span></div>`+
+         `<div class="bar"><span style="width:${pct}%;background:${ROLE_COLS[k]||'#7da7ff'}"></span></div>`; }
+    h+=`<div class="muted" style="margin-top:3px">dominant: <b>${escAg(it.dominant||'?')}</b></div></div>`;
+  }
+  const hist=it.histogram||{};
+  const ks=Object.keys(hist).sort((a,b)=>hist[b]-hist[a]);
+  if(ks.length){ h+='<div class="muted" style="margin-top:4px">enemy units seen/produced:</div>';
+    h+=ks.slice(0,14).map(k=>`<div class="hist"><span class="hn">${escAg(k)}</span><span class="hc">${hist[k]}</span></div>`).join(''); }
+  if(it.neverUsed && it.neverUsed.length){ h+=`<div class="muted" style="margin-top:4px">never used: ${it.neverUsed.slice(0,8).map(escAg).join(', ')}</div>`; }
+  if(it.lastSeen!=null) h+=`<div class="muted" style="margin-top:4px">tracked contacts: ${it.lastSeen}</div>`;
+  el.innerHTML=h||'<span class="muted">—</span>';
+}
+// dedicated poll for the commander/intel panels (the original pollAgent only
+// renders the LLM-orchestrator fields; the commander writes detail+intel instead)
+async function pollCmdrIntel(){
+  let s; try { s = await (await fetch('/agent/state',{cache:'no-store'})).json(); } catch(e){ return; }
+  renderCmdr(s); renderIntel(s);
+  SECTORS = s.sectors || null;
+  if(document.getElementById('L_sectors').checked) draw();
+}
+setInterval(pollCmdrIntel, 1500); pollCmdrIntel();
+
+// ---- Knowledge modal: unit/building tables + counter-matrix heatmap ----
+let STATIC=null, KTAB='units', KSORT={col:'cost',dir:1};
+async function loadStatic(){
+  try{ STATIC = await (await fetch('/agent/static',{cache:'no-store'})).json(); }catch(e){ STATIC={ok:false}; }
+  const m=document.getElementById('kmeta');
+  if(STATIC && STATIC.ok && STATIC.meta){ const c=(STATIC.meta.counts)||{}; m.textContent=`${STATIC.units.length} units · ${STATIC.buildings.length} buildings · matrix ${Object.keys(STATIC.matrix||{}).length}×${(STATIC.matrixDefenders||[]).length}`; }
+  else m.textContent='no tables (run the commander once)';
+  renderKB();
+}
+const UCOLS=[['template','name'],['side','side'],['cost','$'],['buildTime','time'],['hp','hp'],['vision','vis'],['dps','dps'],['range','rng'],['roles','roles'],['damageTypes','dmg'],['prereqText','needs']];
+function rolesHtml(rs){ return (rs||[]).map(r=>`<span class="tag ${r}">${escAg(r)}</span>`).join(''); }
+function prereqText(p){ if(!p) return ''; const o=(p.object||[]).join(','), s=(p.science||[]).join(','); return [o,s].filter(Boolean).join(' / '); }
+function renderTableTab(rows){
+  rows=rows.map(r=>({...r, prereqText:prereqText(r.prereq)}));
+  const f=(document.getElementById('kfilter').value||'').toLowerCase();
+  if(f) rows=rows.filter(r=>(r.template+' '+(r.side||'')+' '+(r.roles||[]).join(' ')).toLowerCase().includes(f));
+  const c=KSORT.col, dir=KSORT.dir;
+  rows.sort((a,b)=>{ let x=a[c],y=b[c]; if(Array.isArray(x))x=x.join(); if(Array.isArray(y))y=y.join();
+    if(x==null)x=-Infinity; if(y==null)y=-Infinity; return (x>y?1:x<y?-1:0)*dir; });
+  let h='<table class="kt"><thead><tr>'+UCOLS.map(([k,l])=>`<th data-c="${k}">${l}${KSORT.col===k?(dir>0?' ▲':' ▼'):''}</th>`).join('')+'</tr></thead><tbody>';
+  for(const r of rows){ h+='<tr>'+UCOLS.map(([k])=>{
+    if(k==='roles') return `<td>${rolesHtml(r.roles)}</td>`;
+    if(k==='damageTypes') return `<td class="muted">${escAg((r.damageTypes||[]).join(','))}</td>`;
+    let v=r[k]; if(v==null)v=''; if(k==='template'&&r.aliasedFrom) v+=' *';
+    return `<td>${escAg(v)}</td>`; }).join('')+'</tr>'; }
+  h+='</tbody></table>';
+  return h;
+}
+function renderHeat(){
+  const mat=STATIC.matrix||{}, defs=STATIC.matrixDefenders||[];
+  const f=(document.getElementById('kfilter').value||'').toLowerCase();
+  let atk=Object.keys(mat); let dd=defs.slice();
+  if(f){ atk=atk.filter(a=>a.toLowerCase().includes(f)); dd=dd.filter(d=>d.toLowerCase().includes(f)); }
+  atk=atk.slice(0,60); dd=dd.slice(0,60);
+  // global max for color scaling
+  let mx=1; for(const a of atk) for(const d of dd){ const v=(mat[a]||{})[d]; if(v&&v>mx)mx=v; }
+  const short=n=>n.replace(/^CWC(ru|us|eu|gen|civ)?/,'');
+  let h='<table id="heat"><thead><tr><th class="rowh">atk \\ def</th>'+dd.map(d=>`<th title="${escAg(d)}">${escAg(short(d)).slice(0,5)}</th>`).join('')+'</tr></thead><tbody>';
+  for(const a of atk){ h+=`<tr><td class="rowh" title="${escAg(a)}">${escAg(short(a))}</td>`;
+    for(const d of dd){ const v=(mat[a]||{})[d]||0; const t=Math.min(1,v/mx);
+      const col=`rgb(${Math.round(40+t*200)},${Math.round(40+(1-t)*120)},60)`;
+      h+=`<td title="${escAg(a)} → ${escAg(d)}: ${v}" style="background:${v?col:'#161a20'}">${v?Math.round(v):''}</td>`; }
+    h+='</tr>'; }
+  h+='</tbody></table>';
+  return h;
+}
+function renderKB(){
+  const body=document.getElementById('mbody');
+  if(!STATIC || !STATIC.ok){ body.innerHTML='<div class="muted" style="padding:14px">No knowledge tables yet. Run <code>make agent AGENT=commander</code> once (it writes /tmp/gen_agent_static.json), then reopen.</div>'; return; }
+  if(KTAB==='units') body.innerHTML=renderTableTab(STATIC.units);
+  else if(KTAB==='buildings') body.innerHTML=renderTableTab(STATIC.buildings);
+  else body.innerHTML=renderHeat();
+  if(KTAB!=='matrix') body.querySelectorAll('th[data-c]').forEach(th=>th.onclick=()=>{
+    const c=th.dataset.c; if(KSORT.col===c)KSORT.dir*=-1; else {KSORT={col:c,dir:1};} renderKB(); });
+}
+document.getElementById('kbtn').onclick=()=>{ document.getElementById('modal').classList.add('open'); if(!STATIC) loadStatic(); else renderKB(); };
+document.getElementById('kclose').onclick=()=>document.getElementById('modal').classList.remove('open');
+document.querySelectorAll('#modal .tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('#modal .tab').forEach(x=>x.classList.remove('on'));
+  t.classList.add('on'); KTAB=t.dataset.tab; renderKB(); });
+document.getElementById('kfilter').addEventListener('input', ()=>renderKB());
+window.addEventListener('keydown',e=>{ if(e.key==='Escape') document.getElementById('modal').classList.remove('open'); });
 </script>
 </body>
 </html>

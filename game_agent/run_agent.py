@@ -22,6 +22,13 @@ def run_scripted(args, client, view):
     run(ScriptedAgent(), client, hz=args.hz, view=view, max_ticks=args.max_ticks)
 
 
+def run_commander(args, client, view):
+    """The always-on ALGORITHMIC CWC bot (no LLM). Plays + wins on its own; an LLM/human only patches
+    the StrategyDirective file. See agent/commander/ and docs/COMMANDER_PLAN.md."""
+    from agent.commander.commander import run_commander as _run
+    _run(client, view=view, fast_hz=args.fast_hz)
+
+
 def run_ollama(args, client, view):
     from agent.journal import AgentNotes, EventJournal
     from agent.ollama_agent import OllamaPlanner
@@ -48,7 +55,7 @@ def run_ollama(args, client, view):
                 view=view, fast_hz=args.fast_hz, plan_period_s=args.plan_period)
 
 
-AGENTS = {"scripted": run_scripted, "ollama": run_ollama}
+AGENTS = {"scripted": run_scripted, "commander": run_commander, "ollama": run_ollama}
 
 
 def main():

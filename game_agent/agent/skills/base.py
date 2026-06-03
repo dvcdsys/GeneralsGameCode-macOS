@@ -152,7 +152,10 @@ def is_dozerish(u):
 
 # Templates that are units but NOT front-line fighters — never send these to attack/defend.
 _NONCOMBAT_HINTS = ("dozer", "worker", "construction", "drone", "drop", "supply",
-                    "ambulance", "tractor", "crawler", "spy", "medic")
+                    "ambulance", "tractor", "crawler", "spy", "medic",
+                    # support trucks with no real weapon — they were being mass-built as "combat"
+                    # (CWCruUral / CWCruUralRadar / CWCruUral_Convoy) and padded the army uselessly.
+                    "ural", "radar")
 
 
 def is_combat_unit(u):
@@ -208,9 +211,17 @@ def capture_capable_units(ctx):
     return [u for u in my_units(ctx) if is_infantry(u)]
 
 
-def find_dozers(ctx):
-    """Construction units (dozers / workers) owned by me."""
+def find_all_dozers(ctx):
+    """ALL construction units (dozers / workers) owned by me, busy or not — for COUNTING (e.g. the
+    dozer-target). Use find_dozers (free only) for ASSIGNING a builder."""
     return [u for u in my_units(ctx) if is_dozerish(u)]
+
+
+def find_dozers(ctx):
+    """FREE construction units (dozers / workers) owned by me — excludes dozers that are currently
+    building/repairing (engine `busy` flag). Re-tasking a busy dozer cancels its native construct order
+    and abandons the half-built structure, so a building dozer must be left alone until it finishes."""
+    return [u for u in my_units(ctx) if is_dozerish(u) and not u.get("busy")]
 
 
 def _entry_name(e):
@@ -428,42 +439,37 @@ def resolve_point(ctx, params, default=None):
 
 
 def find_build_spot(ctx, cx, cy, attempt=0, min_radius=200.0, max_radius=900.0,
-                    step=60.0, clearance=190.0):
-    """Find a placement cell near (cx,cy) that is terrain-buildable AND far enough from existing
-    buildings. The engine rejects 'illegal build location' for cells too close to the base even when
-    the terrain is clear — empirically a structure must sit ~200+ world-units from existing buildings,
-    not just on clear ground. So we start the search at `min_radius` and require `clearance` from every
-    known building, rather than hugging the base.
+                    step=60.0, clearance=190.0, avoid=None):
+    """Find a placement cell near (cx,cy) that is terrain-buildable AND far enough from every existing
+    building. The engine rejects 'illegal build location' for cells too close to the base even when the
+    terrain is clear — empirically a structure must sit ~200+ world-units from existing buildings — so we
+    start at `min_radius` and require `clearance` from each building.
 
-    `attempt` rotates the search so each retry probes a *different* sector — without this, a rejected
-    spot is re-picked identically and every retry fails the same way. Final legality is still validated
-    game-side (isLocationLegalToBuild); this keeps candidates inside the usually-legal envelope and
-    keeps retries moving."""
+    `avoid` = extra (x,y) points to keep clear of, used for buildings PLACED EARLIER THIS TICK that aren't
+    in ctx.world yet (the snapshot is taken once per tick): without it, several sub-builds in one tick all
+    pick the SAME spot off the same centroid and stack on top of each other (verified: a barracks and a
+    fuel depot at the identical coordinate). `attempt` rotates the search so retries probe a different
+    sector. Returns None when there's genuinely no clear spot — the caller MUST skip (never stack)."""
     w = ctx.world
     blds = [(u.get("x", 0.0), u.get("y", 0.0)) for u in ctx.world.units if is_building(u)]
+    if avoid:
+        blds = blds + [(float(x), float(y)) for (x, y) in avoid]   # in-flight placements count as obstacles
 
     def clear_of_buildings(x, y):
         return all(math.hypot(x - bx, y - by) >= clearance for bx, by in blds)
 
     base_ang = attempt * 1.7  # irrational-ish step so successive attempts spread around the circle
-    # pass 1: buildable terrain AND clear of building footprints
-    r = min_radius
-    while r <= max_radius:
-        steps = max(8, int(2 * math.pi * r / step))
-        for k in range(steps):
-            a = base_ang + 2 * math.pi * k / steps
-            x, y = cx + r * math.cos(a), cy + r * math.sin(a)
-            if w.buildable(x, y) and clear_of_buildings(x, y):
-                return (x, y)
-        r += step
-    # pass 2: relax the footprint check, just need buildable terrain
-    r = min_radius
-    while r <= max_radius:
-        steps = max(8, int(2 * math.pi * r / step))
-        for k in range(steps):
-            a = base_ang + 2 * math.pi * k / steps
-            x, y = cx + r * math.cos(a), cy + r * math.sin(a)
-            if w.buildable(x, y):
-                return (x, y)
-        r += step
-    return (cx, cy)
+    # pass 1 requires buildable terrain; pass 2 relaxes ONLY the terrain check — both ALWAYS enforce
+    # clearance, so we never return a spot stacked on another building (the old pass 2 dropped clearance
+    # and returned overlapping spots; the final fallback used to return (cx,cy) right on the base).
+    for require_buildable in (True, False):
+        r = min_radius
+        while r <= max_radius:
+            steps = max(8, int(2 * math.pi * r / step))
+            for k in range(steps):
+                a = base_ang + 2 * math.pi * k / steps
+                x, y = cx + r * math.cos(a), cy + r * math.sin(a)
+                if clear_of_buildings(x, y) and (w.buildable(x, y) or not require_buildable):
+                    return (x, y)
+            r += step
+    return None

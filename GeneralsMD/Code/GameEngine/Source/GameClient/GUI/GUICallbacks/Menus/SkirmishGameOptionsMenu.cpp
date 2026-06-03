@@ -487,12 +487,21 @@ void DebugAutoStartSkirmish( const char *mapName )
 
 	bool useExternalSlot = false;
 	bool allyMode = false;
+	bool observerMode = false;
 #ifdef RTS_HAS_EXTERNAL_CONTROL
 	useExternalSlot = (::getenv("GEN_AUTO_EXTERNAL") != nullptr);
 	// GEN_AUTO_ALLY: put the External(API) player on the HUMAN's team and add a common enemy AI,
 	// so the human (local view, no fog) can watch the API-driven ally's units move. Needs a 3+
 	// player AI map (pass GEN_AUTO_MAP, e.g. so_countryside_day).
 	allyMode = useExternalSlot && (::getenv("GEN_AUTO_ALLY") != nullptr);
+	// GEN_AUTO_OBSERVER: make the LOCAL human an OBSERVER so the match is decided purely by the
+	// External(API) bot vs the enemy AI (1v1). Without this the idle local human is a teammate that
+	// the enemy eliminates first, ending the match as a "defeat" no matter how dominant the bot is —
+	// which made it impossible to measure/achieve a real bot-vs-AI win. Implies allyMode (to spawn the
+	// separate enemy AI in slot 2); the bot stays team 0, the enemy stays team 1, the human just watches.
+	observerMode = useExternalSlot && (::getenv("GEN_AUTO_OBSERVER") != nullptr);
+	if (observerMode)
+		allyMode = true;
 #endif
 	// Matching non-(-1) team numbers => allies; different => enemies (see GameLogic slot->Dict).
 	const Int TEAM_HUMAN_ALLY = 0;
@@ -503,9 +512,18 @@ void DebugAutoStartSkirmish( const char *mapName )
 	gSlot.setName(prefs.getUserName());
 	gSlot.setState( SLOT_PLAYER, prefs.getUserName() );
 	gSlot.setColor(prefs.getPreferredColor());
-	gSlot.setPlayerTemplate(prefs.getPreferredFaction());
-	if (allyMode)
-		gSlot.setTeamNumber(TEAM_HUMAN_ALLY);
+	if (observerMode)
+	{
+		// local human just watches; PLAYERTEMPLATE_OBSERVER players are non-playing ("dead") and do
+		// NOT count toward victory/defeat, so the match is decided by the bot vs the enemy AI only.
+		gSlot.setPlayerTemplate(PLAYERTEMPLATE_OBSERVER);
+	}
+	else
+	{
+		gSlot.setPlayerTemplate(prefs.getPreferredFaction());
+		if (allyMode)
+			gSlot.setTeamNumber(TEAM_HUMAN_ALLY);
+	}
 	TheSkirmishGameInfo->setSlot(0, gSlot);
 
 	// Slot 1: an AI opponent (random color/faction/start filled in later). By default a single
@@ -516,6 +534,25 @@ void DebugAutoStartSkirmish( const char *mapName )
 	aiSlot.setState(useExternalSlot ? SLOT_EXTERNAL_AI : SLOT_EASY_AI);
 	if (allyMode)
 		aiSlot.setTeamNumber(TEAM_HUMAN_ALLY);
+	// GEN_AUTO_FACTION: pin the external (bot) player's faction so test matches are reproducible on ONE
+	// faction (user: "prove USSR first" — random faction per game made validation inconsistent).
+	// russia/ussr/soviet/ru -> FactionRussia; usa/america/nato/us -> FactionUSA. Unset => random as before.
+	if (const char *fs = ::getenv("GEN_AUTO_FACTION"))
+	{
+		AsciiString f = fs; f.toLower();
+		const char *facName = nullptr;
+		if (f == "russia" || f == "ussr" || f == "soviet" || f == "ru") facName = "FactionRussia";
+		else if (f == "usa" || f == "america" || f == "nato" || f == "us") facName = "FactionUSA";
+		if (facName && ThePlayerTemplateStore)
+		{
+			Int idx = ThePlayerTemplateStore->getTemplateNumByName(AsciiString(facName));
+			if (idx >= 0)
+			{
+				aiSlot.setPlayerTemplate(idx);
+				DEBUG_LOG(("DebugAutoStartSkirmish: external faction pinned to %s (idx %d)", facName, idx));
+			}
+		}
+	}
 	TheSkirmishGameInfo->setSlot(1, aiSlot);
 
 	// Slot 2 (allyMode only): a common enemy for the human + API ally to fight.
@@ -563,10 +600,21 @@ void DebugAutoStartSkirmish( const char *mapName )
 	DEBUG_LOG(("DebugAutoStartSkirmish: launching skirmish on map '%s' (%s)", map.str(),
 		allyMode ? "human + API-ally vs enemy AI" : (useExternalSlot ? "1 human + 1 external/API player" : "1 human + 1 easy AI")));
 
+	// Global AI difficulty for the headless stand: env GEN_AUTO_DIFF (easy|normal|hard), default EASY.
+	// AISkirmishPlayer reads the GLOBAL difficulty (getGlobalDifficulty), so this governs how tough the
+	// opponent AI plays regardless of the slot's EASY/MED/HARD state.
+	GameDifficulty autoDiff = DIFFICULTY_EASY;
+	if (const char *ds = ::getenv("GEN_AUTO_DIFF"))
+	{
+		AsciiString d = ds; d.toLower();
+		if (d == "normal" || d == "medium" || d == "med") autoDiff = DIFFICULTY_NORMAL;
+		else if (d == "hard" || d == "brutal") autoDiff = DIFFICULTY_HARD;
+	}
+
 	InitRandom(TheSkirmishGameInfo->getSeed());
 	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
 	msg->appendIntegerArgument(GAME_SKIRMISH);
-	msg->appendIntegerArgument(DIFFICULTY_NORMAL);
+	msg->appendIntegerArgument(autoDiff);
 	msg->appendIntegerArgument(0);
 	msg->appendIntegerArgument(30);	// FPS limit
 }

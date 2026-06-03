@@ -14,10 +14,15 @@ TYPE_NAME = {0: "clear", 1: "water", 2: "cliff", 3: "rubble", 4: "obstacle", 6: 
 
 
 class WorldModel:
-    def __init__(self, mp, units, players):
+    def __init__(self, mp, units, players, owner=None):
         self.raw_map = mp or {}
         self.units = units or []
         self.players = players or []
+        # The querying agent's own player index. In OBSERVER mode the API's "local" player is the
+        # observer, so relationToLocal=='enemy' is true for BOTH the bot and the real enemy — without
+        # excluding `owner`, enemies() returns the bot's OWN units/buildings (it then targets its own
+        # base and counts its own army as the enemy force). None = no exclusion (normal-perspective use).
+        self.owner = owner
         self.width = self.raw_map.get("width", 0)
         self.height = self.raw_map.get("height", 0)
         self.cell = self.raw_map.get("cellSize", 10)
@@ -83,7 +88,10 @@ class WorldModel:
         return [u for u in self.units if u.get("player") == owner and u.get("category") == "unit"]
 
     def enemies(self):
-        return self.objects(relation="enemy")
+        out = self.objects(relation="enemy")
+        if self.owner is not None:
+            out = [u for u in out if u.get("player") != self.owner]
+        return out
 
     def economy_points(self):
         """Capturable oil/supply points (capture targets)."""
