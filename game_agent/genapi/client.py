@@ -119,8 +119,17 @@ class GameClient:
         return next((p for p in self.players() if p.get("controller") == "external"), None)
 
     def in_game(self):
-        h = self.healthz()
-        return bool(h and h.get("inGame"))
+        # Retry a couple times: at high sim speed a path-fail flood briefly bogs the engine so /healthz
+        # times out (returns None) even though the match is running fine. A single miss must not read as
+        # "match over" — that abandoned the bot mid-game.
+        for _ in range(3):
+            try:
+                h = self.healthz()
+            except Exception:  # noqa: BLE001
+                h = None
+            if h and h.get("inGame"):
+                return True
+        return False
 
     def events(self, duration=None, path="/events"):
         """Yield game-event dicts from the WS /events stream (see genapi.ws)."""

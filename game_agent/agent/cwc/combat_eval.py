@@ -21,6 +21,24 @@ def counter_score(kb, mine, enemy):
     return v or 0.0
 
 
+def can_hit_air(kb, template):
+    """Can this unit target AIRBORNE enemies at all? (weapon AntiAirborneVehicle -> role 'aa')."""
+    if not template:
+        return False
+    return kb.fine_role(template) == "aa" or "aa" in kb.roles_of(template)
+
+
+def counter_score_strict(kb, mine, enemy):
+    """counter_score, but 0 against AIRCRAFT unless `mine` can actually target airborne units.
+    The effectiveness table scores weapon dps against the ARMOR type and doesn't know the weapon
+    can't elevate — a T-72 'scores' 262 dps vs a helicopter it can never hit. Targeting/defense
+    decisions must use THIS variant, or tanks get ordered at helis and AA never looks needed."""
+    if kb.fine_role(enemy) in ("heli", "jet") or "aircraft" in kb.roles_of(enemy):
+        if not can_hit_air(kb, mine):
+            return 0.0
+    return counter_score(kb, mine, enemy)
+
+
 def _candidate_value(kb, cand, enemy_profile):
     """Weighted effective dps of `cand` against the enemy profile, per 100 cost.
 

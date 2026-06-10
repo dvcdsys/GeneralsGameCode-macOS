@@ -1511,6 +1511,12 @@ private:
 		{
 			Object* factory = firstOwned();
 			if (!factory) { statusOut = 400; r["accepted"] = false; r["error"] = "need a production building id in ids[0]"; return r; }
+			// API-LAYER REQUEST VALIDATION (not a game-logic change): a human can't even SELECT a building
+			// that's still going up, so the UI never lets them queue production from it. PLAYER_EXTERNAL has
+			// no UI, so this REST endpoint must reject the request itself — like returning 400 for an invalid
+			// target. We only READ the building's status here; we do NOT modify any engine mechanic.
+			if (factory->testStatus(OBJECT_STATUS_UNDER_CONSTRUCTION))
+			{ statusOut = 400; r["accepted"] = false; r["error"] = "factory still under construction (cannot produce yet)"; return r; }
 			std::string tn = params.value("template", std::string());
 			const ThingTemplate* tt = (TheThingFactory && !tn.empty())
 				? TheThingFactory->findTemplate(AsciiString(tn.c_str()), FALSE) : nullptr;

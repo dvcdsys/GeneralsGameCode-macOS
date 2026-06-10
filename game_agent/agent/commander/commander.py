@@ -19,7 +19,7 @@ from agent.knowledge import capture_capable_templates
 from agent.skills import base as _base  # read CAPTURE_TEMPLATES live (set once per match)
 from agent.skills.base import (
     SkillContext, set_capture_templates, my_buildings, my_units, is_building,
-    select_combat_units, is_combat_unit, find_dozers, find_build_spot, find_buildable_by_role,
+    select_combat_units, is_combat_unit, find_dozers, find_all_dozers, find_build_spot, find_buildable_by_role,
     find_trainable, find_trainable_combat, buildable_now, capture_capable_units, capturable_points, obj_pos, alive_ids,
     _ROLE_HINTS, DONE, FAILED,
 )
@@ -31,6 +31,8 @@ from agent.cwc import uistate, combat_eval
 from agent.cwc.intel import BattlefieldIntel
 from agent.cwc.opening import OpeningScript
 from agent.cwc.sectors import SectorModel
+from agent.cwc.squads import SquadSystem
+from agent.cwc.missions import MissionSystem
 
 
 class _Strike:
@@ -69,6 +71,8 @@ class Commander:
         # CWC knowledge base (counter matrix, roles, stats) — loaded once, shared.
         # intel/sectors are populated in later phases; None here is harmless.
         self.kb = get_kb()
+        self.squads = SquadSystem(self.kb)   # Stage 2: combined-arms squad maneuvering
+        self.missions = MissionSystem(self.kb, self.squads)  # strategic force allocation (scout/picket/siege/...)
         self.intel = BattlefieldIntel(self.kb, owner)
         self.sectors = None
         self.opening = OpeningScript(self.kb)
@@ -97,7 +101,13 @@ class Commander:
         # produce army fast so a dominant economy becomes a dominant army (default 75f was far too slow
         # — the enemy AI out-trained us 97-vs-63 while our capture income sat idle)
         self.army.PERIOD = 12
-        self.build.DOZER_TARGET = 4   # more dozers → parallel construction + survive losing some
+        # Dozer count is DEMAND-DRIVEN — _plan_dozers() sets build.DOZER_TARGET each tick from the live
+        # work plan (parallel builds + repair + far-job buffer). No fixed pile of idle dozers.
+        self._dozer_plan = None
+        self._last_repair = -10 ** 9
+        self._last_park = -10 ** 9
+        self._last_support = -10 ** 9
+        self._support_detail = ""
         self._army_detail = ""
         self._prod_k = 0
         self._last_expand = -10 ** 9
@@ -137,6 +147,9 @@ class Commander:
         ordered = self._counter_order(trainable, profile)
         used, made, picks = set(), 0, []
         for tmpl, builder, cost, _e in ordered:
+            if army_n + made >= target:
+                break                              # HARD per-tick cap: don't let many ready factories
+                                                   # overshoot the cap in a single tick (the 44→63 balloon)
             if not builder or builder in used or money < cost:
                 continue
             if (money - cost) < (self._tank_reserve + self._siege_reserve):
@@ -339,6 +352,16 @@ class Commander:
                    # for the war factory; then MANY factories so capture income becomes a big army
     EXPAND_FLOOR = 700     # build factories with modest cash — they're the throughput that wins
     EXPAND_PERIOD = 130    # build factories faster
+    # --- dozer demand planning (single source of truth; see _plan_dozers) ---
+    DOZER_HARD_CAP = 3     # rarely need more: 2-3 parallel builders raise a CWC base fine; idle dozers waste
+    REPAIR_HP_FRAC = 0.65  # dozer-repair a finished building once it drops below this health fraction
+    DOZER_FAR_DIST = 700.0 # a build/repair job beyond this from the base earns a +1 mobility/escort buffer
+    REPAIR_PERIOD = 120    # min frames between issuing repair orders (avoid thrashing)
+    # Surplus dozers can't be sold and we DON'T force-employ them — just tuck the idle ones into a safe
+    # corner behind the base, out of the way, ready for later strategic use.
+    PARK_PERIOD = 150      # min frames between re-issuing the park move
+    PARK_DIST = 300.0      # how far behind the base (away from the enemy) to park
+    PARK_RADIUS = 180.0    # a dozer within this of the park spot counts as already parked
     BUILDING_TARGET = 6    # a lean base (CC + fuel + 2 barracks + warfactory + defense); income is CAPTURE,
                            #   not buildings, so don't sink the opening cash into structures
     MIN_DEFENSE = 4        # tiny home defense, then everything into capturers + capturing
@@ -452,14 +475,22 @@ class Commander:
                 pass
         d = self.directive
 
+        # GLOBAL ARMY-CAP GATE: _produce_army self-gates at the target, but _produce_tank/_produce_siege/
+        # _produce_support do NOT — they kept stamping tanks/arty/AA every tick, so when the bot was WINNING
+        # (few losses) the army ballooned far past the cap (observed 99 vs cap 44) and the mass overloaded
+        # the engine pathfinder → sim crawl → crash at the moment of victory. Hard-stop ALL production at the
+        # cap; auto-reinforcement resumes the instant losses drop the count below it.
+        self._army_full = len(select_combat_units(ctx)) >= self.ARMY_HARD_CAP
+
         # TANK QUOTA (user feedback #1: "you build tank factories but no tanks"). Compute the reserve
         # and buy the tank FIRST, before the capturer/expand/opening spend below — money oscillated
         # $75-1130 and was drained every tick before _produce_army ran, so the tank never fielded.
         # _produce_tank self-gates (no war-factory vehicle option / army still tiny → no reserve), so
         # this never starves the opening economy.
-        self._produce_tank(ctx)
-        # SIEGE: while committed, field artillery (anti-structure DPS to actually raze the base fast).
-        self._produce_siege(ctx)
+        if not self._army_full:
+            self._produce_tank(ctx)
+            # SIEGE: while committed, field artillery (anti-structure DPS to raze the base fast).
+            self._produce_siege(ctx)
 
         # CWC is ECONOMY-FIRST: income is capture-driven, so a wide economy (many capturers holding many
         # oil/flag points + extra production buildings) out-scales an army flooded from one base. The
@@ -474,7 +505,10 @@ class Commander:
                 self.opening.tick(self, ctx)
             except Exception:  # noqa: BLE001 - opening is best-effort
                 pass
-        # 1) base plan, then keep scaling buildings, then build capturers, then capture oil
+        # 1) base plan, then keep scaling buildings, then build capturers, then capture oil.
+        # DOZER PLANNING FIRST: size the dozer count from the live work plan (build + repair + far) and
+        # set build.DOZER_TARGET/extra_demand BEFORE build.tick so it trains exactly what's employable.
+        repairs = self._plan_dozers(ctx)
         self.build.tick(ctx)
         # CAPTURE-RUSH economy: income = capturing neutral civ oil/gas/flag points (the enemy AI grabs
         # ~7 early). So PUMP cheap capturers and commit them to nearby points BEFORE sinking cash into
@@ -483,6 +517,10 @@ class Commander:
         if d["economy"].get("capture", True):
             self._capture(ctx)
         self._expand(ctx)
+        # dozer-repair: a leftover free dozer fixes the most-damaged building (a planned dozer job)
+        self._dispatch_repair(ctx, repairs)
+        # park any surplus idle dozers in a safe corner behind the base (not force-employed; kept for later)
+        self._park_idle_dozers(ctx)
         # ARMY — funded by capture income; scales with buildings. Hold army spend while we still need a
         # bit more economy (so cash goes to capturers first), once a small defense exists.
         # Convert the capture economy into ARMY: scale the target with captured points (= income),
@@ -493,7 +531,7 @@ class Commander:
         # tanks) already overwhelms the easy AI, and beyond that the ENGINE's hierarchical pathfinder
         # chokes when 100+ units all attack-move to the distant enemy base at once (FindHierarchicalPath
         # spam → the game HANGS / API goes unresponsive before the kill). Fewer, better units > a horde.
-        target = min(self.ARMY_HARD_CAP, max(int(d["army"]["target"]), 30 + 6 * captured))
+        target = min(self.ARMY_HARD_CAP, max(int(d["army"]["target"]), 28 + 5 * captured))
         # Reserve cash for the $3000 fuel depot that UNLOCKS the war factory (tanks): build a basic
         # infantry defense first, then SAVE — otherwise cheap infantry keeps draining cash below $3000,
         # the fuel depot never gets built, and the bot is stuck with a weak infantry-only army.
@@ -504,41 +542,72 @@ class Commander:
         n_fac = self._count_role(ctx, "barracks") + self._count_role(ctx, "warfactory")
         have_wf = self._count_role(ctx, "warfactory") > 0
         money = ctx.me.get("money") or 0
-        if len(select_combat_units(ctx)) >= 12 and money < 4000 and ((not have_wf) or n_fac < self.FACTORY_TARGET):
+        if self._army_full:
+            self._army_detail = "army {}/{} (cap — production halted)".format(
+                len(select_combat_units(ctx)), self.ARMY_HARD_CAP)
+        elif len(select_combat_units(ctx)) >= 12 and money < 4000 and ((not have_wf) or n_fac < self.FACTORY_TARGET):
             self._army_detail = "saving ${} for production ({}/{} factories)".format(money, n_fac, self.FACTORY_TARGET)
         else:
             self._produce_army(ctx, target)
-        # 3) DEFENSE — commands ONLY the HOME GUARD. Exclude the committed strike force and the capture
-        # force, otherwise defend's guard_zone(base) and offense's attack_target(enemy) alternate on the
-        # SAME units every ~120 frames: the units oscillate between "come home" and "go attack" and just
-        # cluster at base, never doing either (the "units pile up at home / orders re-link on the same
-        # units" symptom). With this, the strike force obeys offense and only the reserve guards home.
-        reserved = set(self.strike.params.get("_force", [])) | set(self.capture.params.get("_capture_force", []))
-        self.defend.params["ids"] = [u["id"] for u in select_combat_units(ctx) if u["id"] not in reserved]
-        self.defend.tick(ctx)
-        # 4) OFFENSE — continuous assault on the enemy base once a surplus has massed
+        # STAGE 2: keep squad support (medics/engineers/AA) topped up for the formation
+        if not self._army_full:
+            self._produce_support(ctx)
+        # 3+4) COMBAT — the MISSION SYSTEM owns every combat unit: SCOUTS fan out across the map to find
+        # the enemy base, PICKETS hold forward strategic points, a RESERVE guards home, SIEGE squads seal a
+        # found base, and the MAIN force assaults once committed. Replaces the old single-blob defend+offense
+        # (which collapsed the whole army into one clump).
         if d["offense"].get("engage", True):
-            self._offense(ctx)
+            self.missions.command(ctx, self)
+        else:                                    # offense disabled by directive -> plain home defense
+            reserved = set(self.capture.params.get("_capture_force", []))
+            self.defend.params["ids"] = [u["id"] for u in select_combat_units(ctx) if u["id"] not in reserved]
+            self.defend.tick(ctx)
+        cc = ctx.world.centroid([u for u in select_combat_units(ctx)])   # medics follow the army
+        if cc:
+            self._escort_medics(ctx, cc[0], cc[1])
 
         self.last_detail = {
             "build": self.build.status_line(),
             "army": self._army_detail,
             "capture": self._cap_detail,
-            "defend": self.defend.status_line(),
-            "attack": self.strike.status_line(),
+            "missions": self.missions.detail,
+            "attack": self.missions.detail,
             "opening": ("done" if self.opening.done else self.opening.detail),
             "tank": self._tank_detail.strip(" |") or "—",
+            "dozer": self._dozer_detail(),
         }
+
+    def _dozer_detail(self):
+        """One-line dozer-plan summary for the status panel."""
+        p = self._dozer_plan
+        if not p:
+            return "—"
+        j = p["jobs"]
+        parked = p.get("parked")
+        return ("{live}/{desired} (cap {cap}) · free {free} busy {busy} inflight {inflight} · "
+                "jobs build={b} repair={r}{far} · {dec}{park}").format(
+            live=p["live"], desired=p["desired"], cap=p["cap"], free=p["free"], busy=p["busy"],
+            inflight=p["inflight"], b=j["build"], r=j["repair"],
+            far=" far" if j["far"] else "", dec=p["decision"],
+            park=" · parked {}".format(parked["n"]) if parked else "")
 
     COMMIT_HOME_GUARD = 6  # while committed, keep only this many units home — commit the rest as one
                            # concentrated wave (a dribble of 6-9 just dies at the defended base)
-    ARMY_HARD_CAP = 64     # cap total army size — past this the engine pathfinder chokes on mass
+    ARMY_HARD_CAP = 48     # cap total army size — past this the engine pathfinder chokes on mass
                            # attack-moves (FindHierarchicalPath spam → game hang). Tunable; ~48 commit.
     ATTACK_ARMY_MIN = 18   # FLOOR: never commit fewer than this (don't feed dribs to defenses)
-    ATTACK_ARMY_CAP = 48   # CEILING: commit regardless of the estimate once this big (don't turtle on a
+    ATTACK_ARMY_CAP = 36   # CEILING: commit regardless of the estimate once this big (don't turtle on a
                            # pessimistic estimate — an overwhelming mass beats unmodeled base defenses)
     ATTACK_REISSUE = 120   # frames between re-issuing the attack order
-    COMMIT_WIN_PROB = 0.55 # engagement_estimate edge required to commit: a real (not just even) edge so we
+    COMBAT_ENGAGE = 800.0  # engage visible enemy units within this of the strike-force centroid (smart
+                           # targeting); beyond it we don't peel off to chase, we keep razing the base
+    # phase threshold: closer than this to the objective = COMBAT phase (squads fight); farther = MARCH
+    FORMATION_MIN_DIST = 450.0
+    MEDIC_PER_INF = 5      # keep ~1 medic per this many infantry (squad support)
+    AA_MIN = 2             # keep at least this much air defence in the army (the column needs >=2)
+    SUPPORT_PERIOD = 90    # min frames between support-unit trains
+    MEDIC_FOLLOW = 230.0   # a medic farther than this from the force is told to catch up (it can't fight)
+    COMMIT_WIN_PROB = 0.50 # engagement_estimate edge required to commit: a real (not just even) edge so we
                            # don't all-in into the defended core, but low enough that a dominant economy
                            # still pushes instead of turtling to death
     # ECONOMIC-DOMINANCE GRIND COMMIT: the engagement estimate is a single-clash snapshot — it ignores
@@ -547,9 +616,9 @@ class Commander:
     # (now incl. M60 tanks that absorb base-defense fire) GRINDS a roughly-even fight down instead of
     # turtling to a draw while the easy AI snowballs buildings. Gated by a healthy army + strong income,
     # with a wp>=floor so we never feed into a clearly losing matchup.
-    GRIND_ARMY_MIN = 26    # a solid combined-arms force (incl. tanks) before grinding
-    GRIND_OIL = 12         # captured income points = reinforcement edge (proxy: we out-produce the enemy)
-    GRIND_WIN_PROB = 0.40  # floor: below this the clash is genuinely losing — keep massing/countering
+    GRIND_ARMY_MIN = 22    # a solid combined-arms force (incl. tanks) before grinding
+    GRIND_OIL = 8          # captured income points = reinforcement edge (proxy: we out-produce the enemy)
+    GRIND_WIN_PROB = 0.34  # floor: below this the clash is genuinely losing — keep massing/countering
 
     def _commit_decision(self, ctx, army_ids):
         """Decide whether to launch the assault using the KB engagement estimate
@@ -603,6 +672,52 @@ class Commander:
             return True, "GRIND commit wp={:.2f} oil={} (n={})".format(wp, captured, n)
         return False, "massing wp={:.2f}<{:.2f} (n={}) oil={} — out-massing/countering".format(
             wp, thresh, n, captured)
+
+    def _produce_support(self, ctx):
+        """STAGE 2 — maintain the squad-support the formation needs: ~1 medic per MEDIC_PER_INF infantry
+        (+1 with a sniper pair), 1 engineer per 2 tanks, and >=AA_MIN air defence. Trains the most-deficient
+        one per call from whatever can make it; low priority, affordability-gated (keeps tank/siege reserve)."""
+        if ctx.frame - self._last_support < self.SUPPORT_PERIOD or not self.kb:
+            return
+        kb = self.kb
+        have = {"medic": 0, "engineer": 0, "aa": 0, "sniper": 0, "tank": 0, "inf": 0}
+        for u in my_units(ctx):
+            r = kb.fine_role(u.get("template"))
+            if r in have:
+                have[r] += 1
+            elif r in ("mg_inf", "infantry"):
+                have["inf"] += 1
+        want = {"medic": max(1, have["inf"] // self.MEDIC_PER_INF) + (1 if have["sniper"] >= 2 else 0),
+                "engineer": have["tank"] // 2,
+                "aa": self.AA_MIN}
+        deficits = sorted(((want[r] - have[r], r) for r in want if want[r] > have[r]), reverse=True)
+        if not deficits:
+            return
+        role = deficits[0][1]
+        names = {"medic": ("medic",), "engineer": ("engineer",), "aa": kb._AA_KW}[role]
+        cands = [c for c in find_trainable(ctx, lambda tl, e: any(k in tl for k in names))
+                 if kb.fine_role(c[0]) == role]
+        if not cands:
+            return
+        cands.sort(key=lambda c: c[2])           # cheapest
+        tmpl, builder, cost, _e = cands[0]
+        money = ctx.me.get("money") or 0
+        if not builder or money - cost < (self._tank_reserve + self._siege_reserve):
+            return
+        ctx.client.command(ctx.player, [builder], "train_unit", {"template": tmpl, "count": 1})
+        self._last_support = ctx.frame
+        self._support_detail = "+{}".format(role)
+
+    def _escort_medics(self, ctx, fcx, fcy):
+        """Medics can't fight, so they're not in the strike force — but they must follow it to heal on the
+        march. Any medic that drifts beyond MEDIC_FOLLOW of the force is told to catch up to its centroid."""
+        if fcx is None or not self.kb:
+            return
+        for u in my_units(ctx):
+            if self.kb.fine_role(u.get("template")) == "medic" and "x" in u \
+                    and (u["x"] - fcx) ** 2 + (u["y"] - fcy) ** 2 > self.MEDIC_FOLLOW ** 2:
+                ctx.client.command(ctx.player, [u["id"]], "move", {"pos": {"x": fcx, "y": fcy, "z": 0.0}})
+
 
     def _offense(self, ctx):
         """Guaranteed offense: once the army is big enough, commit everything beyond a FIXED home guard
@@ -703,16 +818,146 @@ class Commander:
                 H = (ctx.world.height or 0) * (ctx.world.cell or 0)
                 tx, ty = (round(W - home[0]), round(H - home[1])) if (home and W and H) else (guess["x"], guess["y"])
                 src = "geometric"
-        # ISSUE THE ORDER. Critical base-crack fix: when we have a locked enemy building, ATTACK_TARGET
-        # its id — units path into weapon range and actually SHOOT the structure. The old attack_move to
-        # the building's COORDINATE made the force idle ~150-200u away at the perimeter, never engaging
-        # (verified: 81 units within 200u of an AirField, 0 within attack range, building at FULL hp the
-        # whole time). attack_move is kept only for the scout/geometric fallback (no known building id).
-        if locked is not None:
-            ctx.client.command(ctx.player, force, "attack_target", {"targetId": locked})
+        # STAGE 2 (redo): hand the force to the SQUAD SYSTEM — it splits the army into independent combined-
+        # arms squads that maneuver tactically toward the objective (column on the march, line on contact,
+        # tanks-back + cover-baits on ATGM threat, recon to reveal hidden shooters), spread across the front
+        # in waves. No single blob. Phase sets squad size: SCOUT (base unknown) small, MARCH (committed, far
+        # from a known base) big, COMBAT (enemy near / at the base) standard.
+        self._escort_medics(ctx, fcx, fcy)   # non-combat medics follow the army to heal it
+        enemy_near = fcx is not None and any(
+            is_combat_unit(e) and not is_building(e) and "x" in e
+            and (e["x"] - fcx) ** 2 + (e["y"] - fcy) ** 2 < self.COMBAT_ENGAGE ** 2
+            for e in ctx.world.enemies())
+        dist_to_obj = math.hypot(tx - fcx, ty - fcy) if (tx is not None and fcx is not None) else 1e9
+        if enemy_near or dist_to_obj < self.FORMATION_MIN_DIST:
+            phase = "combat"
+        elif known:                       # we know real enemy buildings → marching on the base
+            phase = "march"
         else:
-            ctx.client.command(ctx.player, force, "attack_move", {"pos": {"x": tx, "y": ty, "z": 0.0}})
-        self.strike.detail = "{} @{:.0f},{:.0f} w/{}".format(src, tx, ty, len(force))
+            phase = "scout"
+        self.squads.command(ctx, force, (tx, ty), units_by_id, phase)
+        self.strike.detail = "{} @{:.0f},{:.0f} w/{} {}".format(src, tx, ty, len(force), self.squads.detail)
+
+    def _damaged_buildings(self, ctx):
+        """My FINISHED buildings below REPAIR_HP_FRAC health, most-damaged first. Dozers repair structures,
+        so these are real dozer jobs (and demand)."""
+        out = []
+        for u in my_buildings(ctx):
+            if u.get("constructing"):
+                continue
+            hp, mx = u.get("health"), u.get("maxHealth")
+            if hp and mx and hp < mx * self.REPAIR_HP_FRAC:
+                out.append((hp / mx, u))
+        out.sort(key=lambda t: t[0])
+        return [u for _, u in out]
+
+    def _park_idle_dozers(self, ctx):
+        """Surplus dozers can't be sold and we DON'T force them into work — tuck the genuinely idle ones
+        (free, unclaimed, beyond the desired count) into a safe corner BEHIND the base, away from the enemy
+        and out of the army's path. They wait there for later strategic use. Throttled; a dozer already at
+        the park spot is left alone (so we don't re-path it every tick)."""
+        p = self._dozer_plan
+        if not p or p["free"] <= 0 or ctx.frame - self._last_park < self.PARK_PERIOD:
+            return
+        surplus = p["spawned"] - p["desired"]
+        if surplus <= 0:
+            return
+        core = [u for u in my_buildings(ctx) if not (u.get("template") or "").startswith("CWCciv")]
+        base = ctx.world.centroid(core)
+        if not base:
+            return
+        bx, by = base
+        eb = _enemy_base_guess(ctx.world, my_buildings(ctx), my_units(ctx))
+        if eb:                                            # park on the side AWAY from the enemy
+            dx, dy = bx - eb["x"], by - eb["y"]
+            n = math.hypot(dx, dy) or 1.0
+            px, py = bx + dx / n * self.PARK_DIST, by + dy / n * self.PARK_DIST
+        else:
+            px, py = bx - self.PARK_DIST, by - self.PARK_DIST
+        build_claimed = {s["sub"].params.get("_dozer") for s in getattr(self.build, "_subs", [])}
+        idle = [d for d in find_dozers(ctx) if d["id"] not in build_claimed]
+        moved = 0
+        for d in idle[p["desired"]:]:                     # keep `desired` free near work; park the rest
+            ddx, ddy = d.get("x", px) - px, d.get("y", py) - py
+            if ddx * ddx + ddy * ddy <= self.PARK_RADIUS ** 2:
+                continue                                  # already parked
+            ctx.client.command(ctx.player, [d["id"]], "move", {"pos": {"x": px, "y": py}})
+            moved += 1
+        if moved:
+            self._last_park = ctx.frame
+            if self._dozer_plan is not None:
+                self._dozer_plan["parked"] = {"x": round(px), "y": round(py), "n": moved}
+
+    def _expansion_wants_dozer(self, ctx):
+        """Cheap mirror of _expand's gate: is there surplus cash + room (wip<3) + a buildable role below
+        its cap? If so, expansion wants a free dozer this phase → counts toward dozer demand."""
+        if ((ctx.me.get("money") or 0) - self._tank_reserve - self._siege_reserve) < self.EXPAND_FLOOR:
+            return False
+        if len([u for u in my_buildings(ctx) if u.get("constructing")]) >= 3:
+            return False
+        for role in self.EXPAND_ORDER:
+            if self._count_role(ctx, role) < self.EXPAND_CAPS.get(role, 0) and find_buildable_by_role(ctx, role):
+                return True
+        return False
+
+    def _plan_dozers(self, ctx):
+        """SINGLE SOURCE OF TRUTH for dozer count. desired = parallel build jobs + repair pressure + a
+        far-job mobility buffer, clamped [1, HARD_CAP]. Sets build.DOZER_TARGET (the cap) and
+        build.extra_demand (non-base jobs that justify training past the base plan). The build skill does
+        the actual training, gated so a dozer is made ONLY when a job has no free dozer (= it'll be used at
+        once). Returns the repair list so step() can dispatch a free dozer to it. Pure policy — no engine."""
+        spawned = len(find_all_dozers(ctx))
+        free = len(find_dozers(ctx))
+        inflight = int(getattr(self.build, "_dz_inflight", 0))
+        live = spawned + inflight
+        busy = max(0, spawned - free)
+        base_pending = self.build._jobs_pending_count(ctx) if hasattr(self.build, "_jobs_pending_count") else 0
+        exp = 1 if self._expansion_wants_dozer(ctx) else 0
+        repairs = self._damaged_buildings(ctx)
+        rep = 1 if repairs else 0
+        # far buffer: a repair job far from the core base wants a dozer that can travel/escort while another
+        # keeps building at home (so one isn't stranded crossing the map).
+        core = [u for u in my_buildings(ctx) if not (u.get("template") or "").startswith("CWCciv")]
+        base = ctx.world.centroid(core)
+        far = 0
+        if base and repairs:
+            fx, fy = base
+            if any((u.get("x", fx) - fx) ** 2 + (u.get("y", fy) - fy) ** 2 > self.DOZER_FAR_DIST ** 2
+                   for u in repairs):
+                far = 1
+        build_demand = base_pending + exp
+        desired = max(1, min(self.DOZER_HARD_CAP, build_demand + rep + far))
+        self.build.DOZER_TARGET = desired
+        self.build.extra_demand = exp + rep            # lets the build skill train past base jobs for these
+        if live < desired and (build_demand + rep) > free:
+            decision = "train"          # a job is unserved and we're under the cap → grow by one
+        elif live >= desired:
+            decision = "full"           # demand met
+        else:
+            decision = "hold"           # under cap but no waiting job → don't make an idle dozer
+        self._dozer_plan = {
+            "live": live, "spawned": spawned, "free": free, "busy": busy, "inflight": inflight,
+            "desired": desired, "cap": self.DOZER_HARD_CAP,
+            "jobs": {"build": build_demand, "repair": len(repairs), "far": bool(far)},
+            "decision": decision, "repairing": None, "parked": None,
+        }
+        return repairs
+
+    def _dispatch_repair(self, ctx, repairs):
+        """Assign ONE free, unclaimed dozer to the most-damaged building (engine groupRepair). The dozer
+        goes `busy`, so find_dozers won't re-grab it; throttled so the order isn't thrashed."""
+        if not repairs or ctx.frame - self._last_repair < self.REPAIR_PERIOD:
+            return
+        build_claimed = {s["sub"].params.get("_dozer") for s in getattr(self.build, "_subs", [])}
+        free = [d for d in find_dozers(ctx) if d["id"] not in build_claimed]
+        if not free:
+            return
+        tgt = repairs[0]
+        res = ctx.client.command(ctx.player, [free[0]["id"]], "repair", {"targetId": tgt["id"]})
+        if res and res.get("accepted"):
+            self._last_repair = ctx.frame
+            if self._dozer_plan:
+                self._dozer_plan["repairing"] = tgt.get("id")
 
     def _expand(self, ctx):
         """Build extra economy/production/defense with surplus cash so the bot scales like the AI
@@ -806,10 +1051,28 @@ def run_commander(client, view="self", fast_hz=1.5, directive_path=DIRECTIVE_PAT
     was_in_game = False
     last_hb = 0.0
 
+    consec_miss = 0
+    # A SINGLE failed /healthz must NOT abandon the bot mid-match. At high sim speed the API is briefly
+    # unreadable (empty/timeout), which made in_game() return False and the loop print "MATCH ENDED" and
+    # drop the commander — leaving the bot leaderless for the rest of the game (verified: brain quit ~f20k
+    # while the match ran on). Require several CONSECUTIVE misses before believing the match ended; and
+    # never let a raised healthz crash the loop (the check sits outside the per-tick try/except).
+    MATCH_END_MISSES = 16
     while True:
-        if not client.in_game():
+        try:
+            alive = client.in_game()
+        except Exception:  # noqa: BLE001 — a flaky /healthz must not crash the run loop
+            alive = False
+        if not alive:
+            consec_miss += 1
+            if consec_miss < MATCH_END_MISSES and was_in_game:
+                time.sleep(0.4)        # transient API blip — keep the commander attached, retry
+                continue
             if was_in_game:
-                sess = client.session() or {}
+                try:
+                    sess = client.session() or {}
+                except Exception:  # noqa: BLE001
+                    sess = {}
                 print("== MATCH ENDED == outcome={}".format(sess.get("outcome")), flush=True)
                 uistate.atomic_write(uistate.STATE_PATH,
                                      {"inGame": False, "outcome": sess.get("outcome")})
@@ -819,6 +1082,7 @@ def run_commander(client, view="self", fast_hz=1.5, directive_path=DIRECTIVE_PAT
             cmdr = None
             time.sleep(1.5)
             continue
+        consec_miss = 0
 
         try:
             me = client.external_player()
@@ -849,6 +1113,11 @@ def run_commander(client, view="self", fast_hz=1.5, directive_path=DIRECTIVE_PAT
             v = me["index"] if view == "self" else view
             if map_cache is None:
                 map_cache = client.map(ds=1)
+                try:
+                    from agent.cwc.terrain import Passability
+                    cmdr.terrain = Passability(map_cache)   # passability grid → reachable firing positions
+                except Exception:  # noqa: BLE001 — terrain is an optimization; never block the match on it
+                    cmdr.terrain = None
             world = WorldModel(map_cache, client.units(view=v), client.players(), owner=owner)
             if cmdr.sectors is None:
                 try:

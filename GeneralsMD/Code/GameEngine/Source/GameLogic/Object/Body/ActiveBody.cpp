@@ -748,7 +748,9 @@ Bool ActiveBody::shouldRetaliateAgainstAggressor(Object *obj, Object *damager)
 		return false;
 	}
 	// Only human players retaliate. [8/25/2003]
-	if (obj->getControllingPlayer()->getPlayerType() != PLAYER_HUMAN) {
+	// HUMAN-PARITY: the external-control bot (PLAYER_EXTERNAL) plays by human rules, so its units
+	// auto-retaliate exactly like a human's. Only a true PLAYER_COMPUTER AI skips retaliation.
+	if (obj->getControllingPlayer()->getPlayerType() == PLAYER_COMPUTER) {
 		return false;
 	}
 	// Drones never retaliate. [8/25/2003]

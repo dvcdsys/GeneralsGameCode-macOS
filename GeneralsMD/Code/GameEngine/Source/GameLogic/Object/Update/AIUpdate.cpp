@@ -4394,10 +4394,15 @@ UnsignedInt AIUpdateInterface::getMoodMatrixValue() const
 		return returnVal;
 	}
 
-	if (player->getPlayerType() == PLAYER_HUMAN)
+	// HUMAN-PARITY: the externally-controlled bot (PLAYER_EXTERNAL) must obey the same vision,
+	// guard and mood rules as a real human. It must NOT receive the AI-only mood that grants
+	// alert/aggressive vision-scan bonuses (AIData.ini AlertRangeModifier/AggressiveRangeModifier)
+	// or the AI guard radii (Guard*ModifierAI). Treat EXTERNAL as a human-controlled player here;
+	// only a true PLAYER_COMPUTER (with an internal AI brain) gets the AI mood/scan behavior.
+	if (player->getPlayerType() != PLAYER_COMPUTER)
 	{
 		returnVal |= MM_Controller_Player;
-		// Human units don't have a mood.
+		// Human (and external-API) units don't have a mood.
 
 	}
 	else

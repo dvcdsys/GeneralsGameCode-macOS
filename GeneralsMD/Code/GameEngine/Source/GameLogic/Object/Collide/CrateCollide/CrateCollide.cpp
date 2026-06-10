@@ -176,7 +176,9 @@ Bool CrateCollide::isValidToExecute( const Object *other ) const
 	if( md->m_isForbidOwnerPlayer  &&  (getObject()->getControllingPlayer() == other->getControllingPlayer()) )
 		return FALSE; // Design has decreed this to not be picked up by the dead guy's team.
 
-	if( md->m_isHumanOnlyPickup  &&  other->getControllingPlayer() && (other->getControllingPlayer()->getPlayerType() != PLAYER_HUMAN) )
+	// HUMAN-PARITY: the external-control bot (PLAYER_EXTERNAL) plays by human rules, so it CAN pick up
+	// human-only crates just like a human. Only a true PLAYER_COMPUTER AI is barred.
+	if( md->m_isHumanOnlyPickup  &&  other->getControllingPlayer() && (other->getControllingPlayer()->getPlayerType() == PLAYER_COMPUTER) )
 		return FALSE; // Human only mission crate
 
 	if( (md->m_pickupScience != SCIENCE_INVALID)  &&  other->getControllingPlayer()  &&  !other->getControllingPlayer()->hasScience(md->m_pickupScience) )

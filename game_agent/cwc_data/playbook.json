@@ -1,0 +1,1192 @@
+{
+ "summary": "Merged USA (CWCus) and Russia (CWCru) into one CWC playbook. Fixed pervasive data corruption: USA best_vs fields were almost all wrongly \"aircraft\" (corrected per role/notes \u2014 e.g. M60A3/M1A1 are anti-armor, not anti-air); Russia best_vs/weak_vs used raw armor-class IDs (translated to human roles) and tanks were mislabeled light_at (reclassified as mbt). Counter doctrine kept intact: ARMOR_PIERCING vs tanks (0.9x), STEALTHJET/COMANCHE_VULCAN and ATGM-TOW burst (20x) vs air, EXPLOSION (Su25/MLRS) vs infantry/structures, Cruise Missile UNRESISTABLE as the only reliable answer to hard fortifications. Coverage gaps remain on USA M113/M163 plain variants and all Fort/garrison templates \u2014 the bot is blind to those in effectiveness data.",
+ "factions": [
+  {
+   "faction": "USA",
+   "prefix": "CWCus",
+   "opening_notes": "USA (CWCus) is a diversified vehicle-spam + air-dominance faction, heavily science/rank-gated. Open Barracks first for anti-rush infantry (InfAntiAir + InfTOWMan cover air/armor cheaply), then rush War Factory for M113/M163 (transport + Vulcan AA). Research Rank1 immediately \u2014 it gates almost the entire vehicle tree. Mid game: M2A1 IFV + M60A3, then M1A1 (or NATO Leo2A4 which needs NO science \u2014 strong shortcut to a top-tier MBT). Core mid-late army is M1A1 + M109 artillery. Air arm: F16 early (Rank2, but it's an AA fighter with near-zero ground DPS), F4G for SEAD, A10 as the tank/heli killer, Apache (AH64) for longest-range heli. TOW-armed units (InfTOWMan 2000 DPS, M998_TOW, M2A1) hard-counter helicopters. Cruise Missile (5000) is a one-shot superweapon (UNRESISTABLE).",
+   "combat_units": [
+    {
+     "template": "CWCusInfAssault",
+     "role": "rifle_inf",
+     "cost": 100,
+     "hp": 120,
+     "range": 280,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "structures",
+     "weak_vs": "infantry",
+     "tier": 1,
+     "note": "Cheap rifle infantry, area damage vs structures"
+    },
+    {
+     "template": "CWCusInfAntiAir",
+     "role": "aa_inf",
+     "cost": 180,
+     "hp": 120,
+     "range": 450,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "aircraft",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "750 DPS vs air; primary Rank-0 air defense"
+    },
+    {
+     "template": "CWCusInfAntiTank",
+     "role": "at_inf",
+     "cost": 180,
+     "hp": 100,
+     "range": 350,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "vehicles",
+     "weak_vs": "aircraft",
+     "tier": 1,
+     "note": "Basic AT infantry; weak vs helicopters"
+    },
+    {
+     "template": "CWCusInfDelta",
+     "role": "rifle_inf",
+     "cost": 210,
+     "hp": 160,
+     "range": 500,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Elite infantry, high HP, good vs enemy squads"
+    },
+    {
+     "template": "CWCusInfSniper",
+     "role": "sniper",
+     "cost": 300,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "110 DPS at range; picks off light/infantry units"
+    },
+    {
+     "template": "CWCusInfMortarMan",
+     "role": "arty",
+     "cost": 210,
+     "hp": 110,
+     "range": 1000,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Long-range infantry support; ~100 DPS, indirect"
+    },
+    {
+     "template": "CWCusInfTOWMan",
+     "role": "at_inf",
+     "cost": 210,
+     "hp": 110,
+     "range": 494,
+     "build_from": "CWCusBarracks",
+     "requires_science": [],
+     "best_vs": "helicopters",
+     "weak_vs": "structures",
+     "tier": 1,
+     "note": "2000 DPS burst vs helicopters; devastating ATGM specialist"
+    },
+    {
+     "template": "CWCusM998_M2",
+     "role": "ifv",
+     "cost": 400,
+     "hp": 110,
+     "range": 300,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Fast light infantry carrier; needs Rank1"
+    },
+    {
+     "template": "CWCusM998_TOW",
+     "role": "light_at",
+     "cost": 800,
+     "hp": 110,
+     "range": 494,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "helicopters",
+     "weak_vs": "structures",
+     "tier": 2,
+     "note": "Missile Humvee; 2000 DPS vs helis, also hits armor"
+    },
+    {
+     "template": "CWCusM998_Mk19",
+     "role": "ifv",
+     "cost": 600,
+     "hp": 110,
+     "range": 280,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "structures",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Grenade-launcher Humvee; strong vs fortifications/infantry"
+    },
+    {
+     "template": "CWCusM163ChassisOne",
+     "role": "aa_veh",
+     "cost": 600,
+     "hp": 100,
+     "range": 500,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Vulcan SPAA; 290 DPS vs air/light targets"
+    },
+    {
+     "template": "CWCusM113ChassisOne",
+     "role": "transport",
+     "cost": 500,
+     "hp": 100,
+     "range": 1000,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "APC with gun; transport + light fire support"
+    },
+    {
+     "template": "CWCusM60A3",
+     "role": "mbt",
+     "cost": 700,
+     "hp": 100,
+     "range": 334,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank1"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Medium tank; low DPS vs heavy armor, stopgap MBT"
+    },
+    {
+     "template": "CWCusM2A1",
+     "role": "ifv",
+     "cost": 1000,
+     "hp": 100,
+     "range": 494,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusTowTechnology"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Bradley IFV w/ TOW; 271.7 DPS vs infantry, can hit armor"
+    },
+    {
+     "template": "CWCusM1A1",
+     "role": "mbt",
+     "cost": 1500,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusM1A1"
+     ],
+     "best_vs": "tanks",
+     "weak_vs": "infantry",
+     "tier": 3,
+     "note": "Abrams main battle tank; core late-game armor"
+    },
+    {
+     "template": "CWCeuLeo2A4",
+     "role": "mbt",
+     "cost": 1500,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [],
+     "best_vs": "tanks",
+     "weak_vs": "infantry",
+     "tier": 3,
+     "note": "NATO Leopard 2; same as M1A1 but NO science needed (shortcut to top MBT)"
+    },
+    {
+     "template": "CWCusM109",
+     "role": "arty",
+     "cost": 1200,
+     "hp": 100,
+     "range": 1500,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusRank3"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "SP howitzer; 375 DPS at 1500 range, anti-cluster siege"
+    },
+    {
+     "template": "CWCusMLRS",
+     "role": "arty",
+     "cost": 1500,
+     "hp": 100,
+     "range": 2000,
+     "build_from": "CWCusWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCusMLRS"
+     ],
+     "best_vs": "structures",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "Rocket arty; extreme 2000 range, low per-shot DPS but big AOE EXPLOSION"
+    },
+    {
+     "template": "CWCusAH6",
+     "role": "heli",
+     "cost": 875,
+     "hp": 100,
+     "range": 618,
+     "build_from": "CWCusHelipad",
+     "requires_science": [
+      "SCIENCE_CWCusAH6"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "aa",
+     "tier": 2,
+     "note": "Little Bird; 2200 DPS vs infantry, needs Rank1"
+    },
+    {
+     "template": "CWCusAH1",
+     "role": "heli",
+     "cost": 1550,
+     "hp": 100,
+     "range": 600,
+     "build_from": "CWCusHelipad",
+     "requires_science": [
+      "SCIENCE_CWCusAH1"
+     ],
+     "best_vs": "helicopters",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Cobra gunship; 320 DPS vs helis, weak pure-air"
+    },
+    {
+     "template": "CWCusAH64",
+     "role": "heli",
+     "cost": 2450,
+     "hp": 100,
+     "range": 988,
+     "build_from": "CWCusHelipad",
+     "requires_science": [
+      "SCIENCE_CWCusAH64"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Apache; longest-range heli (988), needs Rank4-era science"
+    },
+    {
+     "template": "CWCusA10",
+     "role": "jet",
+     "cost": 3400,
+     "hp": 100,
+     "range": 800,
+     "build_from": "CWCusAirField",
+     "requires_science": [
+      "SCIENCE_CWCusRank4"
+     ],
+     "best_vs": "helicopters",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Warthog tank/heli killer; 1093 DPS vs helicopters"
+    },
+    {
+     "template": "CWCusF111",
+     "role": "jet",
+     "cost": 3000,
+     "hp": 100,
+     "range": 600,
+     "build_from": "CWCusAirField",
+     "requires_science": [
+      "SCIENCE_CWCusF111"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Aardvark bomber; 375 DPS vs mixed ground targets"
+    },
+    {
+     "template": "CWCusF16",
+     "role": "jet",
+     "cost": 2400,
+     "hp": 100,
+     "range": 618,
+     "build_from": "CWCusAirField",
+     "requires_science": [
+      "SCIENCE_CWCusRank2"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Multirole, available early (Rank2); air-to-air role, near-zero ground DPS"
+    },
+    {
+     "template": "CWCusF4G",
+     "role": "jet",
+     "cost": 2400,
+     "hp": 100,
+     "range": 1482,
+     "build_from": "CWCusAirField",
+     "requires_science": [
+      "SCIENCE_CWCusSuppressionOfEnemyAirDefences"
+     ],
+     "best_vs": "structures",
+     "weak_vs": "infantry",
+     "tier": 3,
+     "note": "Wild Weasel SEAD; 320 DPS vs structures/AA, very long range"
+    },
+    {
+     "template": "CWCusF15",
+     "role": "jet",
+     "cost": 3000,
+     "hp": 100,
+     "range": 1698,
+     "build_from": "CWCusAirField",
+     "requires_science": [
+      "SCIENCE_CWCusRank3"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Eagle air superiority; 1698 range, dedicated anti-air"
+    },
+    {
+     "template": "CWCusF117",
+     "role": "jet",
+     "cost": 3200,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCusAirField",
+     "requires_science": [],
+     "best_vs": "structures",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "Stealth bomber; near-zero sustained DPS, special-strike/payload unit"
+    },
+    {
+     "template": "CWCusCruiseMissile",
+     "role": "other",
+     "cost": 5000,
+     "hp": 100,
+     "range": 1000,
+     "build_from": "CWCusAirField",
+     "requires_science": [],
+     "best_vs": "structures",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "One-shot superweapon; UNRESISTABLE 1.5M DPS on impact, ignores armor"
+    }
+   ],
+   "tech_gates": [
+    {
+     "building": "CWCusBarracks",
+     "cost": 500,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCusInfAssault",
+      "CWCusInfAntiAir",
+      "CWCusInfTOWMan",
+      "CWCusInfDelta",
+      "CWCusInfSniper"
+     ]
+    },
+    {
+     "building": "CWCusWarFactory",
+     "cost": 1000,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCusM113ChassisOne",
+      "CWCusM163ChassisOne",
+      "CWCusM60A3",
+      "CWCusM1A1",
+      "CWCusM109",
+      "CWCusMLRS"
+     ]
+    },
+    {
+     "building": "CWCusHelipad",
+     "cost": 1000,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCusAH6",
+      "CWCusAH1",
+      "CWCusAH64"
+     ]
+    },
+    {
+     "building": "CWCusAirField",
+     "cost": 1000,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCusF16",
+      "CWCusF15",
+      "CWCusF4G",
+      "CWCusF111",
+      "CWCusA10",
+      "CWCusF117",
+      "CWCusCruiseMissile"
+     ]
+    },
+    {
+     "building": "CWCusSmallFuelDepot",
+     "cost": 3000,
+     "prereq_buildings": [
+      "CWCusWarFactory",
+      "CWCusAirField",
+      "CWCusHelipad"
+     ],
+     "unlocks_examples": []
+    }
+   ],
+   "build_order": [
+    "Build workers/scouts for economy and map control",
+    "Build CWCusBarracks (500) for early infantry defense vs rushes (InfAntiAir + InfTOWMan cover air/armor cheaply)",
+    "Research SCIENCE_CWCusRank1 immediately \u2014 gates nearly the whole vehicle tree",
+    "Build CWCusWarFactory (1000), spam M113 transports + M163 Vulcan AA",
+    "Research SCIENCE_CWCusRank2 to open the Air Field tree; build CWCusAirField (1000) for F-16 air cover",
+    "Research SCIENCE_CWCusM1A1 for the M1A1 main tank (or build Leo2A4 \u2014 no science required)",
+    "Build CWCusHelipad (1000); unlock AH-6 for anti-infantry pressure",
+    "Research SCIENCE_CWCusRank3 for M109 artillery + F-15 air superiority; M1A1 + M109 is the core army",
+    "Build SmallFuelDepot (3000) to scale economy for unit spam",
+    "Research Rank4-tier sciences for elite units: AH-64 Apache, A-10, F-111 bombers, F4G SEAD"
+   ],
+   "army_comp": [
+    {
+     "need": "core",
+     "templates": [
+      "CWCusInfDelta",
+      "CWCusM1A1",
+      "CWCeuLeo2A4"
+     ]
+    },
+    {
+     "need": "anti_armor",
+     "templates": [
+      "CWCusInfTOWMan",
+      "CWCusM998_TOW",
+      "CWCusA10",
+      "CWCusM1A1"
+     ]
+    },
+    {
+     "need": "anti_air",
+     "templates": [
+      "CWCusInfAntiAir",
+      "CWCusM163ChassisOne",
+      "CWCusF15",
+      "CWCusF16"
+     ]
+    },
+    {
+     "need": "anti_inf",
+     "templates": [
+      "CWCusInfSniper",
+      "CWCusAH6",
+      "CWCusM109"
+     ]
+    },
+    {
+     "need": "siege",
+     "templates": [
+      "CWCusM109",
+      "CWCusMLRS",
+      "CWCusF4G"
+     ]
+    },
+    {
+     "need": "air",
+     "templates": [
+      "CWCusF16",
+      "CWCusF15",
+      "CWCusA10",
+      "CWCusF111"
+     ]
+    },
+    {
+     "need": "support",
+     "templates": [
+      "CWCusM113ChassisOne",
+      "CWCusM998_M2",
+      "CWCusAH1"
+     ]
+    }
+   ]
+  },
+  {
+   "faction": "Russia",
+   "prefix": "CWCru",
+   "opening_notes": "Russia (CWCru) is an armored doctrine: heavy tanks, mobile APCs, and the strongest layered air defense in the mod (Shilka -> SA-9 -> SA-11 -> S-300). Open Barracks (no-tech infantry core: assault, AT, engineer), then War Factory. Research Rank1 to unlock the T-72 (800c, 188 DPS) \u2014 mass it as the cheap reliable core. Note BMD-1 (800c) and S-300 (1500c, no science) need no extra tech \u2014 strong free options. Tech Rank2 for Spetsnaz, Rank3 for Su-25 CAS + MiG-29 + 2S1 artillery. Transition to T-80U (1600c, 250 DPS, no science) / T-80UK flagship in late game and Su-27 for air superiority. Keep SA-11/S-300 AA umbrella up at all times \u2014 Russia's whole game plan assumes air denial.",
+   "combat_units": [
+    {
+     "template": "CWCruInfAssault",
+     "role": "rifle_inf",
+     "cost": 100,
+     "hp": 120,
+     "range": 280,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "structures",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Core cheapest infantry, ~100 DPS"
+    },
+    {
+     "template": "CWCruInfEngineer",
+     "role": "engineer",
+     "cost": 120,
+     "hp": 120,
+     "range": 260,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Combat engineer; repair/capture/building"
+    },
+    {
+     "template": "CWCruInfAntiTank",
+     "role": "at_inf",
+     "cost": 180,
+     "hp": 120,
+     "range": 350,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "vehicles",
+     "weak_vs": "infantry",
+     "tier": 1,
+     "note": "Dedicated AT soldier, ~60 DPS vs armor"
+    },
+    {
+     "template": "CWCruInfAntiAir",
+     "role": "aa_inf",
+     "cost": 180,
+     "hp": 120,
+     "range": 450,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "aircraft",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Infantry AA, surprisingly high 750 DPS vs air"
+    },
+    {
+     "template": "CWCruInfSniper",
+     "role": "sniper",
+     "cost": 300,
+     "hp": 120,
+     "range": 400,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 1,
+     "note": "Precision sniper, ~110 DPS at range"
+    },
+    {
+     "template": "CWCruInfHeavyAssault",
+     "role": "rifle_inf",
+     "cost": 210,
+     "hp": 120,
+     "range": 300,
+     "build_from": "CWCruBarracks",
+     "requires_science": [],
+     "best_vs": "infantry",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "Heavy assault trooper, balanced ~146 DPS"
+    },
+    {
+     "template": "CWCruInfSpetsnaz",
+     "role": "rifle_inf",
+     "cost": 210,
+     "hp": 140,
+     "range": 260,
+     "build_from": "CWCruBarracks",
+     "requires_science": [
+      "SCIENCE_CWCruSpecialInfantry",
+      "SCIENCE_CWCruRank2"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "vehicles",
+     "tier": 2,
+     "note": "Elite infantry, high HP 140, mid-game unlock"
+    },
+    {
+     "template": "CWCruBRDM2",
+     "role": "recon",
+     "cost": 500,
+     "hp": 100,
+     "range": 266,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "helicopters",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "Scout vehicle, short range, ~216 DPS vs light air"
+    },
+    {
+     "template": "CWCruBTR80",
+     "role": "transport",
+     "cost": 600,
+     "hp": 100,
+     "range": 300,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "helicopters",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "Cheap wheeled APC, ~216 DPS, transport + light AA"
+    },
+    {
+     "template": "CWCruAT5",
+     "role": "at_inf",
+     "cost": 700,
+     "hp": 100,
+     "range": 534,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "tanks",
+     "weak_vs": "structures",
+     "tier": 1,
+     "note": "AT-5 ATGM team, long 534 range, low sustained DPS but penetrates armor"
+    },
+    {
+     "template": "CWCruBMD1",
+     "role": "ifv",
+     "cost": 800,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [],
+     "best_vs": "vehicles",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "Airborne APC; NO tech required, ~207 DPS"
+    },
+    {
+     "template": "CWCruBMP2",
+     "role": "ifv",
+     "cost": 800,
+     "hp": 100,
+     "range": 534,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruAT5Technology"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "AT-5-armed IFV; transport + anti-armor, ~207 DPS"
+    },
+    {
+     "template": "CWCruT72",
+     "role": "mbt",
+     "cost": 800,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "infantry",
+     "tier": 1,
+     "note": "Signature cheap MBT, ~188 DPS, mass this as core armor"
+    },
+    {
+     "template": "CWCruT64",
+     "role": "mbt",
+     "cost": 1000,
+     "hp": 100,
+     "range": 400,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruT64"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "infantry",
+     "tier": 2,
+     "note": "Mid-tier MBT, ~196 DPS"
+    },
+    {
+     "template": "CWCruT80BV",
+     "role": "mbt",
+     "cost": 1400,
+     "hp": 100,
+     "range": 534,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruT80BV"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "infantry",
+     "tier": 2,
+     "note": "Extended-range MBT (534), ~205 DPS"
+    },
+    {
+     "template": "CWCruT80U",
+     "role": "mbt",
+     "cost": 1600,
+     "hp": 100,
+     "range": 534,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [],
+     "best_vs": "tanks",
+     "weak_vs": "infantry",
+     "tier": 2,
+     "note": "High-DPS MBT (~250); NO science required \u2014 strong shortcut"
+    },
+    {
+     "template": "CWCruT80UK",
+     "role": "mbt",
+     "cost": 1700,
+     "hp": 100,
+     "range": 534,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruT80UK"
+     ],
+     "best_vs": "tanks",
+     "weak_vs": "infantry",
+     "tier": 3,
+     "note": "Late-game flagship MBT, ~205 DPS, AP main gun"
+    },
+    {
+     "template": "CWCruShilka",
+     "role": "aa_veh",
+     "cost": 700,
+     "hp": 100,
+     "range": 500,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "ZSU-23 Shilka SPAA, exceptional 252 DPS vs air"
+    },
+    {
+     "template": "CWCruSA9",
+     "role": "aa_veh",
+     "cost": 800,
+     "hp": 100,
+     "range": 500,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank1"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "tanks",
+     "tier": 1,
+     "note": "Medium-range SAM vehicle, Rank-1"
+    },
+    {
+     "template": "CWCruSA11",
+     "role": "aa_veh",
+     "cost": 1500,
+     "hp": 100,
+     "range": 1068,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruSA11"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Long-range SAM (1068), dedicated tech"
+    },
+    {
+     "template": "CWCruS300",
+     "role": "aa_veh",
+     "cost": 1500,
+     "hp": 100,
+     "range": 1544,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [],
+     "best_vs": "aircraft",
+     "weak_vs": "tanks",
+     "tier": 2,
+     "note": "Very long-range SAM (1544); NO tech required, low DPS but huge reach"
+    },
+    {
+     "template": "CWCru2S1",
+     "role": "arty",
+     "cost": 1100,
+     "hp": 100,
+     "range": 2000,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruRank3"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "SP gun, high ~313 DPS at 2000 range, anti-cluster siege"
+    },
+    {
+     "template": "CWCruBM21",
+     "role": "arty",
+     "cost": 2000,
+     "hp": 100,
+     "range": 1700,
+     "build_from": "CWCruWarFactory",
+     "requires_science": [
+      "SCIENCE_CWCruBM21"
+     ],
+     "best_vs": "structures",
+     "weak_vs": "aircraft",
+     "tier": 3,
+     "note": "Grad MLRS, ~59 DPS but big AOE EXPLOSION at 1700 range"
+    },
+    {
+     "template": "CWCruMi8",
+     "role": "heli",
+     "cost": 875,
+     "hp": 100,
+     "range": 600,
+     "build_from": "CWCruAirField",
+     "requires_science": [
+      "SCIENCE_CWCruMi8"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "aa",
+     "tier": 2,
+     "note": "Transport heli, modest ~69 DPS fire support"
+    },
+    {
+     "template": "CWCruMi24",
+     "role": "heli",
+     "cost": 2000,
+     "hp": 100,
+     "range": 800,
+     "build_from": "CWCruAirField",
+     "requires_science": [
+      "SCIENCE_CWCruMi24"
+     ],
+     "best_vs": "infantry",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Hind attack/armed-transport heli, ~291 DPS"
+    },
+    {
+     "template": "CWCruSu25",
+     "role": "jet",
+     "cost": 2400,
+     "hp": 100,
+     "range": 1000,
+     "build_from": "CWCruAirField",
+     "requires_science": [
+      "SCIENCE_CWCruRank3"
+     ],
+     "best_vs": "vehicles",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Frogfoot CAS jet, high ~587 DPS, EXPLOSION area attack vs ground"
+    },
+    {
+     "template": "CWCruMiG29",
+     "role": "jet",
+     "cost": 2400,
+     "hp": 100,
+     "range": 1390,
+     "build_from": "CWCruAirField",
+     "requires_science": [
+      "SCIENCE_CWCruRank3"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Air superiority fighter, anti-air missiles, long range"
+    },
+    {
+     "template": "CWCruSu27",
+     "role": "jet",
+     "cost": 3400,
+     "hp": 100,
+     "range": 1852,
+     "build_from": "CWCruAirField",
+     "requires_science": [
+      "SCIENCE_CWCruSu27"
+     ],
+     "best_vs": "aircraft",
+     "weak_vs": "aa",
+     "tier": 3,
+     "note": "Flanker, longest-range fighter (1852), late-game air flagship"
+    }
+   ],
+   "tech_gates": [
+    {
+     "building": "CWCruBarracks",
+     "cost": 1500,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCruInfAssault",
+      "CWCruInfAntiTank",
+      "CWCruInfAntiAir",
+      "CWCruInfEngineer"
+     ]
+    },
+    {
+     "building": "CWCruWarFactory",
+     "cost": 2000,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCruT72",
+      "CWCruBMD1",
+      "CWCruShilka",
+      "CWCruS300",
+      "CWCruAT5"
+     ]
+    },
+    {
+     "building": "CWCruAirField",
+     "cost": 3000,
+     "prereq_buildings": [],
+     "unlocks_examples": [
+      "CWCruMi8",
+      "CWCruMi24",
+      "CWCruSu25",
+      "CWCruMiG29",
+      "CWCruSu27"
+     ]
+    }
+   ],
+   "build_order": [
+    "Build Barracks (1500) as starting production \u2014 infantry core needs no tech",
+    "Build War Factory (2000) immediately after for tanks + AA vehicles",
+    "Research SCIENCE_CWCruRank1 early to unlock T-72 and Shilka SPAA",
+    "Mass-produce T-72 (800c, no further tech) as the strong cheap core; add Shilka (700c) for air defense",
+    "Secure economy with engineers + assault squads, build a fuel depot",
+    "Research SCIENCE_CWCruRank2 for Spetsnaz elite infantry",
+    "Build Air Field (3000) once economy supports it; add Mi-8 for mobility/fire support",
+    "Research SCIENCE_CWCruRank3 for Su-25 CAS, MiG-29, and 2S1 artillery",
+    "Transition to T-80U (no science) or T-80UK flagship tanks for late-game armor",
+    "Build Su-27 (3400) for air superiority; keep SA-11/S-300 AA umbrella up at all times"
+   ],
+   "army_comp": [
+    {
+     "need": "core",
+     "templates": [
+      "CWCruT72",
+      "CWCruT80U",
+      "CWCruInfAssault"
+     ]
+    },
+    {
+     "need": "anti_armor",
+     "templates": [
+      "CWCruT80UK",
+      "CWCruBMP2",
+      "CWCruAT5",
+      "CWCruInfAntiTank"
+     ]
+    },
+    {
+     "need": "anti_air",
+     "templates": [
+      "CWCruShilka",
+      "CWCruSA11",
+      "CWCruS300",
+      "CWCruInfAntiAir"
+     ]
+    },
+    {
+     "need": "anti_inf",
+     "templates": [
+      "CWCru2S1",
+      "CWCruMi24",
+      "CWCruInfHeavyAssault"
+     ]
+    },
+    {
+     "need": "siege",
+     "templates": [
+      "CWCruBM21",
+      "CWCru2S1"
+     ]
+    },
+    {
+     "need": "air",
+     "templates": [
+      "CWCruSu25",
+      "CWCruMiG29",
+      "CWCruSu27"
+     ]
+    },
+    {
+     "need": "support",
+     "templates": [
+      "CWCruInfEngineer",
+      "CWCruMi8",
+      "CWCruBMD1"
+     ]
+    }
+   ]
+  }
+ ],
+ "counters": {
+  "key_matchups": [
+   {
+    "threat": "MBT / heavy tank (T72, T80U/UK, M1A1, Leo2A4)",
+    "counter_with": "AP-armed MBT (T80UK/M1A1, ~1000 DPS @ 534m) or ATGM-TOW infantry (InfTOWMan, 90 DPS @ 494m)",
+    "why": "ARMOR_PIERCING gets only 0.9x on tank armor, so tank-vs-tank is an even mirror decided by range/DPS \u2014 the longer-ranged AP variant wins. ATGM-TOW infantry trade up cost-effectively and outrange short MBTs, but larger AP tanks outrange the TOW infantry."
+   },
+   {
+    "threat": "ATGM IFV (M998_TOW, BMP2)",
+    "counter_with": "AP main-gun MBT (T80UK/M1A1) or indirect artillery (MLRS, 2S1, Su25)",
+    "why": "IFV carries medium armor; AP rounds penetrate. Indirect arty hits from outside the IFV's anti-armor range. Direct duel favors the heavier mobile tank."
+   },
+   {
+    "threat": "AA vehicle (Shilka, SA-11, M163) and AA-gun tank chassis",
+    "counter_with": "ATGM-TOW infantry (2000 DPS, 20x vs air-type armor), STEALTHJET_MISSILES helis/jets (10x), or Su25 EXPLOSION (2x area)",
+    "why": "AA platforms optimize armor for air defense and are exposed to anti-air multipliers. AP rounds are NOT optimal here (only 0.9x). Use 20x ATGM burst, 10x stealth missiles, or explosive area attacks."
+   },
+   {
+    "threat": "Fighter / CAS aircraft (Su25, A10, F16, F15, MiG29, Su27)",
+    "counter_with": "STEALTHJET_MISSILES (10x on F-series, 5x on Su25), dedicated AA fighters (F15/MiG29/Su27), COMANCHE_VULCAN AA guns (Shilka/M163), or Cruise Missile (UNRESISTABLE)",
+    "why": "Fighter armor takes 5x-10x from STEALTHJET_MISSILES; COMANCHE_VULCAN gets 2x on fighter armor (0.3x on tanks). Fighter-vs-fighter is a missile duel. Cruise missile one-cycles anything."
+   },
+   {
+    "threat": "Helicopter (Mi24, AH64, AH1, AH6)",
+    "counter_with": "ATGM-TOW infantry (2000 DPS burst, 20x), STEALTHJET_MISSILES (10x on heli armor), COMANCHE_VULCAN AA (3.1x vs Mi24)",
+    "why": "Heli armor is highly vulnerable: TOW infantry burst 2000 DPS @ 494m at 20x, stealth missiles 10x, Vulcan AA 3.1x. Keep a dedicated AA escort with any ground push."
+   },
+   {
+    "threat": "Mass infantry (assault/rifle/AT squads, Spetsnaz/Delta)",
+    "counter_with": "Su25 / A10 area strikes (2x EXPLOSION), artillery (MLRS, 2S1, M109), COMANCHE_VULCAN AA guns (2x on infantry)",
+    "why": "Infantry armor takes 2x from CRUSH and COMANCHE_VULCAN, 1x from EXPLOSION over large AOE. Air strikes and carpet artillery shred clusters; Vulcan MGs are 2x anti-infantry but only 0.3x on tanks."
+   },
+   {
+    "threat": "Artillery (MLRS, BM21, 2S1, M109)",
+    "counter_with": "Fast attack aircraft (Su25/A10), light cavalry raid, or counter-battery AP fire",
+    "why": "Artillery is medium-armored and slow. Air strikes suppress from outside its range; fast light forces raid before it can reposition. Counter-MLRS AP trades roughly even."
+   },
+   {
+    "threat": "Base defenses / fortifications / garrisoned infantry",
+    "counter_with": "Cruise Missile (UNRESISTABLE 1.5M DPS), MLRS/BM21 carpet (full EXPLOSION at 1x), F4G SEAD vs AA structures",
+    "why": "Structure armor is weak to EXPLOSION (1x, not reduced); garrisons inherit infantry weaknesses. AP main guns are poor here (EXPLOSION transfers badly to tank-gun rounds). Cruise missile ignores all armor and is the reliable one-shot."
+   }
+  ],
+  "role_priority_vs": [
+   {
+    "my_role": "mbt",
+    "prefers_targets": [
+     "enemy_mbt",
+     "atgm_ifv",
+     "light_vehicles",
+     "artillery",
+     "infantry"
+    ]
+   },
+   {
+    "my_role": "atgm_ifv",
+    "prefers_targets": [
+     "mbt",
+     "armored_vehicles",
+     "helicopters",
+     "aircraft"
+    ]
+   },
+   {
+    "my_role": "aa_veh",
+    "prefers_targets": [
+     "aircraft",
+     "helicopter",
+     "fighter"
+    ]
+   },
+   {
+    "my_role": "jet",
+    "prefers_targets": [
+     "enemy_aircraft",
+     "helicopter",
+     "aa_vehicle",
+     "ground_at_range"
+    ]
+   },
+   {
+    "my_role": "heli",
+    "prefers_targets": [
+     "infantry",
+     "light_vehicles",
+     "mbt",
+     "base_structures"
+    ]
+   },
+   {
+    "my_role": "at_inf",
+    "prefers_targets": [
+     "mbt",
+     "vehicles",
+     "helicopters",
+     "fortified_positions"
+    ]
+   },
+   {
+    "my_role": "sniper",
+    "prefers_targets": [
+     "infantry",
+     "light_units"
+    ]
+   },
+   {
+    "my_role": "arty",
+    "prefers_targets": [
+     "infantry_clusters",
+     "base_structures",
+     "static_defenses",
+     "grouped_vehicles"
+    ]
+   }
+  ],
+  "coverage_gaps": [
+   "CWCruFortInf",
+   "CWCruSS20",
+   "CWCruSu24",
+   "CWCusF15_Patrol",
+   "CWCusFortM2",
+   "CWCusFortMortar",
+   "CWCusFortTOW",
+   "CWCusM113",
+   "CWCusM163"
+  ],
+  "notes": "Universal damage rules: ARMOR_PIERCING = 0.9x vs tank armor (tank duels are near-mirrors decided by range/DPS); STEALTHJET_MISSILES = 5x-10x vs aircraft/heli armor; COMANCHE_VULCAN = 2x infantry / 3.1x Mi24 / 0.3x tanks (specialized AA+anti-inf); ATGM-TOW burst = 20x vs air-type armor (huge but short-lived); EXPLOSION = 1x but large AOE, ideal vs infantry clusters and structures; Cruise Missile = UNRESISTABLE, ignores all armor. Never use AP rounds against AA platforms or aircraft \u2014 use missile/explosive damage instead. Coverage gaps: the bot has no effectiveness data for plain CWCusM113/CWCusM163 (only the ChassisOne variants are modeled), F15_Patrol, all Fort/garrison templates (CWCusFortM2/Mortar/TOW, CWCruFortInf), and the SS20/Su24 superweapon-class units \u2014 it will mis-target or ignore these until they are added."
+ }
+}

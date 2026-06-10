@@ -392,6 +392,34 @@ def incoming_attack_ids(ctx):
     return out
 
 
+def my_flag_count(ctx):
+    """My captured FLAG points — the only income source in CWC (oil/fuel pay nothing, so
+    income-gated decisions must count flags, never the whole CWCciv set)."""
+    return sum(1 for u in ctx.world.units
+               if u.get("player") == ctx.player
+               and "flag" in (u.get("template") or "").lower())
+
+
+def incoming_attacks_near(ctx, center, radius):
+    """Attacker ObjectIDs hitting MY units/buildings NEAR `center` (fog-blind, from the
+    combat-event tracker). Scoped variant of incoming_attack_ids: base defense and the
+    harass gate must react to base-local pressure, not to a single poke anywhere on the
+    map (a map-wide gate let one fogged artillery piece disable all raiding forever)."""
+    tt = getattr(ctx, "threats", None)
+    if not tt or not center:
+        return []
+    cx, cy = center
+    near = set()
+    for u in my_units(ctx) + my_buildings(ctx):
+        if "x" in u and math.hypot(u.get("x", 0) - cx, u.get("y", 0) - cy) <= radius:
+            near.add(u.get("id"))
+    out = []
+    for t in tt.threats(ctx.frame):
+        if t.get("victimId") in near and t.get("topAttacker"):
+            out.append(t["topAttacker"])
+    return out
+
+
 def base_under_attack(ctx, radius=700.0):
     """True if my base is threatened — either a live enemy is near my base centroid, OR something is
     actively damaging my units/buildings (even from fog, via the combat-event tracker)."""

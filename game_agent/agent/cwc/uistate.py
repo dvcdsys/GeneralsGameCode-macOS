@@ -139,5 +139,6 @@ def build_state(ctx, cmdr, world):
                     if getattr(ctx, "threats", None) else []),
         "intel": intel.snapshot() if intel and hasattr(intel, "snapshot") else None,
         "sectors": sect_snap,
+        "dozer": getattr(cmdr, "_dozer_plan", None),
     }
     return state

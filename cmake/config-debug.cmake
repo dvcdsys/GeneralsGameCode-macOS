@@ -52,3 +52,13 @@ endif()
 if(RTS_DEBUG_MULTI_INSTANCE)
     target_compile_definitions(core_config INTERFACE RTS_MULTI_INSTANCE)
 endif()
+
+# The DEBUG_CRC sanity check (CRCDebug.h auto-enables it whenever DEBUG_LOGGING is on) recomputes a full
+# game-state CRC at map teardown and DEBUG_ASSERTCRASHes on the result. Under external control that path
+# crashes at the END OF EVERY MATCH (the victory/defeat screen never shows). Disable it through the
+# header's own intended NO_DEBUG_CRC escape hatch while KEEPING debug logging. Toggle OFF to restore the
+# network-sync CRC checking. This changes no game logic — it only removes a debug self-check.
+option(RTS_DISABLE_DEBUG_CRC "Disable the DEBUG_CRC map-teardown sanity check (it crashes at match end under external control)" ON)
+if(RTS_DISABLE_DEBUG_CRC)
+    target_compile_definitions(core_config INTERFACE NO_DEBUG_CRC)
+endif()

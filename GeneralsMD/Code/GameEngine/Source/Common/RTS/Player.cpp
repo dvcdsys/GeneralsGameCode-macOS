@@ -822,9 +822,17 @@ void Player::initFromDict(const Dict* d)
 
 	}
 
-	if (d->getBool(TheKey_playerIsHuman) || forceHuman)
+	Bool isExternalAI = (d->getBool(TheKey_playerIsExternalAI, &exists) && exists);
+	if (d->getBool(TheKey_playerIsHuman) || forceHuman || isExternalAI)
 	{
-		setPlayerType(PLAYER_HUMAN, false);
+		// HUMAN-PARITY: PLAYER_EXTERNAL (the external-control API bot) is set up EXACTLY like a
+		// human player -- it takes the CIVILIAN script list and falls through past the skirmish
+		// block below, so it does NOT inherit the skirmish side's AI economy scripts (the
+		// "AI Bonus" PLAYER_GIVE_MONEY income drip etc.). This keeps the bot on the same economic
+		// and gameplay rules as a real human while remaining a distinct, non-human player type for
+		// command relay. (setPlayerType only creates m_ai for PLAYER_COMPUTER, so m_ai stays null
+		// for PLAYER_EXTERNAL -- no internal AI brain.)
+		setPlayerType(isExternalAI ? PLAYER_EXTERNAL : PLAYER_HUMAN, false);
 		if (d->getBool(TheKey_playerIsPreorder, &exists))
 		{
 			m_isPreorder = TRUE;
@@ -860,12 +868,6 @@ void Player::initFromDict(const Dict* d)
 
 		}
 		skirmish = false;
-	}
-	else if (d->getBool(TheKey_playerIsExternalAI, &exists) && exists)
-	{
-		// Driven by the external-control API: a computer-style opponent with NO internal AI
-		// brain (setPlayerType only creates m_ai for PLAYER_COMPUTER, so m_ai stays null here).
-		setPlayerType(PLAYER_EXTERNAL, skirmish);
 	}
 	else
 	{
@@ -3428,7 +3430,11 @@ void Player::friend_applyDifficultyBonusesForObject(Object* obj, Bool apply) con
 {
 	if (TheGameLogic->isInSinglePlayerGame())
 	{
-		Real healthFactor = TheGlobalData->m_soloPlayerHealthBonusForDifficulty[getPlayerType()][getPlayerDifficulty()];
+		// HUMAN-PARITY: an externally-controlled bot (PLAYER_EXTERNAL) must play by exactly the
+		// same rules as a real human -- it must NOT receive the AI's solo difficulty bonuses
+		// (extra health / weapon damage). Fold PLAYER_EXTERNAL onto the HUMAN bonus row.
+		PlayerType bonusType = (getPlayerType() == PLAYER_EXTERNAL) ? PLAYER_HUMAN : getPlayerType();
+		Real healthFactor = TheGlobalData->m_soloPlayerHealthBonusForDifficulty[bonusType][getPlayerDifficulty()];
 		if (healthFactor != 1.0f)
 		{
 			BodyModuleInterface* body = obj->getBodyModule();
@@ -3450,17 +3456,18 @@ void Player::friend_applyDifficultyBonusesForObject(Object* obj, Bool apply) con
 				WEAPONBONUSCONDITION_SOLO_AI_HARD
 			},
 			{
-				// PLAYER_EXTERNAL: treat like the AI for solo weapon bonuses (must exist or
-				// wbonus[PLAYER_EXTERNAL] would zero-init to a bogus WeaponBonusConditionType).
-				WEAPONBONUSCONDITION_SOLO_AI_EASY,
-				WEAPONBONUSCONDITION_SOLO_AI_NORMAL,
-				WEAPONBONUSCONDITION_SOLO_AI_HARD
+				// PLAYER_EXTERNAL: HUMAN-PARITY -- use the HUMAN weapon bonuses, not the AI's.
+				// (Row must exist or wbonus[PLAYER_EXTERNAL] would zero-init to a bogus value;
+				// it is no longer indexed directly because bonusType folds EXTERNAL onto HUMAN.)
+				WEAPONBONUSCONDITION_SOLO_HUMAN_EASY,
+				WEAPONBONUSCONDITION_SOLO_HUMAN_NORMAL,
+				WEAPONBONUSCONDITION_SOLO_HUMAN_HARD
 			}
 		};
 		if (apply)
-			obj->setWeaponBonusCondition(wbonus[getPlayerType()][getPlayerDifficulty()]);
+			obj->setWeaponBonusCondition(wbonus[bonusType][getPlayerDifficulty()]);
 		else
-			obj->clearWeaponBonusCondition(wbonus[getPlayerType()][getPlayerDifficulty()]);
+			obj->clearWeaponBonusCondition(wbonus[bonusType][getPlayerDifficulty()]);
 	}
 
 }

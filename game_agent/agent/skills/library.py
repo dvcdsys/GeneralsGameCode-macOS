@@ -426,33 +426,80 @@ class BuildBaseSkill(Skill):
     # role order (resolved per-faction from /buildable). Each role is built once; the LLM/maintain can
     # add more later. (power = fuel depot in CWC; it also unlocks the war factory.)
     DEFAULT_ROLES = ["power", "barracks", "warfactory", "defense", "airfield"]
-    DOZER_TARGET = 2     # keep ~2 dozers so construction parallelises and survives losing one
-    DOZER_RETRAIN = 250  # min frames between dozer trains
-    ROLE_WAIT = 1200     # frames to wait for an unbuildable role before skipping it
+    DOZER_TARGET = 2          # DEMAND-DRIVEN cap: the Commander overwrites this each tick from the work
+                              #   plan. Default 2 keeps the skill sane when used standalone (LLM path).
+    DOZER_RETRAIN = 250       # min frames between dozer trains
+    DOZER_SPAWN_TIMEOUT = 700 # frames an ordered dozer may be in-flight before we assume it never spawned
+    DOZER_CASH_BUFFER = 1200  # spare cash to keep after a NON-first dozer (don't starve army/tank reserve)
+    extra_demand = 0          # non-base dozer jobs (expansion/repair) the Commander wants covered too
+    ROLE_WAIT = 1200          # frames to wait for an unbuildable role before skipping it
+
+    def _jobs_pending_count(self, ctx, roles=None):
+        """How many base-plan roles still WANT building right now (not owned, not in progress, not already
+        an active sub-build, still buildable). The Commander reads this to size the dozer demand."""
+        roles = roles or self.DEFAULT_ROLES
+        active = {s["role"] for s in getattr(self, "_subs", [])}
+        n = 0
+        if power_margin(ctx) < 0 and "power!" not in active:
+            n += 1
+        for ri, role in enumerate(roles):
+            if role in active or ri in getattr(self, "_skip", set()):
+                continue
+            if have_role(ctx, role) or role_in_progress(ctx, role):
+                continue
+            if find_buildable_by_role(ctx, role):
+                n += 1
+        return n
+
+    def _jobs_waiting(self, ctx, roles, free_dozers):
+        """Jobs (base plan + Commander-supplied extra_demand for expansion/repair) that have NO free dozer
+        right now → the count that justifies training another dozer."""
+        demand = self._jobs_pending_count(ctx, roles) + max(0, int(getattr(self, "extra_demand", 0)))
+        return max(0, demand - len(free_dozers))
 
     def tick(self, ctx):
         self._begin(ctx)
         roles = self.DEFAULT_ROLES
         if not hasattr(self, "_subs"):
             self._subs, self._dz_frame, self._wait, self._skip = [], None, {}, set()
+            self._dz_inflight, self._dz_prev_spawned, self._dz_live, self._dz_inflight_since = 0, 0, 0, 0
 
-        # 1) DOZERS: keep up to DOZER_TARGET. Count ALL dozers (busy + free) for the target — else, now
-        #    that find_dozers returns only FREE dozers, a base mid-construction looks dozer-starved and we
-        #    over-train (saw 10 dozers). Assign only FREE dozers to new builds.
+        # 1) DOZERS — DEMAND-DRIVEN (no fixed pile). DOZER_TARGET is the cap the Commander sets each tick
+        #    from the work plan; here we fill toward it but ONLY when a job is actually WAITING for a dozer
+        #    (so a freshly trained dozer is used at once — "build a dozer only when it can be employed").
+        #    IN-FLIGHT is an EXACT counter of ordered-but-not-yet-spawned dozers: incremented on each train,
+        #    decremented only when a dozer actually appears. So `live = spawned + inflight` is accurate and
+        #    can never exceed DOZER_TARGET — that kills the over-queue "купа дозерів" bug. (A queued dozer
+        #    whose producer was destroyed would leak the counter, so a long timeout clears a stuck inflight.)
         dozers = find_dozers(ctx)            # free (for assignment)
-        all_dozers = find_all_dozers(ctx)    # busy + free (for the target count)
-        if len(all_dozers) < self.DOZER_TARGET:
-            dz = find_trainable_dozer(ctx)
+        all_dozers = find_all_dozers(ctx)    # spawned (busy + free)
+        spawned = len(all_dozers)
+        appeared = spawned - self._dz_prev_spawned
+        if appeared > 0:
+            self._dz_inflight = max(0, self._dz_inflight - appeared)   # our orders materialised
+            self._dz_inflight_since = ctx.frame
+        elif self._dz_inflight > 0 and ctx.frame - self._dz_inflight_since > self.DOZER_SPAWN_TIMEOUT:
+            self._dz_inflight = 0                                      # stuck order (producer lost) — clear
+        self._dz_prev_spawned = spawned
+        live = spawned + self._dz_inflight
+        self._dz_live = live
+        need_first = live == 0
+        waiting = self._jobs_waiting(ctx, roles, dozers)     # jobs with NO free dozer right now
+        dz = find_trainable_dozer(ctx) if (need_first or (live < self.DOZER_TARGET and waiting > 0)) else None
+        if dz:
             money = ctx.me.get("money", 0) or 0
-            need_first = not all_dozers
-            if dz and ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN \
-                    and (need_first or money >= dz[2] + 1500):
+            if ctx.frame - (self._dz_frame or -10 ** 9) > self.DOZER_RETRAIN \
+                    and (need_first or money >= dz[2] + self.DOZER_CASH_BUFFER):
                 ctx.client.command(ctx.player, [dz[1]], "train_unit", {"template": dz[0], "count": 1})
                 self._dz_frame = ctx.frame
-            if need_first:
-                self.status = RUNNING if dz else BLOCKED
-                self.detail = "training first dozer" if dz else "no dozer and none trainable"
-                return
+                self._dz_inflight += 1                    # count it until it spawns → no re-queue pile
+                self._dz_inflight_since = ctx.frame
+                live += 1
+                self._dz_live = live
+        if need_first:
+            self.status = RUNNING if (self._dz_inflight or dz) else BLOCKED
+            self.detail = "training first dozer" if (self._dz_inflight or dz) else "no dozer and none trainable"
+            return
 
         # 2) prune finished sub-builds (advance past their role)
         self._subs = [s for s in self._subs if s["sub"].status not in (DONE, FAILED)]

@@ -94,6 +94,7 @@
     <div class="row"><input type="checkbox" id="L_garr" checked><span class="sw" style="background:#ff8c1a"></span><label for="L_garr">garrisonable (bunkers)</label></div>
     <div class="row"><input type="checkbox" id="L_props"><span class="sw" style="background:#556"></span><label for="L_props">props (trees…)</label></div>
     <div class="row"><input type="checkbox" id="L_sectors"><span class="sw" style="background:#3a5d96"></span><label for="L_sectors">sectors (intel grid)</label></div>
+    <div class="row"><input type="checkbox" id="L_influence"><span class="sw" style="background:linear-gradient(90deg,#33b0ff,#ff3b3b)"></span><label for="L_influence">influence heatmap (control / threat)</label></div>
 
     <h2>Players</h2>
     <div id="players" class="num"></div>
@@ -117,6 +118,9 @@
 
     <h2>Commander (subsystems)</h2>
     <div id="cmdr" class="muted">—</div>
+
+    <h2>Dozer plan</h2>
+    <div id="dozer" class="muted">—</div>
 
     <h2>Battlefield intel</h2>
     <div id="intel" class="muted">—</div>
@@ -237,12 +241,33 @@ function drawSectors(){
   }
   octx.restore();
 }
+let INFLUENCE=null;   // {tile, nx, ny, cells:[{x,y,c,t,v}]} — the strategist's heat maps
+function drawInfluence(){
+  if(!INFLUENCE || !MAP || !document.getElementById('L_influence').checked) return;
+  const cs=MAP.cellSize, tw=INFLUENCE.tile/cs*view.scale;
+  octx.save();
+  for(const c of INFLUENCE.cells){
+    const [sx,sy]=worldToScreen(c.x,c.y);
+    const ctl=c.c||0, va=c.v||0;          // control = my presence - enemy threat; value = econ/target worth
+    if(Math.abs(ctl)>0.05){               // diverging: blue = I control, red = enemy controls
+      octx.globalAlpha=Math.min(0.55, Math.abs(ctl)*0.22);
+      octx.fillStyle = ctl>0 ? '#2aa9ff' : '#ff3b3b';
+      octx.fillRect(sx-tw/2, sy-tw/2, tw, tw);
+    }
+    if(va>0.15){                          // gold pip = strategic value (capture point / enemy production)
+      octx.globalAlpha=Math.min(0.8, 0.25+va*0.14); octx.fillStyle='#ffd23f';
+      octx.beginPath(); octx.arc(sx,sy,Math.max(2,tw*0.13),0,7); octx.fill();
+    }
+  }
+  octx.globalAlpha=1; octx.restore();
+}
 function draw(){
   if(!MAP||!terrainImg) return;
   const {width:W,height:H}=MAP;
   tctx.imageSmoothingEnabled=false; tctx.clearRect(0,0,terrain.width,terrain.height);
   tctx.drawImage(terrainImg, view.panX, view.panY, W*view.scale, H*view.scale);
   octx.clearRect(0,0,overlay.width,overlay.height);
+  drawInfluence();
   drawSectors();
   const counts={};
   for(const u of UNITS){
@@ -320,7 +345,7 @@ stage.addEventListener('mousemove',e=>{ mouse.x=e.offsetX; mouse.y=e.offsetY; mo
 stage.addEventListener('mouseleave',()=>{ mouse.on=false; draw(); });
 document.getElementById('reload').onclick=()=>loadMap();
 document.getElementById('pause').onclick=e=>{ paused=!paused; e.target.textContent=paused?'resume':'pause'; };
-for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_props','L_sectors']) document.getElementById(id).onchange=draw;
+for(const id of ['L_units','L_struct','L_neutral','L_econ','L_tech','L_garr','L_props','L_sectors','L_influence']) document.getElementById(id).onchange=draw;
 document.getElementById('botview').onchange=e=>{ BOT_VIEW=e.target.checked; UNITS=[]; updateViewInfo(); draw(); };  // next poll (≤450ms) refetches with/without fog
 
 (async()=>{ fit(); try{ await loadMap(); }catch(e){ document.getElementById('status').textContent='no map yet: '+e.message+' (start a match)'; } poll(); })();
@@ -381,6 +406,35 @@ function renderCmdr(s){
   if(!d || !Object.keys(d).length){ el.innerHTML='<span class="muted">— (run --agent commander)</span>'; return; }
   el.innerHTML = Object.keys(d).map(k=>`<div class="line"><b>${escAg(k)}:</b> ${escAg(d[k])}</div>`).join('');
 }
+const DEC_COL = {train:'#8fe6a0', full:'#7da7ff', hold:'#9aa3b0'};
+function renderDozer(s){
+  const el=document.getElementById('dozer'); const p=s.dozer;
+  if(!p){ el.innerHTML='<span class="muted">— (run --agent commander)</span>'; return; }
+  // visual slots: ███ live (green=building/busy via busy count, blue=free), outline = desired, faint = cap
+  let slots='';
+  for(let i=0;i<p.cap;i++){
+    let bg='transparent', bd='#2a3340';
+    if(i<p.busy){ bg='#ffb38a'; bd='#ffb38a'; }            // busy (building/repairing)
+    else if(i<p.spawned){ bg='#7da7ff'; bd='#7da7ff'; }    // free, idle
+    else if(i<p.live){ bg='#3a4a2a'; bd='#8fe6a0'; }       // in-flight (ordered)
+    else if(i<p.desired){ bd='#5a6a4a'; }                  // wanted but not yet made
+    slots+=`<span title="slot ${i+1}" style="display:inline-block;width:16px;height:16px;margin-right:3px;`+
+           `border-radius:3px;background:${bg};border:1.5px solid ${bd}"></span>`;
+  }
+  const j=p.jobs;
+  const dec=`<span class="pill" style="background:${DEC_COL[p.decision]||'#444'};color:#0b0e13">${escAg(p.decision)}</span>`;
+  el.innerHTML =
+    `<div style="margin-bottom:5px">${slots}</div>`+
+    `<div class="line"><b>live ${p.live}</b> / desired ${p.desired} <span class="muted">(cap ${p.cap})</span> ${dec}</div>`+
+    `<div class="line muted">free ${p.free} · busy ${p.busy} · in-flight ${p.inflight}</div>`+
+    `<div class="line">jobs — build <b>${j.build}</b> · repair <b>${j.repair}</b>${j.far?' · <b>far</b>':''}`+
+    `${p.repairing?` · repairing #${p.repairing}`:''}${p.parked?` · parked <b>${p.parked.n}</b> @${p.parked.x},${p.parked.y}`:''}</div>`+
+    `<div class="muted" style="font-size:11px;margin-top:3px">`+
+    `<span style="color:#ffb38a">■</span> busy `+
+    `<span style="color:#7da7ff">■</span> free `+
+    `<span style="color:#8fe6a0">▢</span> in-flight `+
+    `<span style="color:#5a6a4a">▢</span> wanted</div>`;
+}
 const ROLE_COLS = {air:'#e59bff', aircraft:'#e59bff', infantry:'#8fe6a0', vehicle:'#ffb38a', artillery:'#ffe08a'};
 function renderIntel(s){
   const el=document.getElementById('intel');
@@ -406,9 +460,10 @@ function renderIntel(s){
 // renders the LLM-orchestrator fields; the commander writes detail+intel instead)
 async function pollCmdrIntel(){
   let s; try { s = await (await fetch('/agent/state',{cache:'no-store'})).json(); } catch(e){ return; }
-  renderCmdr(s); renderIntel(s);
+  renderCmdr(s); renderDozer(s); renderIntel(s);
   SECTORS = s.sectors || null;
-  if(document.getElementById('L_sectors').checked) draw();
+  INFLUENCE = s.influence || null;
+  if(document.getElementById('L_sectors').checked || document.getElementById('L_influence').checked) draw();
 }
 setInterval(pollCmdrIntel, 1500); pollCmdrIntel();
 

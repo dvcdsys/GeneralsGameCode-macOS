@@ -507,6 +507,22 @@ void DebugAutoStartSkirmish( const char *mapName )
 	const Int TEAM_HUMAN_ALLY = 0;
 	const Int TEAM_ENEMY      = 1;
 
+	// AI difficulty for the stand: env GEN_AUTO_DIFF (easy|normal|hard), default EASY. Parsed BEFORE
+	// slot setup because the SLOT STATE is what actually reaches the AI brain: GameLogic maps
+	// SLOT_*_AI -> TheKey_skirmishDifficulty and Player::initFromDict overrides the AI's difficulty
+	// with it (Player.cpp setAIDifficulty) — so a global-only difficulty was always reset to the
+	// slot's EASY (the score screen honestly said "Easy Army").
+	GameDifficulty autoDiff = DIFFICULTY_EASY;
+	if (const char *ds = ::getenv("GEN_AUTO_DIFF"))
+	{
+		AsciiString d = ds; d.toLower();
+		if (d == "normal" || d == "medium" || d == "med") autoDiff = DIFFICULTY_NORMAL;
+		else if (d == "hard" || d == "brutal") autoDiff = DIFFICULTY_HARD;
+	}
+	const SlotState aiSlotState =
+		(autoDiff == DIFFICULTY_HARD) ? SLOT_BRUTAL_AI :
+		(autoDiff == DIFFICULTY_NORMAL) ? SLOT_MED_AI : SLOT_EASY_AI;
+
 	// Slot 0: the local human player.
 	GameSlot gSlot;
 	gSlot.setName(prefs.getUserName());
@@ -531,7 +547,7 @@ void DebugAutoStartSkirmish( const char *mapName )
 	// external-control API has a PLAYER_EXTERNAL to read and command. In allyMode it joins the
 	// human's team (TEAM_HUMAN_ALLY). NOTE: set team AFTER setState (setState resets team).
 	GameSlot aiSlot;
-	aiSlot.setState(useExternalSlot ? SLOT_EXTERNAL_AI : SLOT_EASY_AI);
+	aiSlot.setState(useExternalSlot ? SLOT_EXTERNAL_AI : aiSlotState);
 	if (allyMode)
 		aiSlot.setTeamNumber(TEAM_HUMAN_ALLY);
 	// GEN_AUTO_FACTION: pin the external (bot) player's faction so test matches are reproducible on ONE
@@ -559,7 +575,7 @@ void DebugAutoStartSkirmish( const char *mapName )
 	if (allyMode)
 	{
 		GameSlot enemySlot;
-		enemySlot.setState(SLOT_EASY_AI);
+		enemySlot.setState(aiSlotState);
 		enemySlot.setTeamNumber(TEAM_ENEMY);
 		TheSkirmishGameInfo->setSlot(2, enemySlot);
 	}
@@ -600,17 +616,8 @@ void DebugAutoStartSkirmish( const char *mapName )
 	DEBUG_LOG(("DebugAutoStartSkirmish: launching skirmish on map '%s' (%s)", map.str(),
 		allyMode ? "human + API-ally vs enemy AI" : (useExternalSlot ? "1 human + 1 external/API player" : "1 human + 1 easy AI")));
 
-	// Global AI difficulty for the headless stand: env GEN_AUTO_DIFF (easy|normal|hard), default EASY.
-	// AISkirmishPlayer reads the GLOBAL difficulty (getGlobalDifficulty), so this governs how tough the
-	// opponent AI plays regardless of the slot's EASY/MED/HARD state.
-	GameDifficulty autoDiff = DIFFICULTY_EASY;
-	if (const char *ds = ::getenv("GEN_AUTO_DIFF"))
-	{
-		AsciiString d = ds; d.toLower();
-		if (d == "normal" || d == "medium" || d == "med") autoDiff = DIFFICULTY_NORMAL;
-		else if (d == "hard" || d == "brutal") autoDiff = DIFFICULTY_HARD;
-	}
-
+	// Global difficulty matches the slot difficulty (autoDiff parsed above, where the SLOT state —
+	// the value that actually reaches the AI brain — is also derived from it).
 	InitRandom(TheSkirmishGameInfo->getSeed());
 	GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
 	msg->appendIntegerArgument(GAME_SKIRMISH);

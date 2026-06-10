@@ -2210,7 +2210,9 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		for (Int i=0; i<MAX_PLAYER_COUNT; ++i)
 		{
 			Player *pPlayer = ThePlayerList->getNthPlayer(i);
-			if (pPlayer && pPlayer->getPlayerType() != PLAYER_HUMAN)
+			// HUMAN-PARITY: the external-control bot (PLAYER_EXTERNAL) gets the same start-of-game
+			// rank points a human does. Only a true PLAYER_COMPUTER AI is excluded.
+			if (pPlayer && pPlayer->getPlayerType() == PLAYER_COMPUTER)
 				pPlayer = nullptr;
 
 			if (pPlayer)

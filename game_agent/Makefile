@@ -29,21 +29,29 @@ WEBPORT ?= 8088
 LOG     ?= /tmp/gen_api_actions.jsonl
 GAMELOG ?= /tmp/gen_api_stand.log
 PY      ?= python3
-AGENT   ?= scripted
+AGENT   ?= strategist
 OLLAMA_HOST ?= 192.168.1.168:11434
 MODEL   ?= gemma4:26b
 
 # extra GEN_AUTO_* knobs; override to taste
 RUNENV  ?= GEN_AUTO_SKIRMISH=1 GEN_AUTO_EXTERNAL=1 GEN_AUTO_ALLY=1
+# RENDER-SKIP for the automated stand: GEN_NO_VIEWS=1 skips drawViews() (the 3D scene render).
+# Mass battles (~54+ on-screen units) otherwise FREEZE the legacy D3D8->Metal renderer on macOS
+# (profiled: shadow + sorting/particle + mesh draw calls saturate the main thread). The stand only
+# needs logic + the API, so skipping the 3D draw keeps big-army matches running at full sim speed.
+# Set VIEWS= (empty) to watch the 3D scene instead (will freeze in huge battles). `make play` never
+# sets this — a human game renders normally (and the bot loses well before 54 units anyway).
+VIEWS   ?= GEN_NO_VIEWS=1
 
 .DEFAULT_GOAL := help
-.PHONY: help build run wait stop agent viewer demo events session smoke-read smoke-control map log status clean all
+.PHONY: help build run play wait stop agent viewer demo events session smoke-read smoke-control map log status clean all
 
 help:
 	@echo "game_agent harness — targets:"
 	@echo "  make build          build generalszh_api ($(BIN))"
-	@echo "  make run            launch stand (skirmish+API) and wait for in-game"
-	@echo "  make agent          run harness agent '$(AGENT)' (use AGENT=ollama for the LLM planner)"
+	@echo "  make play           launch PLAYABLE game (normal menu, API on) — YOU vs the bot"
+	@echo "  make run            launch AUTO test stand (skirmish+API, 3D render skipped for big-battle stability); VIEWS= to render"
+	@echo "  make agent          run harness agent '$(AGENT)' (strategist = the strong v2 bot; AGENT=commander = old)"
 	@echo "  make viewer         interactive browser world-view  (http://localhost:$(WEBPORT)/map_live.html)"
 	@echo "  make map            render world PNG -> /tmp/gen_world.png"
 	@echo "  make demo           read->pause->move->resume DoD loop"
@@ -66,22 +74,35 @@ build:
 # Launch the stand in the background, then block until the match is live.
 run: stop
 	@echo "launching stand on :$(PORT) (map: Dawn of War) ..."
-	@cd "$(DATADIR)" && env GEN_API_PORT=$(PORT) GEN_API_LOG=$(LOG) $(RUNENV) \
+	@cd "$(DATADIR)" && env GEN_API_PORT=$(PORT) GEN_API_LOG=$(LOG) $(VIEWS) $(RUNENV) \
 		GEN_AUTO_MAP='$(MAP)' "$(BIN)" > "$(GAMELOG)" 2>&1 & \
 		echo "  pid $$! (game log: $(GAMELOG))"
 	@$(MAKE) --no-print-directory wait
+
+# Launch the game NORMALLY (full menu) with the API on, so YOU play AGAINST the bot.
+# In the Skirmish menu: pick your faction, set ONE opponent slot to "ExternalAI"
+# (last dropdown entry; its label is blank / "MISSING: 'GUI:ExternalAI'"), Start.
+# Then in another terminal:  make agent AGENT=commander   (attaches the bot brain).
+# Runs in the FOREGROUND — the game window opens; Ctrl-C (or quit in-game) stops it.
+play: stop
+	@echo "launching PLAYABLE game on :$(PORT) — set an opponent slot to 'ExternalAI', Start, then: make agent AGENT=commander"
+	@cd "$(DATADIR)" && exec env GEN_API_PORT=$(PORT) GEN_API_LOG=$(LOG) "$(BIN)"
 
 wait:
 	@echo "waiting for in-game on :$(PORT) ..."
 	@for i in $$(seq 1 50); do \
 		if curl -s --max-time 3 http://127.0.0.1:$(PORT)/healthz 2>/dev/null | grep -q '"inGame":true'; then \
-			echo "  IN GAME -> http://127.0.0.1:$(PORT)"; exit 0; fi; \
+			echo "  IN GAME -> http://127.0.0.1:$(PORT)"; \
+			curl -s --max-time 3 -X POST http://127.0.0.1:$(PORT)/control \
+				-H 'Content-Type: application/json' -d '{"action":"pause"}' >/dev/null 2>&1; \
+			echo "  PAUSED until the agent attaches (fair start — the enemy AI was getting a ~1min head start)"; \
+			exit 0; fi; \
 		sleep 3; done; \
 	echo "  timeout (check $(GAMELOG))"; exit 1
 
 stop:
-	-@pkill -f generalszh_api 2>/dev/null; pkill -f "ui/server.py" 2>/dev/null; sleep 1; \
-	echo "stopped api game + viewer (your own generalszh is untouched)"
+	-@pkill -f generalszh_api 2>/dev/null; pkill -f "ui/server.py" 2>/dev/null; pkill -f "run_agent.py" 2>/dev/null; sleep 1; \
+	echo "stopped api game + agent + viewer (your own generalszh is untouched)"
 
 # Run the agent from the package root so `genapi`/`agent` import cleanly.
 # `make agent`              -> scripted baseline (no LLM)

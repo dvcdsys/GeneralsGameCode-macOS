@@ -548,7 +548,9 @@ UpdateSleepTime SpectreGunshipUpdate::update()
 
             // WE WANT THE WIDE_RANGE AUTOACQUIRE POWER DISABLED FOR HUMAN PLAYERS
             // SO THAT THE SPECTREGUNSHIP REQUIRES BABYSITTING AT ALL TIMES
-            if (gunship->getControllingPlayer()->getPlayerType() != PLAYER_HUMAN )
+            // HUMAN-PARITY: the external-control bot (PLAYER_EXTERNAL) must babysit the gunship just
+            // like a human (no wide-range auto-acquire cheat). Only a true PLAYER_COMPUTER auto-acquires.
+            if (gunship->getControllingPlayer()->getPlayerType() == PLAYER_COMPUTER )
             {
               if ( ! validTargetObject )
               {

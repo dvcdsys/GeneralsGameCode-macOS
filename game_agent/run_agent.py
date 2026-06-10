@@ -29,6 +29,15 @@ def run_commander(args, client, view):
     _run(client, view=view, fast_hz=args.fast_hz)
 
 
+def run_strategist(args, client, view):
+    """The STRATEGIST (commander v2): a strong, dynamic, map-aware CWC bot — influence heat maps,
+    coherent macro (never bankrupts, protects dozers, standing army), counter-composition from the
+    scouted enemy, and an aggressive influence-driven army (scout/harass/defend/assault). No LLM.
+    See agent/strategist/."""
+    from agent.strategist.strategist import run_strategist as _run
+    _run(client, view=view, fast_hz=args.fast_hz)
+
+
 def run_ollama(args, client, view):
     from agent.journal import AgentNotes, EventJournal
     from agent.ollama_agent import OllamaPlanner
@@ -55,7 +64,8 @@ def run_ollama(args, client, view):
                 view=view, fast_hz=args.fast_hz, plan_period_s=args.plan_period)
 
 
-AGENTS = {"scripted": run_scripted, "commander": run_commander, "ollama": run_ollama}
+AGENTS = {"scripted": run_scripted, "commander": run_commander,
+          "strategist": run_strategist, "ollama": run_ollama}
 
 
 def main():
