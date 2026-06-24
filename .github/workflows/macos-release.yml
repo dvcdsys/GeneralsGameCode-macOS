@@ -100,15 +100,19 @@ jobs:
         run: bash scripts/package-macos-release.sh Release build/apple-arm64-release
 
       # ---- launcher ----------------------------------------------------------
-      - name: Build launcher app
+      - name: Build launcher app + DMG
         if: steps.setup.outputs.component == 'launcher' || steps.setup.outputs.component == 'both'
         env:
           VERSION: ${{ steps.setup.outputs.version }}
         run: |
+          brew install create-dmg
           APP_PATH="$(bash launcher/build-app.sh | tail -n1)"
           echo "Launcher: ${APP_PATH}"
+          # .app.zip is what the launcher's self-updater downloads; .dmg is the
+          # drag-to-Applications installer for first-time human installs.
           ( cd dist && ditto -c -k --keepParent "GeneralsZH Launcher.app" "GeneralsZH-Launcher.app.zip" )
-          shasum -a 256 dist/GeneralsZH-Launcher.app.zip | tee -a dist/SHA256SUMS
+          bash launcher/make-dmg.sh "${APP_PATH}"
+          shasum -a 256 dist/GeneralsZH-Launcher.app.zip dist/GeneralsZH-Launcher.dmg | tee -a dist/SHA256SUMS
 
       # ---- artifacts (always, for inspection) --------------------------------
       - name: Upload artifacts
@@ -118,6 +122,7 @@ jobs:
           path: |
             dist/GeneralsZH-macOS-arm64.zip
             dist/GeneralsZH-Launcher.app.zip
+            dist/GeneralsZH-Launcher.dmg
             dist/SHA256SUMS
           if-no-files-found: warn
 
@@ -146,15 +151,18 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "${TAG}" \
+            dist/GeneralsZH-Launcher.dmg \
             dist/GeneralsZH-Launcher.app.zip \
             dist/SHA256SUMS \
             --title "GeneralsZH Launcher — macOS (Apple Silicon) ${TAG}" \
             --notes "Native macOS arm64 launcher for Command & Conquer: Generals — Zero Hour.
 
           ## Install
-          1. Download **GeneralsZH-Launcher.app.zip**, unzip, move the app to /Applications.
+          1. Download **GeneralsZH-Launcher.dmg**, open it, and drag **GeneralsZH Launcher.app**
+             onto the **Applications** folder.
           2. First launch: right-click the app → **Open** (it is ad-hoc signed, not notarized).
           3. Pick the folder with your original Zero Hour data (\`.big\` files) and press **Play**.
              The engine is downloaded automatically from the latest \`engine-v*\` release.
 
-          Apple Silicon (M-series) only. Checksums in \`SHA256SUMS\`."
+          (\`GeneralsZH-Launcher.app.zip\` is also attached — it's what the launcher's built-in
+          updater uses.) Apple Silicon (M-series) only. Checksums in \`SHA256SUMS\`."

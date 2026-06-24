@@ -15,9 +15,9 @@ You must own a legitimate copy of Zero Hour — the proprietary EA game data is
 
 ## Install & play
 
-1. Download **`GeneralsZH-Launcher.app.zip`** from the
+1. Download **`GeneralsZH-Launcher.dmg`** from the
    [latest release](https://github.com/dvcdsys/GeneralsGameCode-macOS/releases).
-2. Unzip it and move **GeneralsZH Launcher.app** to `/Applications`.
+2. Open it and drag **GeneralsZH Launcher.app** onto the **Applications** folder.
 3. First launch: right-click the app → **Open** (it's ad-hoc signed, not notarized).
 4. In the launcher, pick the folder with your original Zero Hour data (the
    `.big` archives), then press **Play**.
