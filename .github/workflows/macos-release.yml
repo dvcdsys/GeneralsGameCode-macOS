@@ -83,18 +83,21 @@ jobs:
         if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
         run: brew install ninja
 
-      - name: Configure engine (apple-arm64 preset)
+      - name: Configure engine (apple-arm64-release preset)
         if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
-        run: cmake --preset apple-arm64 -DRTS_VERSION=${{ steps.setup.outputs.version }}
+        # apple-arm64-release = FFmpeg OFF, so the binary links only the bundled
+        # bink/miles dylibs + system frameworks (see header) and runs on any Apple
+        # Silicon Mac without Homebrew. Trade-off: in-engine video playback is disabled.
+        run: cmake --preset apple-arm64-release -DRTS_VERSION=${{ steps.setup.outputs.version }}
 
       - name: Build engine (Release)
         if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
         # CMake target is z_generals; its OUTPUT_NAME is generalszh.
-        run: cmake --build build/apple-arm64 --config Release --target z_generals
+        run: cmake --build build/apple-arm64-release --config Release --target z_generals
 
       - name: Package engine payload
         if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
-        run: bash scripts/package-macos-release.sh Release build/apple-arm64
+        run: bash scripts/package-macos-release.sh Release build/apple-arm64-release
 
       # ---- launcher ----------------------------------------------------------
       - name: Build launcher app
