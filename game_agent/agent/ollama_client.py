@@ -1,9 +1,9 @@
 """OllamaChat — minimal stdlib wrapper over an Ollama server's /api/chat (native tool-calling).
 
-No pip dependency (urllib, like GameClient). Defaults target the powerful LAN box the user set up
-(192.168.1.168:11434, model qwen3:8b — tools + thinking). Override via args or env:
+No pip dependency (urllib, like GameClient). Defaults target a local Ollama server
+(localhost:11434, model qwen3:8b — tools + thinking). Point it at a LAN box via args or env:
 
-    GEN_OLLAMA_HOST=192.168.1.168:11434   GEN_OLLAMA_MODEL=qwen3:8b
+    GEN_OLLAMA_HOST=host:11434   GEN_OLLAMA_MODEL=qwen3:8b
 
 `chat(messages, tools)` returns the assistant message dict ({"content", "tool_calls"}), or None on
 failure. Thinking is disabled by default (`think=False`) to keep planner latency down; flip it on for
@@ -18,7 +18,7 @@ import urllib.request
 
 class OllamaChat:
     def __init__(self, host=None, model=None, timeout=180.0, temperature=0.3, think=False):
-        host = host or os.environ.get("GEN_OLLAMA_HOST", "192.168.1.168:11434")
+        host = host or os.environ.get("GEN_OLLAMA_HOST", "localhost:11434")
         if not host.startswith("http"):
             host = "http://" + host
         self.base = host.rstrip("/")

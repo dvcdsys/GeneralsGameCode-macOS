@@ -59,6 +59,10 @@ thumbs.db
 ## GitHub repo this should not be uploaded.
 /original/
 
+## Internal working docs — plans, dev-logs, handoff notes. Kept locally only,
+## out of the public repo (may reference local paths / other projects).
+/internal/
+
 ## AI assistant config (user-specific)
 /.claude/
 /CLAUDE.md

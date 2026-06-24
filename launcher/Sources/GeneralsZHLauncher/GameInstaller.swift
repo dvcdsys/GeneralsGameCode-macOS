@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import AppKit
 
 /// Drives the whole launcher flow: pick data dir → ensure the engine is
 /// installed (download from the latest release if missing) → launch the game
@@ -21,6 +22,26 @@ final class LauncherModel: ObservableObject {
         UserDefaults.standard.bool(forKey: "useMod") {
         didSet { UserDefaults.standard.set(useMod, forKey: "useMod") }
     }
+
+    /// User-data directory (custom maps, saved games, Options.ini). Relocatable;
+    /// passed to the engine via GEN_USER_DATA. Defaults to ~/Documents/<leaf>/.
+    @Published var userDataDirPath: String =
+        UserDefaults.standard.string(forKey: "userDataDirPath") ?? UserData.defaultDirectory.path {
+        didSet { UserDefaults.standard.set(userDataDirPath, forKey: "userDataDirPath") }
+    }
+
+    /// Display resolution (written to Options.ini) and fullscreen (the -win flag).
+    @Published var selectedResolution: GameResolution = GameResolution.match(w: 1024, h: 768)
+    @Published var fullscreen: Bool =
+        (UserDefaults.standard.object(forKey: "fullscreen") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(fullscreen, forKey: "fullscreen") }
+    }
+
+    // Update state (populated by checkForUpdates).
+    @Published var latestEngineVersion: String? = nil
+    @Published var latestLauncherVersion: String? = nil
+    @Published var engineUpdateAvailable = false
+    @Published var launcherUpdateAvailable = false
 
     @Published var status: String = "Ready."
     @Published var isBusy: Bool = false
@@ -54,6 +75,25 @@ final class LauncherModel: ObservableObject {
 
     var engineInstalled: Bool {
         FileManager.default.fileExists(atPath: Config.runtimeBinary.path)
+    }
+
+    var userDataURL: URL { URL(fileURLWithPath: userDataDirPath) }
+
+    /// The launcher's own version (from Info.plist / CFBundleShortVersionString).
+    var currentLauncherVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+    }
+
+    /// Installed engine version, parsed from the recorded release tag.
+    var installedEngineVersion: SemVer? {
+        guard let tag = try? String(contentsOf: Config.versionFile, encoding: .utf8) else { return nil }
+        return SemVer(tag)
+    }
+    var installedEngineVersionDisplay: String {
+        guard engineInstalled else { return "not installed" }
+        if let v = installedEngineVersion { return v.description }
+        return (try? String(contentsOf: Config.versionFile, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "installed"
     }
 
     // MARK: - Folder picking
@@ -93,6 +133,222 @@ final class LauncherModel: ObservableObject {
         modPath = ""
         useMod = false
         status = "Mod cleared — will launch the original game."
+    }
+
+    // MARK: - User-data folder
+
+    func chooseUserDataDir() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose the user-data folder (maps, saved games)"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = userDataURL
+        panel.prompt = "Choose"
+        if panel.runModal() == .OK, let url = panel.url {
+            userDataDirPath = url.path
+            ensureUserDataDefaults()
+            loadResolutionFromIni()
+            status = "User-data folder set."
+        }
+    }
+
+    /// Creates the user-data folder + standard sub-folders if missing. Idempotent.
+    func ensureUserDataDefaults() {
+        let fm = FileManager.default
+        try? fm.createDirectory(at: userDataURL, withIntermediateDirectories: true)
+        for name in UserData.subfolders {
+            try? fm.createDirectory(
+                at: userDataURL.appendingPathComponent(name, isDirectory: true),
+                withIntermediateDirectories: true)
+        }
+    }
+
+    func revealUserData() {
+        ensureUserDataDefaults()
+        NSWorkspace.shared.activateFileViewerSelecting([userDataURL])
+    }
+
+    // MARK: - Resolution
+
+    /// Reads `Resolution` from Options.ini in the chosen user-data dir; falls
+    /// back to the display's native resolution, then 1024×768.
+    func loadResolutionFromIni() {
+        let ini = OptionsIni.load(from: UserData.optionsIni(in: userDataURL))
+        if let (w, h) = ini.resolution {
+            selectedResolution = GameResolution.match(w: w, h: h)
+        } else if let native = GameResolution.native() {
+            selectedResolution = native
+        } else {
+            selectedResolution = GameResolution.match(w: 1024, h: 768)
+        }
+    }
+
+    /// Writes the selected resolution to Options.ini, preserving other keys.
+    /// No-op while the game runs (it rewrites the file on exit).
+    func applyResolution() {
+        guard !gameRunning else { return }
+        let url = UserData.optionsIni(in: userDataURL)
+        var ini = OptionsIni.load(from: url)
+        if let cur = ini.resolution, cur.w == selectedResolution.w, cur.h == selectedResolution.h {
+            return  // already current
+        }
+        ini.setResolution(selectedResolution.w, selectedResolution.h)
+        do {
+            try ini.save(to: url)
+            status = "Resolution set to \(selectedResolution.label)."
+        } catch {
+            fail(error)
+        }
+    }
+
+    // MARK: - Stop
+
+    /// Force-closes the running game: SIGTERM, then SIGKILL after a short grace.
+    func stop() {
+        guard let proc = gameProcess, proc.isRunning else { return }
+        let pid = proc.processIdentifier
+        status = "Stopping game…"
+        proc.terminate()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            if proc.isRunning { kill(pid, SIGKILL) }
+        }
+    }
+
+    // MARK: - Versions & updates
+
+    /// Recomputes update-available flags from the last-known latest versions.
+    func refreshInstalledVersions() { recomputeUpdateFlags() }
+
+    private func recomputeUpdateFlags() {
+        if let latest = latestLauncherVersion, let l = SemVer(latest),
+           let cur = SemVer(currentLauncherVersion) {
+            launcherUpdateAvailable = cur < l
+        } else {
+            launcherUpdateAvailable = false
+        }
+        if let latest = latestEngineVersion, let e = SemVer(latest) {
+            engineUpdateAvailable = (installedEngineVersion.map { $0 < e } ?? true)
+        } else {
+            engineUpdateAvailable = false
+        }
+    }
+
+    func checkForUpdates() {
+        guard !isBusy else { return }
+        lastError = nil
+        status = "Checking for updates…"
+        Task {
+            do {
+                let releases = try await GitHubClient.listReleases()
+                if let e = GitHubClient.latest(in: releases, prefix: Config.enginePrefix) {
+                    latestEngineVersion = SemVer(e.tagName)?.description
+                }
+                if let l = GitHubClient.latest(in: releases, prefix: Config.launcherPrefix) {
+                    latestLauncherVersion = SemVer(l.tagName)?.description
+                }
+                recomputeUpdateFlags()
+                status = "Update check complete."
+            } catch {
+                fail(error)
+            }
+        }
+    }
+
+    /// Installs/updates the engine to the latest `engine-v*` release.
+    func updateEngine() {
+        guard !isBusy else { return }
+        lastError = nil
+        isBusy = true
+        Task {
+            do {
+                try await installEngine()
+                latestEngineVersion = installedEngineVersion?.description ?? latestEngineVersion
+                recomputeUpdateFlags()
+                status = "Engine updated (\(installedEngineVersionDisplay))."
+            } catch {
+                fail(error)
+            }
+            progress = nil
+            isBusy = false
+        }
+    }
+
+    /// Self-updates to the latest `launcher-v*` release: download + extract, then
+    /// a detached helper swaps the bundle once we quit and relaunches us.
+    func updateLauncher() {
+        guard !isBusy else { return }
+        lastError = nil
+        isBusy = true
+        Task {
+            do {
+                let release = try await GitHubClient.latestRelease(withPrefix: Config.launcherPrefix)
+                guard let asset = release.asset(named: Config.launcherAssetName) else {
+                    throw LauncherError.assetMissing(name: Config.launcherAssetName, tag: release.tagName)
+                }
+                status = "Downloading launcher \(release.tagName)…"
+                let zip = try await download(from: URL(string: asset.browserDownloadURL)!)
+                status = "Installing update — the launcher will restart…"
+                try selfUpdateAndRelaunch(fromZip: zip)
+                // selfUpdateAndRelaunch terminates the app; not normally reached.
+            } catch {
+                fail(error)
+                isBusy = false
+            }
+            progress = nil
+        }
+    }
+
+    private func selfUpdateAndRelaunch(fromZip zip: URL) throws {
+        let fm = FileManager.default
+        let extractDir = fm.temporaryDirectory
+            .appendingPathComponent("gzh-launcher-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: extractDir, withIntermediateDirectories: true)
+
+        try Shell.run("/usr/bin/ditto", ["-x", "-k", zip.path, extractDir.path])
+        guard let newApp = Self.findApp(in: extractDir) else {
+            throw LauncherError.binaryMissingAfterInstall
+        }
+        _ = try? Shell.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", newApp.path])
+
+        let currentApp = Bundle.main.bundleURL
+        let parent = currentApp.deletingLastPathComponent().path
+        guard fm.isWritableFile(atPath: parent) else {
+            throw LauncherError.launcherNotWritable(path: currentApp.path)
+        }
+
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let script = """
+        #!/bin/sh
+        # Wait for the launcher (pid \(pid)) to quit, swap the bundle, relaunch.
+        while kill -0 \(pid) 2>/dev/null; do sleep 0.3; done
+        /bin/rm -rf "\(currentApp.path)"
+        /usr/bin/ditto "\(newApp.path)" "\(currentApp.path)"
+        /usr/bin/xattr -dr com.apple.quarantine "\(currentApp.path)" 2>/dev/null
+        /usr/bin/open "\(currentApp.path)"
+        """
+        let scriptURL = extractDir.appendingPathComponent("swap.sh")
+        try script.write(to: scriptURL, atomically: true, encoding: .utf8)
+        _ = try? Shell.run("/bin/chmod", ["+x", scriptURL.path])
+
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/bin/sh")
+        task.arguments = [scriptURL.path]
+        try task.run()   // detached: survives our termination
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            NSApp.terminate(nil)
+        }
+    }
+
+    private static func findApp(in root: URL) -> URL? {
+        let fm = FileManager.default
+        guard let en = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { return nil }
+        for case let url as URL in en where url.pathExtension == "app" {
+            return url
+        }
+        return nil
     }
 
     /// A real Zero Hour install has *.big archives (and usually Generals.dat).
@@ -161,8 +417,8 @@ final class LauncherModel: ObservableObject {
             zipURL = local
             tag = "local"
         } else {
-            status = "Checking latest release…"
-            let release = try await GitHubClient.fetchLatestRelease()
+            status = "Checking latest engine release…"
+            let release = try await GitHubClient.latestRelease(withPrefix: Config.enginePrefix)
             guard let asset = release.asset(named: Config.assetName) else {
                 throw LauncherError.assetMissing(name: Config.assetName, tag: release.tagName)
             }
@@ -231,9 +487,17 @@ final class LauncherModel: ObservableObject {
     // MARK: - Launch
 
     private func launchGame(dataDir: URL) throws {
+        ensureUserDataDefaults()
+
         let proc = Process()
         proc.executableURL = Config.runtimeBinary
+        // The engine finds its .big archives relative to the working directory
+        // (StdBIGFileSystem loads "*.big" from "."), so the game folder is passed
+        // as the cwd, not a flag.
         proc.currentDirectoryURL = dataDir
+        // Windowed mode is the engine's -win command-line flag; fullscreen is the
+        // default (no flag).
+        proc.arguments = fullscreen ? [] : ["-win"]
         var env = ProcessInfo.processInfo.environment
         // Apply the mod via the engine's macOS env-var hooks (see GameEngine.cpp):
         // a file -> GEN_MOD (m_modBIG), a folder -> GEN_MOD_DIR (m_modDir).
@@ -242,6 +506,9 @@ final class LauncherModel: ObservableObject {
         if willUseMod {
             env[modIsDirectory ? "GEN_MOD_DIR" : "GEN_MOD"] = modPath
         }
+        // Relocate the user-data dir (maps, saves, Options.ini) via GEN_USER_DATA
+        // (the macOS hook in GlobalData.cpp::BuildUserDataPathFromRegistry).
+        env["GEN_USER_DATA"] = userDataDirPath
         proc.environment = env
         proc.terminationHandler = { [weak self] _ in
             Task { @MainActor in

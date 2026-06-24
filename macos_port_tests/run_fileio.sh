@@ -14,8 +14,8 @@ echo "==> Compiling fileio_check"
     -o "$OUT" \
     "$ROOT/macos_port_tests/fileio_check.cpp"
 
-# Default to the install location used in this dev environment.
-: "${GAMEDIR:=/Users/dvcdsys/Command and Conquer Generals Zero Hour/Command and Conquer Generals Zero Hour}"
+# Default to a typical install location; override with GAMEDIR=...
+: "${GAMEDIR:=$HOME/Command and Conquer Generals Zero Hour/Command and Conquer Generals Zero Hour}"
 export GAMEDIR
 
 echo "==> Running fileio_check with GAMEDIR='$GAMEDIR'"

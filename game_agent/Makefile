@@ -21,7 +21,7 @@ TOOLS   := $(PKG)/tools
 UI      := $(PKG)/ui
 BIN     := $(REPO)/build/apple-arm64/GeneralsMD/Release/generalszh_api
 BUILDDIR:= $(REPO)/build/apple-arm64
-DATADIR := /Users/dvcdsys/Command and Conquer Generals Zero Hour/Command and Conquer Generals Zero Hour
+DATADIR ?= $(HOME)/Command and Conquer Generals Zero Hour/Command and Conquer Generals Zero Hour
 MAP     := maps\mp_dawn_of_war_day_weather\mp_dawn_of_war_day_weather.map
 
 PORT    ?= 3459
@@ -30,7 +30,7 @@ LOG     ?= /tmp/gen_api_actions.jsonl
 GAMELOG ?= /tmp/gen_api_stand.log
 PY      ?= python3
 AGENT   ?= strategist
-OLLAMA_HOST ?= 192.168.1.168:11434
+OLLAMA_HOST ?= localhost:11434
 MODEL   ?= gemma4:26b
 
 # extra GEN_AUTO_* knobs; override to taste

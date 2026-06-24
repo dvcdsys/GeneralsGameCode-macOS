@@ -1,28 +1,41 @@
 name: macOS Release (Apple Silicon)
 
-# Builds the native macOS arm64 Zero Hour engine + the SwiftUI launcher.
+# Builds the native macOS arm64 Zero Hour engine and the SwiftUI launcher.
 #
-# - push to main / manual run  -> build + package, upload as workflow artifacts
-#                                 (sanity check, no Release published)
-# - push of a tag  v*          -> build + package + publish a GitHub Release
-#                                 with the engine payload and the launcher app
+# Engine and launcher are versioned independently via tag prefixes:
+#   - push tag  engine-vX.Y.Z    -> build + package engine, publish a GitHub
+#                                    Release "engine-vX.Y.Z" with the engine zip
+#   - push tag  launcher-vX.Y.Z  -> build the launcher, publish a GitHub Release
+#                                    "launcher-vX.Y.Z" with the launcher app zip
+#   - manual run (workflow_dispatch) -> build artifacts only, no release
+#
+# A plain push/merge to a branch triggers NOTHING — releases come from tags only.
 #
 # Apple Silicon only (M-series). No vcpkg: the macOS build links just the
-# bundled bink/miles dylibs + system frameworks, so the toolchain is only
-# Xcode + CMake + Ninja.
+# bundled bink/miles dylibs + system frameworks (toolchain = Xcode + CMake + Ninja).
 
 on:
   push:
-    branches: [main]
-    tags: ['v*']
+    tags:
+      - 'engine-v*'
+      - 'launcher-v*'
   workflow_dispatch:
+    inputs:
+      component:
+        description: "Component(s) to build (manual run never publishes a release)"
+        type: choice
+        options: [both, engine, launcher]
+        default: both
+      version:
+        description: "Version string to stamp for a manual build"
+        default: "0.0.0-dev"
 
 permissions:
   contents: write
 
 concurrency:
   group: macos-release-${{ github.ref }}
-  # Never cancel an in-flight tag/release build; only supersede branch builds.
+  # Never cancel an in-flight tag/release build; only supersede manual runs.
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
@@ -33,63 +46,112 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0   # full history + tags for git-derived versioning
 
-      - name: Install Ninja
-        run: brew install ninja
+      # ---- resolve component + version from the tag (or manual inputs) --------
+      - name: Resolve build target
+        id: setup
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            REF="${GITHUB_REF_NAME}"
+            case "$REF" in
+              engine-v*)   COMPONENT=engine;   VERSION="${REF#engine-v}" ;;
+              launcher-v*) COMPONENT=launcher; VERSION="${REF#launcher-v}" ;;
+              *) echo "::error::Unrecognised tag '$REF' (expected engine-v* or launcher-v*)"; exit 1 ;;
+            esac
+            PUBLISH=true
+          else
+            COMPONENT="${{ inputs.component }}"
+            VERSION="${{ inputs.version }}"
+            PUBLISH=false
+          fi
+          {
+            echo "component=${COMPONENT}"
+            echo "version=${VERSION}"
+            echo "publish=${PUBLISH}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Show toolchain
         run: |
           cmake --version
-          ninja --version
           xcodebuild -version
           swift --version
 
-      - name: Configure (apple-arm64 preset)
-        run: cmake --preset apple-arm64
+      # ---- engine ------------------------------------------------------------
+      - name: Install Ninja
+        if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
+        run: brew install ninja
+
+      - name: Configure engine (apple-arm64 preset)
+        if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
+        run: cmake --preset apple-arm64 -DRTS_VERSION=${{ steps.setup.outputs.version }}
 
       - name: Build engine (Release)
-        run: cmake --build build/apple-arm64 --config Release --target generalszh
+        if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
+        # CMake target is z_generals; its OUTPUT_NAME is generalszh.
+        run: cmake --build build/apple-arm64 --config Release --target z_generals
 
       - name: Package engine payload
+        if: steps.setup.outputs.component == 'engine' || steps.setup.outputs.component == 'both'
         run: bash scripts/package-macos-release.sh Release build/apple-arm64
 
+      # ---- launcher ----------------------------------------------------------
       - name: Build launcher app
+        if: steps.setup.outputs.component == 'launcher' || steps.setup.outputs.component == 'both'
+        env:
+          VERSION: ${{ steps.setup.outputs.version }}
         run: |
           APP_PATH="$(bash launcher/build-app.sh | tail -n1)"
           echo "Launcher: ${APP_PATH}"
           ( cd dist && ditto -c -k --keepParent "GeneralsZH Launcher.app" "GeneralsZH-Launcher.app.zip" )
           shasum -a 256 dist/GeneralsZH-Launcher.app.zip | tee -a dist/SHA256SUMS
 
+      # ---- artifacts (always, for inspection) --------------------------------
       - name: Upload artifacts
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
-          name: GeneralsZH-macOS-arm64
+          name: GeneralsZH-macOS-${{ steps.setup.outputs.component }}-${{ steps.setup.outputs.version }}
           path: |
             dist/GeneralsZH-macOS-arm64.zip
             dist/GeneralsZH-Launcher.app.zip
             dist/SHA256SUMS
-          if-no-files-found: error
+          if-no-files-found: warn
 
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
+      # ---- publish (tag pushes only) -----------------------------------------
+      - name: Publish engine release
+        if: steps.setup.outputs.publish == 'true' && steps.setup.outputs.component == 'engine'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
           gh release create "${TAG}" \
             dist/GeneralsZH-macOS-arm64.zip \
+            dist/SHA256SUMS \
+            --title "Zero Hour engine — macOS (Apple Silicon) ${TAG}" \
+            --notes "Native macOS arm64 build of the Command & Conquer: Generals — Zero Hour engine.
+
+          The **GeneralsZH Launcher** downloads this engine automatically. You must own a
+          legitimate copy of Zero Hour — EA game data is **not** included.
+
+          Apple Silicon (M-series) only. Checksums in \`SHA256SUMS\`."
+
+      - name: Publish launcher release
+        if: steps.setup.outputs.publish == 'true' && steps.setup.outputs.component == 'launcher'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "${TAG}" \
             dist/GeneralsZH-Launcher.app.zip \
             dist/SHA256SUMS \
-            --title "Generals Zero Hour — macOS (Apple Silicon) ${TAG}" \
-            --latest \
-            --notes "Native macOS arm64 build of Command & Conquer: Generals — Zero Hour.
+            --title "GeneralsZH Launcher — macOS (Apple Silicon) ${TAG}" \
+            --notes "Native macOS arm64 launcher for Command & Conquer: Generals — Zero Hour.
 
           ## Install
           1. Download **GeneralsZH-Launcher.app.zip**, unzip, move the app to /Applications.
           2. First launch: right-click the app → **Open** (it is ad-hoc signed, not notarized).
-          3. In the launcher, pick the folder with your original Zero Hour data (\`.big\` files) and press **Start**.
-             The engine (**GeneralsZH-macOS-arm64.zip**) is downloaded automatically from this release.
-
-          You must own a legitimate copy of Zero Hour — EA game data is **not** included.
+          3. Pick the folder with your original Zero Hour data (\`.big\` files) and press **Play**.
+             The engine is downloaded automatically from the latest \`engine-v*\` release.
 
           Apple Silicon (M-series) only. Checksums in \`SHA256SUMS\`."

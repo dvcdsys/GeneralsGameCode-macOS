@@ -112,7 +112,7 @@ make run                                   # launch the stand (external player, 
 make agent AGENT=ollama                    # planner + executor (qwen3.5:9b on $GEN_OLLAMA_HOST)
 make viewer                                # browser UI with the Agent panel (directive + tasks)
 # direct:
-GEN_OLLAMA_HOST=192.168.1.168:11434 python3 run_agent.py --agent ollama --plan-period 20 --fast-hz 2
+GEN_OLLAMA_HOST=host:11434 python3 run_agent.py --agent ollama --plan-period 20 --fast-hz 2
 ```
 
 ## Known limitations / next refinements

@@ -1328,6 +1328,21 @@ UnsignedInt GlobalData::generateExeCRC()
 
 AsciiString GlobalData::BuildUserDataPathFromRegistry()
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS — launcher-controllable user-data directory.
+	// GEN_USER_DATA overrides the computed ~/Documents/<leaf>/ path so the macOS
+	// launcher can relocate maps, saves and Options.ini (all resolved through
+	// getPath_UserData()). The path is used verbatim; we only ensure a trailing
+	// '/' so the POSIX concat call sites stay well-formed. Mirrors the GEN_MOD /
+	// GEN_MOD_DIR env hooks in GameEngine.cpp.
+	if (const char *userData = ::getenv("GEN_USER_DATA"); userData && userData[0]) {
+		AsciiString path = userData;
+		if (!path.endsWith("/"))
+			path.concat('/');
+		return path;
+	}
+#endif
+
 #if defined(_MSC_VER) && (_MSC_VER < 1300)
 	// VC6 lacks FOLDERID_Documents and KF_FLAG_DEFAULT
 	const GUID FOLDERID_Documents = { 0xFDD39AD0, 0x238F, 0x46AF, 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 };

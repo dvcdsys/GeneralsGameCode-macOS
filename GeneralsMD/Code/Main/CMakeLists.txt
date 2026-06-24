@@ -42,13 +42,44 @@ file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/GeneratedVersion.h
 "
 )
 
-# Based on original binary values for these variables.
+# Engine version: semver derived from the release tag (engine-vMAJOR.MINOR.PATCH).
+# CI passes -DRTS_VERSION=X.Y.Z explicitly; otherwise fall back to the latest
+# engine-v* git tag, then to 0.0.0 for an untagged working tree.
+if(NOT DEFINED RTS_VERSION OR RTS_VERSION STREQUAL "")
+    find_package(Git QUIET)
+    set(RTS_VERSION "0.0.0")
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" describe --tags --match "engine-v*" --abbrev=0
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            OUTPUT_VARIABLE _git_engine_tag
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+        if(_git_engine_tag MATCHES "engine-v([0-9]+\\.[0-9]+\\.[0-9]+)")
+            set(RTS_VERSION "${CMAKE_MATCH_1}")
+        endif()
+    endif()
+endif()
+
+# Strip any leading prefix (engine-v / v) and split into MAJOR.MINOR.PATCH.
+string(REGEX REPLACE "^[A-Za-z-]*v?" "" _rts_ver "${RTS_VERSION}")
+if(_rts_ver MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    set(_RTS_VMAJOR "${CMAKE_MATCH_1}")
+    set(_RTS_VMINOR "${CMAKE_MATCH_2}")
+    set(_RTS_VPATCH "${CMAKE_MATCH_3}")
+else()
+    set(_RTS_VMAJOR 0)
+    set(_RTS_VMINOR 0)
+    set(_RTS_VPATCH 0)
+endif()
+message(STATUS "Zero Hour engine version: ${_RTS_VMAJOR}.${_RTS_VMINOR}.${_RTS_VPATCH} (RTS_VERSION=${RTS_VERSION})")
+
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/BuildVersion.h
 "#pragma once
 
-#define VERSION_MAJOR 1
-#define VERSION_MINOR 4
-#define VERSION_BUILDNUM 601
+#define VERSION_MAJOR ${_RTS_VMAJOR}
+#define VERSION_MINOR ${_RTS_VMINOR}
+#define VERSION_BUILDNUM ${_RTS_VPATCH}
 "
 )
 

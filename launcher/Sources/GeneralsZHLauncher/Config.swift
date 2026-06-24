@@ -7,11 +7,17 @@ enum Config {
     static let repoOwner = "dvcdsys"
     static let repoName  = "GeneralsGameCode-macOS"
 
-    /// Name of the engine payload asset attached to each release
-    /// (produced by scripts/package-macos-release.sh).
-    static let assetName  = "GeneralsZH-macOS-arm64.zip"
+    /// Engine and launcher are versioned independently via tag prefixes:
+    /// `engine-v1.2.3` / `launcher-v1.0.0`. Each is its own GitHub Release.
+    static let enginePrefix   = "engine-v"
+    static let launcherPrefix = "launcher-v"
 
-    /// The executable inside the payload.
+    /// Name of the engine payload asset (produced by scripts/package-macos-release.sh).
+    static let assetName  = "GeneralsZH-macOS-arm64.zip"
+    /// Name of the launcher app asset (produced by launcher/build-app.sh, zipped in CI).
+    static let launcherAssetName = "GeneralsZH-Launcher.app.zip"
+
+    /// The executable inside the engine payload.
     static let binaryName = "generalszh"
 
     // MARK: - On-disk layout: ~/Library/Application Support/GeneralsZH/
@@ -41,6 +47,12 @@ enum Config {
 
     static var latestReleaseAPI: URL {
         URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest")!
+    }
+
+    /// All releases (newest first) — filtered client-side by tag prefix so the
+    /// launcher can resolve the latest engine and launcher independently.
+    static var releasesListAPI: URL {
+        URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases?per_page=50")!
     }
 
     /// Dev override: point at a local .zip to install instead of downloading.
