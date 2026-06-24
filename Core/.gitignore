@@ -1,8 +1,11 @@
-# Generated files
+# Generated files (MIDL/widl output lands in the build dir, already ignored by /build*)
 BrowserDispatch_i.c
 BrowserDispatch.h
 BrowserDispatch.tlb
 generatedVersion.h
+# ...but keep the hand-written macOS/non-Windows stub that lives in the source tree
+# (the build includes it so WOLBrowser/WebBrowser.h compiles off-Windows).
+!Libraries/Source/EABrowserDispatch/BrowserDispatch.h
 
 # Generated shader headers
 *.vsh_code.h
