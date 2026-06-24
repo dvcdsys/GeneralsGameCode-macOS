@@ -41,14 +41,12 @@ ZIP_PATH="${DIST_DIR}/${PAYLOAD_NAME}.zip"
 
 BIN_SRC="${BUILD_DIR}/GeneralsMD/${CONFIG}/generalszh"
 BINK_DIR="${BUILD_DIR}/_deps/bink-build/${CONFIG}"
-MILES_DIR="${BUILD_DIR}/_deps/miles-build/${CONFIG}"
 
 log()  { printf '\033[1;36m[package]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[package] ERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ -f "${BIN_SRC}" ] || die "binary not found: ${BIN_SRC} (build the Release target first)"
 [ -d "${BINK_DIR}" ]  || die "bink dylib dir not found: ${BINK_DIR}"
-[ -d "${MILES_DIR}" ] || die "miles dylib dir not found: ${MILES_DIR}"
 
 # --- fresh payload dir --------------------------------------------------------
 log "config=${CONFIG}  build=${BUILD_DIR}"
@@ -58,8 +56,18 @@ mkdir -p "${PAYLOAD_DIR}"
 # --- copy binary + dylibs (preserve the version symlink chain) ---------------
 cp -p "${BIN_SRC}" "${PAYLOAD_DIR}/generalszh"
 # -a keeps symlinks: libfoo.dylib -> libfoo.1.0.dylib -> libfoo.1.0.0.dylib
+# Bink is a real @rpath dylib the binary links — always bundle it.
 cp -a "${BINK_DIR}/"libbinkw32*.dylib "${PAYLOAD_DIR}/"
-cp -a "${MILES_DIR}/"libmss32*.dylib  "${PAYLOAD_DIR}/"
+# Miles is built statically into the binary on the macOS port (cmake/miles_apple),
+# so there is normally no libmss32 dylib to ship. Bundle one only if a dylib-based
+# layout produced it (handles both _deps/miles-build and miles_apple-build).
+for _mdir in "${BUILD_DIR}/_deps/miles-build/${CONFIG}" "${BUILD_DIR}/miles_apple-build/${CONFIG}"; do
+    if compgen -G "${_mdir}/libmss32*.dylib" > /dev/null 2>&1; then
+        log "bundling Miles dylib from ${_mdir}"
+        cp -a "${_mdir}/"libmss32*.dylib "${PAYLOAD_DIR}/"
+        break
+    fi
+done
 
 BIN="${PAYLOAD_DIR}/generalszh"
 
