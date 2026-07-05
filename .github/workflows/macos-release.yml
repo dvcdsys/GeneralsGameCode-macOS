@@ -160,7 +160,12 @@ jobs:
           ## Install
           1. Download **GeneralsZH-Launcher.dmg**, open it, and drag **GeneralsZH Launcher.app**
              onto the **Applications** folder.
-          2. First launch: right-click the app → **Open** (it is ad-hoc signed, not notarized).
+          2. The app is ad-hoc signed (not notarized), so macOS Gatekeeper blocks it on first
+             launch (\"damaged\" / \"can't be checked for malware\"). Clear the quarantine flag
+             once in Terminal, then open it normally:
+             \`\`\`
+             xattr -dr com.apple.quarantine \"/Applications/GeneralsZH Launcher.app\"
+             \`\`\`
           3. Pick the folder with your original Zero Hour data (\`.big\` files) and press **Play**.
              The engine is downloaded automatically from the latest \`engine-v*\` release.
 

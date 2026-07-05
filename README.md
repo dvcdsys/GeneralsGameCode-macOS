@@ -18,12 +18,17 @@ You must own a legitimate copy of Zero Hour — the proprietary EA game data is
 1. Download **`GeneralsZH-Launcher.dmg`** from the
    [latest release](https://github.com/dvcdsys/GeneralsGameCode-macOS/releases).
 2. Open it and drag **GeneralsZH Launcher.app** onto the **Applications** folder.
-3. First launch: right-click the app → **Open** (it's ad-hoc signed, not notarized).
+3. The app is ad-hoc signed (not notarized), so on first launch macOS Gatekeeper
+   blocks it (*"damaged"* / *"can't check for malicious software"*). Clear the
+   quarantine flag once in **Terminal**, then open the app normally:
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/GeneralsZH Launcher.app"
+   ```
 4. In the launcher, pick the folder with your original Zero Hour data (the
    `.big` archives), then press **Play**.
 
 That's it — the launcher downloads the game engine for you, keeps it updated,
-and can update itself. No terminal, no compiling.
+and can update itself (the only terminal step is clearing quarantine once, above).
 
 ## Build from source (developers)
 
