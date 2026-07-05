@@ -61,9 +61,12 @@ if(NOT DEFINED RTS_VERSION OR RTS_VERSION STREQUAL "")
     endif()
 endif()
 
-# Strip any leading prefix (engine-v / v) and split into MAJOR.MINOR.PATCH.
-string(REGEX REPLACE "^[A-Za-z-]*v?" "" _rts_ver "${RTS_VERSION}")
-if(_rts_ver MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+# Extract MAJOR.MINOR.PATCH from RTS_VERSION, tolerating an optional leading
+# prefix (engine-v / v). A single capturing match avoids string(REGEX REPLACE),
+# which errors under newer CMake when the strip pattern matches an empty string
+# (e.g. RTS_VERSION="0.0.0" has no prefix to strip -> hard "matched an empty
+# string" error that failed every GeneralsMD configure in GenCI).
+if(RTS_VERSION MATCHES "([0-9]+)\\.([0-9]+)\\.([0-9]+)")
     set(_RTS_VMAJOR "${CMAKE_MATCH_1}")
     set(_RTS_VMINOR "${CMAKE_MATCH_2}")
     set(_RTS_VPATCH "${CMAKE_MATCH_3}")

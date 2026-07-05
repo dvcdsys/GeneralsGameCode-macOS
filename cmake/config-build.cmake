@@ -16,6 +16,21 @@ if(NOT RTS_BUILD_ZEROHOUR AND NOT RTS_BUILD_GENERALS)
     message("You must select one project to build, building Zero Hour by default.")
 endif()
 
+# The external-control API is a Zero-Hour-only feature: ExternalControlSystem.cpp
+# references Zero Hour game symbols (e.g. KINDOF_TECH_BASE_DEFENSE,
+# ThingTemplate::friend_getBuildTime, AIGroup::groupGuardPositionFromPosition)
+# that do not exist in base Generals, and its dependencies (cpp-httplib /
+# IXWebSocket) require a modern C++ toolchain that VC6 cannot provide. The Core
+# sources are shared by both games via one INTERFACE library, so building them
+# whenever Generals or VC6 is in the mix breaks that target. Enable the feature
+# only for a Zero-Hour-only, non-VC6 build (the shipped macOS product and the
+# per-game CI jobs); force it off otherwise.
+if(RTS_BUILD_EXTERNAL_CONTROL AND (NOT RTS_BUILD_ZEROHOUR OR RTS_BUILD_GENERALS OR IS_VS6_BUILD))
+    message(STATUS "External-control API disabled for this configuration "
+                   "(requires a Zero-Hour-only, non-VC6 build).")
+    set(RTS_BUILD_EXTERNAL_CONTROL OFF)
+endif()
+
 add_feature_info(CoreTools RTS_BUILD_CORE_TOOLS "Build Core Mod Tools")
 add_feature_info(CoreExtras RTS_BUILD_CORE_EXTRAS "Build Core Extra Tools/Tests")
 add_feature_info(ZeroHourStuff RTS_BUILD_ZEROHOUR "Build Zero Hour code")
