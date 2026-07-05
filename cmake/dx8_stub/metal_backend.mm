@@ -580,6 +580,47 @@ extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode);
 - (void)cancelOperation:(id)sender { (void)sender; /* eaten on purpose */ }
 @end
 
+// Letterbox container: hosts the MetalView as an aspect-fit subview. When the
+// window is resized or — the case that matters — taken FULLSCREEN to a screen
+// whose aspect differs from the game resolution (e.g. a 16:10 game on a 16"
+// MacBook Pro's ~1.547 panel), the render surface keeps the game's aspect ratio
+// and black bars fill the remainder, instead of the CAMetalLayer stretching the
+// drawable to fill (which looks vertically/horizontally stretched). In windowed
+// mode the window is already sized to the game aspect, so the child fills the
+// container exactly (no bars) and behaviour is identical to hosting the MetalView
+// directly. Input stays correct: EventPoint() maps within g_inputView (the child)
+// and rejects coords outside its bounds, so clicks in the bars are ignored.
+// Escape hatch: GEN_LETTERBOX=0 falls back to the old stretch-to-fill path.
+@interface AspectFitView : NSView
+@property (nonatomic, assign) NSView* child;    // the MetalView subview (unretained; ARC is off)
+@property (nonatomic, assign) CGFloat aspect;   // game width / height
+- (void)layoutChild;
+@end
+@implementation AspectFitView
+- (BOOL)isFlipped { return NO; }
+- (void)layoutChild {
+    NSView* c = self.child;
+    if (!c || self.aspect <= 0.0) return;
+    CGFloat W = self.bounds.size.width, H = self.bounds.size.height;
+    if (W <= 0.0 || H <= 0.0) return;
+    CGFloat va = W / H;
+    CGFloat cw, ch;
+    if (fabs(va - self.aspect) < 0.001) {   // aspects match → fill, no bars
+        cw = W; ch = H;
+    } else if (va > self.aspect) {          // container wider → pillarbox (side bars)
+        ch = H; cw = H * self.aspect;
+    } else {                                // container taller → letterbox (top/bottom bars)
+        cw = W; ch = W / self.aspect;
+    }
+    CGFloat x = (W - cw) * 0.5, y = (H - ch) * 0.5;
+    [c setFrame:NSMakeRect(round(x), round(y), round(cw), round(ch))];
+}
+// AppKit calls this instead of the default autoresize when the container's frame
+// changes (fullscreen enter/exit, live resize) — do the aspect-fit here.
+- (void)resizeSubviewsWithOldSize:(NSSize)oldSize { (void)oldSize; [self layoutChild]; }
+- (void)setFrameSize:(NSSize)newSize { [super setFrameSize:newSize]; [self layoutChild]; }
+@end
+
 // CPU mirror of the MSL FSParams. Must match the MSL declaration above exactly
 // (size + field order). Padded so float4 (tfactor) lands on a 16-byte boundary
 // as Metal requires for buffer arguments.
@@ -1605,7 +1646,24 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         layer.framebufferOnly = getenv("MTL_DUMP") ? NO : YES;
         layer.drawableSize    = CGSizeMake(width, height);
 
-        [window setContentView:view];
+        // Host the MetalView inside an aspect-fit container so fullscreen keeps
+        // the game's aspect ratio (letterbox) instead of stretching. In windowed
+        // mode the container equals the view (aspects match) — no visible change.
+        // GEN_LETTERBOX=0 restores the old stretch-to-fill behaviour.
+        const char* lbEnv = ::getenv("GEN_LETTERBOX");
+        const bool  letterbox = !(lbEnv && lbEnv[0] == '0');
+        if (letterbox) {
+            AspectFitView* container = [[AspectFitView alloc] initWithFrame:frame];
+            [container setWantsLayer:YES];
+            container.layer.backgroundColor = [[NSColor blackColor] CGColor];
+            container.aspect = (height > 0) ? (CGFloat)width / (CGFloat)height : 1.0;
+            container.child  = view;
+            [container addSubview:view];
+            [container layoutChild];
+            [window setContentView:container];
+        } else {
+            [window setContentView:view];
+        }
         [window makeFirstResponder:view];
         [window setAcceptsMouseMovedEvents:YES];
         [window makeKeyAndOrderFront:nil];
@@ -1613,7 +1671,7 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->window = window;
         ctx->view   = view;
         ctx->layer  = layer;
-        g_inputView = view;  // for input coordinate conversion
+        g_inputView = view;  // for input coordinate conversion (the MetalView)
         // Publish the engine pixel resolution so EventPoint can scale view-points
         // → engine-pixels (HiDPI + screen-fit clamp).
         g_engineW = width;
@@ -1797,6 +1855,13 @@ extern "C" void MetalContext_Resize(MetalContext* ctx, int width, int height)
         ctx->width  = width;
         ctx->height = height;
         ctx->layer.drawableSize = CGSizeMake(width, height);
+        // Re-fit the letterbox container to the new game aspect (Options →
+        // Display → Apply can change the resolution at runtime).
+        if ([ctx->view.superview isKindOfClass:[AspectFitView class]]) {
+            AspectFitView* container = (AspectFitView*)ctx->view.superview;
+            container.aspect = (height > 0) ? (CGFloat)width / (CGFloat)height : container.aspect;
+            [container layoutChild];
+        }
         // Keep input-mapper in sync when the engine switches resolution at
         // runtime (Options → Display → Apply).
         g_engineW = width;

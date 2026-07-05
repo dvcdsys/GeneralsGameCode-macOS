@@ -115,10 +115,16 @@ struct PlayTab: View {
                 Toggle("Fullscreen", isOn: $model.fullscreen)
                     .toggleStyle(.checkbox)
                     .disabled(model.gameRunning)
+                Button("Match display") { model.matchDisplayResolution() }
+                    .disabled(model.gameRunning)
+                    .help("Set a resolution matching your screen's aspect ratio (no fullscreen stretch)")
                 Spacer()
             }
             if model.gameRunning {
                 Text("Quit the game to change display settings.")
+                    .font(.caption2).foregroundColor(.secondary)
+            } else {
+                Text("Tip: use “Match display” so fullscreen isn't stretched on non-16:9/16:10 panels.")
                     .font(.caption2).foregroundColor(.secondary)
             }
         }

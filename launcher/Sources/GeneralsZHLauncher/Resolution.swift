@@ -72,4 +72,16 @@ struct GameResolution: Identifiable, Hashable {
         let h = Int((screen.frame.height * scale).rounded())
         return GameResolution(w: w, h: h, aspect: closestAspect(w: w, h: h))
     }
+
+    /// The main display's current *logical* resolution (points) — the size the
+    /// game's fullscreen layer fills. Rendering at this exact aspect avoids the
+    /// stretch you get from a mismatched ratio (e.g. 16:10 on a 16" MacBook Pro's
+    /// ~1.547 panel). Lighter than native pixels; the aspect matches the panel.
+    static func displayLogical() -> GameResolution? {
+        guard let screen = NSScreen.main else { return nil }
+        let w = Int(screen.frame.width.rounded())
+        let h = Int(screen.frame.height.rounded())
+        guard w > 0, h > 0 else { return nil }
+        return GameResolution(w: w, h: h, aspect: closestAspect(w: w, h: h))
+    }
 }

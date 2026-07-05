@@ -185,6 +185,19 @@ final class LauncherModel: ObservableObject {
         }
     }
 
+    /// Sets the resolution to match the main display's aspect exactly, which
+    /// eliminates fullscreen stretch on non-standard panels (e.g. the 16"/14"
+    /// MacBook Pro's ~1.547 ratio, where 16:10 looks vertically stretched).
+    func matchDisplayResolution() {
+        guard let r = GameResolution.displayLogical() else {
+            status = "Couldn't read the display resolution."
+            return
+        }
+        selectedResolution = r
+        applyResolution()
+        status = "Resolution matched to display (\(r.label))."
+    }
+
     /// Writes the selected resolution to Options.ini, preserving other keys.
     /// No-op while the game runs (it rewrites the file on exit).
     func applyResolution() {
