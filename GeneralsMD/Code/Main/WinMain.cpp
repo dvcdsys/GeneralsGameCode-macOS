@@ -993,10 +993,23 @@ GameEngine *CreateGameEngine()
 // no meaning on macOS (no Win32 message loop yet); pass benign defaults.
 //=============================================================================
 #if !defined(_WIN32)
+#include <unistd.h>	// _exit
+#include <cstdio>	// fflush
 int main(int argc, char* argv[])
 {
 	(void)argc;
 	(void)argv;
-	return WinMain(nullptr, nullptr, (LPSTR)"", 0 /*SW_HIDE*/);
+	int exitcode = WinMain(nullptr, nullptr, (LPSTR)"", 0 /*SW_HIDE*/);
+
+	// The engine already tore itself down inside WinMain (shutdownMemoryManager,
+	// delete TheVersion, shutdownMiniDumper). Returning here would let the C
+	// runtime run C++ global-static destructors via __cxa_finalize_ranges — but
+	// some memory-pool statics (e.g. AutoPoolClass<MultiListNodeClass,256>) are
+	// left dangling after that shutdown and segfault during teardown, spawning a
+	// crash report on every quit. That teardown does nothing useful (the game
+	// state is already saved and the process is exiting), so flush stdio and
+	// _exit() to skip global-static destruction; the OS reclaims all memory.
+	fflush(nullptr);
+	_exit(exitcode);
 }
 #endif
