@@ -37,7 +37,13 @@
 
 #pragma once
 
-#include <stdint.h>   // uint32_t for the LP64-safe DWORD/ULONG aliases below
+// uint32_t backs the LP64-safe DWORD/ULONG aliases below, but only on the
+// __APPLE__ path — Windows keeps `unsigned long`. VC6 (_MSC_VER < 1300) predates
+// C99 and ships no <stdint.h>, so guard the include (matching the VC6 wchar_t
+// guard further down) or the ancient toolchain hits a fatal C1083.
+#if !defined(_MSC_VER) || _MSC_VER >= 1300
+#include <stdint.h>
+#endif
 
 typedef unsigned char	uint8;
 typedef unsigned short	uint16;

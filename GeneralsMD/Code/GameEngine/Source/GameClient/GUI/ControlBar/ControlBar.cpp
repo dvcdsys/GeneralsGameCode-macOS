@@ -1080,9 +1080,11 @@ void ControlBar::init()
 		try { nBtn = ini.loadDirectory( "Data\\INI\\OverrideCommandButton", INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
 		try { nSet = ini.loadDirectory( "Data\\INI\\OverrideCommandSet",    INI_LOAD_CREATE_OVERRIDES, nullptr, true ); } catch (...) {}
 		DEBUG_LOG(("[override-ini] loaded %u OverrideCommandButton files, %u OverrideCommandSet files", nBtn, nSet));
-		// Spot-check: does the GuardFromPosition button exist after load?
-		const CommandButton *gfp = findCommandButton(AsciiString("Command_GuardFromPosition"));
-		DEBUG_LOG(("[override-ini] Command_GuardFromPosition button: %s", gfp ? "FOUND" : "MISSING"));
+		// Spot-check: does the GuardFromPosition button exist after load? (Inlined into
+		// the DEBUG_LOG so it leaves no unused local in release, where DEBUG_LOG is a
+		// no-op — an unreferenced local trips C4189 under /WX.)
+		DEBUG_LOG(("[override-ini] Command_GuardFromPosition button: %s",
+			findCommandButton(AsciiString("Command_GuardFromPosition")) ? "FOUND" : "MISSING"));
 		// Spot-check: did our override of CWCusInfAssaultStandCommandSet take effect?
 		{
 			const AsciiString testName("CWCusInfAssaultStandCommandSet");
