@@ -185,17 +185,21 @@ final class LauncherModel: ObservableObject {
         }
     }
 
-    /// Sets the resolution to match the main display's aspect exactly, which
-    /// eliminates fullscreen stretch on non-standard panels (e.g. the 16"/14"
-    /// MacBook Pro's ~1.547 ratio, where 16:10 looks vertically stretched).
+    /// Picks the standard resolution whose aspect best matches the display, so
+    /// fullscreen letterboxes (thin bars) instead of stretching. Uses only
+    /// known-good standard resolutions — the display's exact size can be a
+    /// non-standard resolution that triggers a 3D-render bug.
     func matchDisplayResolution() {
-        guard let r = GameResolution.displayLogical() else {
-            status = "Couldn't read the display resolution."
+        guard let screen = NSScreen.main else {
+            status = "Couldn't read the display."
             return
         }
-        selectedResolution = r
+        let target = Double(screen.frame.width / screen.frame.height)
+        let nativeW = Int((screen.frame.width * screen.backingScaleFactor).rounded())
+        let best = GameResolution.closestStandard(toAspect: target, maxWidth: nativeW)
+        selectedResolution = best
         applyResolution()
-        status = "Resolution matched to display (\(r.label))."
+        status = "Resolution set to \(best.label) — matches display aspect (letterboxed)."
     }
 
     /// Writes the selected resolution to Options.ini, preserving other keys.

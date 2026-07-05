@@ -73,15 +73,21 @@ struct GameResolution: Identifiable, Hashable {
         return GameResolution(w: w, h: h, aspect: closestAspect(w: w, h: h))
     }
 
-    /// The main display's current *logical* resolution (points) — the size the
-    /// game's fullscreen layer fills. Rendering at this exact aspect avoids the
-    /// stretch you get from a mismatched ratio (e.g. 16:10 on a 16" MacBook Pro's
-    /// ~1.547 panel). Lighter than native pixels; the aspect matches the panel.
-    static func displayLogical() -> GameResolution? {
-        guard let screen = NSScreen.main else { return nil }
-        let w = Int(screen.frame.width.rounded())
-        let h = Int(screen.frame.height.rounded())
-        guard w > 0, h > 0 else { return nil }
-        return GameResolution(w: w, h: h, aspect: closestAspect(w: w, h: h))
+    /// The standard catalogue resolution whose aspect is closest to `target`,
+    /// preferring the largest that fits `maxWidth`.
+    ///
+    /// Why not the display's exact size? Non-standard resolutions (e.g. a 16"
+    /// MacBook Pro's 1496×967 logical size) trigger a pre-existing 3D-render bug
+    /// (the scene progressively darkens to black). So "Match display" only ever
+    /// picks a known-good standard resolution and lets the fullscreen *letterbox*
+    /// absorb the small aspect remainder (thin bars instead of stretch).
+    static func closestStandard(toAspect target: Double, maxWidth: Int) -> GameResolution {
+        let pool = catalogue.filter { $0.w <= maxWidth }
+        let candidates = pool.isEmpty ? catalogue : pool
+        return candidates.sorted { a, b in
+            let da = abs(a.aspect.ratio - target), db = abs(b.aspect.ratio - target)
+            if abs(da - db) > 0.0001 { return da < db }   // closer aspect wins
+            return a.w > b.w                               // tie → larger resolution
+        }.first ?? match(w: 1920, h: 1200)
     }
 }
