@@ -42,6 +42,41 @@ FramePacer::FramePacer()
 	m_enableLogicTimeScale = FALSE;
 	m_isTimeFrozen = FALSE;
 	m_isGameHalted = FALSE;
+	m_macHighFps = FALSE;
+
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS: high-render-FPS with correct game speed.
+	//
+	// The Apple render cap (getActualFramesPerSecondLimit) defaults to 30 because
+	// with logic-time-scale DISABLED, canUpdateRegularGameLogic() steps the
+	// simulation once per RENDER frame — so rendering above 30 FPS runs the whole
+	// game (units + animations) proportionally fast. That is why the cap was
+	// pinned at 30.
+	//
+	// When the user opts into a higher render cap via GEN_FPS_CAP (>30, or 0 =
+	// uncapped), enable the engine's existing logic-time-scale decoupling and pin
+	// it to LOGICFRAMES_PER_SECOND (30). Then canUpdateRegularGameLogic() switches
+	// to its real-time accumulator path (GameEngine.cpp) and steps logic at 30 Hz
+	// regardless of render FPS, while getActualLogicTimeScaleOverFpsRatio() scales
+	// animation time steps by min(1, 30/renderFPS). Result: smooth high-FPS render
+	// with the original 30 Hz game speed. Camera scroll is already FPS-independent
+	// via getBaseOverUpdateFpsRatio(). This is the same mechanism the External
+	// Control API uses (setLogicTimeScaleFps + enableLogicTimeScale).
+	//
+	// Default (GEN_FPS_CAP unset / == 30) leaves this OFF — identical to prior
+	// behavior. Network games are out of scope for the macOS port; note that the
+	// accumulator path is single-player-oriented (network sync uses its own rate).
+	{
+		const char *e = ::getenv("GEN_FPS_CAP");
+		const Int capN = (e && *e) ? atoi(e) : 30;
+		if (capN > (Int)LOGICFRAMES_PER_SECOND || capN <= 0)
+		{
+			m_macHighFps = TRUE;
+			m_enableLogicTimeScale = TRUE;
+			m_logicTimeScaleFPS = LOGICFRAMES_PER_SECOND;
+		}
+	}
+#endif
 }
 
 FramePacer::~FramePacer()

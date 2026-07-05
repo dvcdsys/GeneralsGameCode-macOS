@@ -450,7 +450,27 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 				if (maxFPS < 1 || maxFPS > 1000)
 					maxFPS = TheGlobalData->m_framesPerSecondLimit;
 				DEBUG_LOG(("Setting max FPS limit to %d FPS", maxFPS));
-				TheFramePacer->setFramesPerSecondLimit(maxFPS);
+#if defined(__APPLE__)
+				// TheSuperHackers @port macOS: in high-FPS mode the picture renders at
+				// the fixed GEN_FPS_CAP, so the skirmish "game speed" slider (maxFPS)
+				// must drive the SIMULATION rate — not the render cap. Route it to the
+				// logic time scale: the sim runs at the chosen speed while rendering
+				// stays smooth. Enable-rule matches the in-game speed keys
+				// (CommandXlat.cpp): decouple only while logic < render. Crucially we
+				// leave m_maxFPS at its high value so canUpdateRegularGameLogic's
+				// logic-vs-render comparison stays correct (setting it to maxFPS would
+				// make logic==render and defeat the accumulator).
+				if (TheFramePacer->isMacHighFpsMode())
+				{
+					const Int renderCap = TheFramePacer->getActualFramesPerSecondLimit();
+					TheFramePacer->setLogicTimeScaleFps(maxFPS);
+					TheFramePacer->enableLogicTimeScale(maxFPS < renderCap);
+				}
+				else
+#endif
+				{
+					TheFramePacer->setFramesPerSecondLimit(maxFPS);
+				}
 				TheWritableGlobalData->m_useFpsLimit = true;
 			}
 
@@ -483,6 +503,17 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 			}
 			currentlySelectedGroup = nullptr;
 			clearGameData();
+#if defined(__APPLE__)
+			// TheSuperHackers @port macOS: restore the default 30 Hz logic time scale
+			// after a game (a match may have set a slower/faster or "no limit" speed).
+			// Keeps the menu shell-map and future games at real-time pacing until the
+			// next MSG_NEW_GAME applies its own game-speed slider value.
+			if (TheFramePacer && TheFramePacer->isMacHighFpsMode())
+			{
+				TheFramePacer->setLogicTimeScaleFps(LOGICFRAMES_PER_SECOND);
+				TheFramePacer->enableLogicTimeScale(TRUE);
+			}
+#endif
 			break;
 
 		}

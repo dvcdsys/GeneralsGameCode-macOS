@@ -120,6 +120,17 @@ struct PlayTab: View {
                     .help("Set a resolution matching your screen's aspect ratio (no fullscreen stretch)")
                 Spacer()
             }
+            HStack {
+                Picker("Frame rate", selection: $model.frameRateCap) {
+                    Text("30 FPS (Original)").tag(30)
+                    Text("60 FPS (Smooth)").tag(60)
+                    Text("120 FPS (ProMotion)").tag(120)
+                }
+                .frame(maxWidth: 260)
+                .disabled(model.gameRunning)
+                .help("Higher FPS renders motion smoother. Game speed stays correct — the simulation still runs at 30 Hz.")
+                Spacer()
+            }
             if model.gameRunning {
                 Text("Quit the game to change display settings.")
                     .font(.caption2).foregroundColor(.secondary)

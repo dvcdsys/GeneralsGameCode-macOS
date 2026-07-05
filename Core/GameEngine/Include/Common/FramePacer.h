@@ -66,6 +66,12 @@ public:
 	Real getLogicTimeStepSeconds(LogicTimeQueryFlags flags = 0) const; ///< Get the logic time step in seconds
 	Real getLogicTimeStepMilliseconds(LogicTimeQueryFlags flags = 0) const; ///< Get the logic time step in milliseconds
 
+	/// TheSuperHackers @port macOS: TRUE when the render cap was raised above 30
+	/// (GEN_FPS_CAP) so logic-time-scale decoupling is active. Callers (game start
+	/// / clear) route the game-speed slider to the logic rate instead of the render
+	/// cap in this mode. Always FALSE off macOS and at the default 30 FPS.
+	Bool isMacHighFpsMode() const { return m_macHighFps; }
+
 protected:
 
 	FrameRateLimit m_frameRateLimit;
@@ -79,6 +85,7 @@ protected:
 	Bool m_enableLogicTimeScale;
 	Bool m_isTimeFrozen;
 	Bool m_isGameHalted;
+	Bool m_macHighFps; ///< macOS: render cap raised above 30 → logic-time-scale decoupling active
 };
 
 extern FramePacer* TheFramePacer;

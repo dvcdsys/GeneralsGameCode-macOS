@@ -37,6 +37,17 @@ final class LauncherModel: ObservableObject {
         didSet { UserDefaults.standard.set(fullscreen, forKey: "fullscreen") }
     }
 
+    /// Render frame-rate cap, passed to the engine via GEN_FPS_CAP. 30 = original
+    /// behaviour (game logic tied 1:1 to the render frame). 60/120 raise the cap
+    /// and — because the engine auto-enables logic-time-scale decoupling for any
+    /// cap above 30 (FramePacer.cpp) — the simulation still runs at 30 Hz, so the
+    /// game plays at the correct speed while rendering smoothly (less motion blur
+    /// on the 30 Hz sample-and-hold). Persisted.
+    @Published var frameRateCap: Int =
+        (UserDefaults.standard.object(forKey: "frameRateCap") as? Int) ?? 30 {
+        didSet { UserDefaults.standard.set(frameRateCap, forKey: "frameRateCap") }
+    }
+
     // Update state (populated by checkForUpdates).
     @Published var latestEngineVersion: String? = nil
     @Published var latestLauncherVersion: String? = nil
@@ -526,6 +537,10 @@ final class LauncherModel: ObservableObject {
         // Relocate the user-data dir (maps, saves, Options.ini) via GEN_USER_DATA
         // (the macOS hook in GlobalData.cpp::BuildUserDataPathFromRegistry).
         env["GEN_USER_DATA"] = userDataDirPath
+        // Render frame-rate cap. >30 makes the engine enable logic-time-scale
+        // decoupling (FramePacer) so gameplay stays at 30 Hz while the picture
+        // renders at the higher rate — smoother motion, correct game speed.
+        env["GEN_FPS_CAP"] = String(frameRateCap)
         proc.environment = env
         proc.terminationHandler = { [weak self] _ in
             Task { @MainActor in

@@ -1554,6 +1554,13 @@ inline void ApplyViewportIfChanged(MetalContext* ctx, int x, int y, int w, int h
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
+
+// TheSuperHackers @port macOS: shared context pointer so the texture-upload
+// entrypoints (MetalContext_UploadTexture*), which only receive the MTLTexture,
+// can reach a command queue to GPU-generate mipmaps after a level-0 upload.
+// There is exactly one MetalContext per process (single device/queue).
+static MetalContext* s_uploadCtx = nullptr;
+
 extern "C" MetalContext* MetalContext_Create(int width, int height, int /*windowed*/)
 {
     @autoreleasepool {
@@ -1565,18 +1572,20 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         MetalContext* ctx = new MetalContext();
         ctx->device = device;
         ctx->queue  = [device newCommandQueue];
+        s_uploadCtx = ctx;   // for GPU mipmap generation on texture upload
         ctx->width  = width;
         ctx->height = height;
         ctx->clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
         ctx->dbg = -1;
-        // Stage 7: MSAA. Boot default = 1 (off) so the "clean baseline" the
-        // user explicitly asked for is honoured on first launch (preset Low
-        // / Medium / High → no shadows, no MSAA). Picking "Metal Optimised"
-        // in Options → Graphics → Detail flips the engine's m_useShadowVolumes,
-        // which calls MetalShim_SetShadowsEnabled(1); that function also
-        // raises ctx->msaaSamples to 4 and rebuilds the pipeline cache.
-        // MTL_MSAA env var (if set) overrides — useful for A/B testing.
-        ctx->msaaSamples = 1;
+        // Stage 7: MSAA. Boot default = 4x. On Apple Silicon (TBDR) the MSAA
+        // color + depth attachments are MTLStorageModeMemoryless — they live
+        // entirely in tile memory and resolve into the drawable at storeAction
+        // time, so 4x costs ~0 extra bandwidth/perf while removing the jagged
+        // "staircase" edges (aliasing) on building/unit silhouettes as the
+        // camera moves. MSAA is fully decoupled from shadows (SetShadowsEnabled
+        // does not touch msaaSamples). Set MTL_MSAA=0 or =1 to disable (A/B),
+        // or =2/=8 to change the sample count; the env var always overrides.
+        ctx->msaaSamples = 4;
         if (const char* m = getenv("MTL_MSAA")) {
             int v = atoi(m);
             if (v == 0 || v == 1) ctx->msaaSamples = 1;
@@ -1739,6 +1748,7 @@ extern "C" void MetalContext_Destroy(MetalContext* ctx)
         ctx->queue  = nil;
         ctx->device = nil;
     }
+    if (s_uploadCtx == ctx) s_uploadCtx = nullptr;
     delete ctx;
 }
 
@@ -2459,22 +2469,83 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
     }
 }
 
+// TheSuperHackers @port macOS: full mip-chain support for uncompressed textures.
+//
+// The DX8 texture path here was single-mip: every texture was created
+// mipmapped:NO and only level 0 was ever uploaded. The engine still requests
+// trilinear/bilinear-mip sampling — TextureFilterClass::Apply() sets
+// D3DTSS_MIPFILTER to LINEAR/POINT for any texture it considers mipmapped
+// (texturefilter.cpp), which reaches our GetSampler as MTLSamplerMipFilter*.
+// With no mip data to sample, minified terrain (grass/dirt tiles under the
+// tilted RTS camera) aliases badly and "crawls"/shimmers as the camera moves —
+// the textbook missing-mipmap artifact. We fix it in the backend, transparently
+// to the DX8 wrapper: allocate a full mip chain for uncompressed textures and
+// GPU-generate levels 1..N from the uploaded level 0 (see GenerateMips, called
+// from the upload entrypoints). Sampling stays gated by the engine's
+// D3DTSS_MIPFILTER, so textures the engine wants unmipmapped (UI/text, which it
+// marks MIP_LEVELS_1 → MIPFILTER=NONE) still sample level 0 only.
+//
+// Compressed BC textures keep a single level: Metal cannot generate mips for
+// compressed formats, and the stub uploads only their level 0. Set
+// MTL_NO_MIPMAPS=1 to fully revert to the old single-level behavior (A/B).
+static bool MipmapsEnabled()
+{
+    static int e = -1;
+    if (e < 0) e = getenv("MTL_NO_MIPMAPS") ? 0 : 1;
+    return e != 0;
+}
+
+// Number of mip levels in a full chain down to 1x1 for a width x height texture.
+static NSUInteger MipCountFor(int width, int height)
+{
+    int m = (width > height ? width : height);
+    if (m < 1) m = 1;
+    NSUInteger levels = 1;
+    while (m > 1) { m >>= 1; ++levels; }
+    return levels;
+}
+
+// GPU-generate the mip chain for a texture whose level 0 was just uploaded.
+// No-op for single-level textures (compressed / 1x1 / MTL_NO_MIPMAPS) and when
+// no context/queue is available. Committed on its own command buffer; on a
+// single command queue Metal executes committed buffers in order, so this
+// blit runs before the frame's render buffer (committed later) samples the
+// texture. Called from the upload entrypoints; self-gates on mip level count.
+static void GenerateMips(id<MTLTexture> tex)
+{
+    if (!tex || tex.mipmapLevelCount <= 1) return;
+    MetalContext* ctx = s_uploadCtx;
+    if (!ctx || !ctx->queue) return;
+    id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
+    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    [blit generateMipmapsForTexture:tex];
+    [blit endEncoding];
+    [cb commit];
+}
+
 extern "C" void* MetalContext_CreateTextureFmt(MetalContext* ctx, int width, int height, int bcKind)
 {
     if (!ctx) return nullptr;
     @autoreleasepool {
         MTLPixelFormat pf = MTLPixelFormatBGRA8Unorm;
+        bool compressed = false;
         switch (bcKind) {
-            case 1: pf = MTLPixelFormatBC1_RGBA; break;  // DXT1
-            case 2: pf = MTLPixelFormatBC2_RGBA; break;  // DXT2/3
-            case 3: pf = MTLPixelFormatBC3_RGBA; break;  // DXT4/5
+            case 1: pf = MTLPixelFormatBC1_RGBA; compressed = true; break;  // DXT1
+            case 2: pf = MTLPixelFormatBC2_RGBA; compressed = true; break;  // DXT2/3
+            case 3: pf = MTLPixelFormatBC3_RGBA; compressed = true; break;  // DXT4/5
             default: pf = MTLPixelFormatBGRA8Unorm; break;
         }
+        const int w = (width  > 0 ? width  : 1);
+        const int h = (height > 0 ? height : 1);
         MTLTextureDescriptor* desc =
             [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:pf
-                                                               width:(width  > 0 ? width  : 1)
-                                                              height:(height > 0 ? height : 1)
+                                                               width:w
+                                                              height:h
                                                            mipmapped:NO];
+        // Full mip chain for uncompressed textures so the engine's mip-filter
+        // request has real data to sample (see file-scope note above).
+        if (!compressed && MipmapsEnabled())
+            desc.mipmapLevelCount = MipCountFor(w, h);
         desc.usage = MTLTextureUsageShaderRead;
         id<MTLTexture> tex = [ctx->device newTextureWithDescriptor:desc];
         return (void*)CFBridgingRetain(tex);
@@ -2496,6 +2567,7 @@ extern "C" void MetalContext_UploadTextureRaw(void* texture, int width, int heig
                mipmapLevel:0
                  withBytes:bytes
                bytesPerRow:(NSUInteger)bytesPerRow];
+        GenerateMips(tex);   // no-op unless tex was allocated with a mip chain
     }
 }
 
@@ -2661,6 +2733,7 @@ extern "C" void MetalContext_UploadTextureBGRA8(void* texture, int width, int he
                mipmapLevel:0
                  withBytes:bgra8
                bytesPerRow:(NSUInteger)bytesPerRow];
+        GenerateMips(tex);   // build levels 1..N from the just-uploaded level 0
 
         // Debug: dump uploaded texture content to PNG (MTL_DUMP), capped.
         static int s_te = -1; if (s_te < 0) s_te = getenv("MTL_DUMPTEX") ? 1 : 0;
