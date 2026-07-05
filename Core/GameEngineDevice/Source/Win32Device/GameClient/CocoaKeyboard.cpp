@@ -29,11 +29,13 @@
 #include "Common/Debug.h"
 #include "GameClient/KeyDefs.h"
 #include "GameClient/Keyboard.h"
+#include "GameClient/GameWindowManager.h"   // TheWindowManager, GWM_IME_CHAR
 #include "Win32Device/GameClient/CocoaKeyboard.h"
 
 // The Metal backend (Objective-C++) owns the Cocoa window and captures NSEvents.
 extern "C" int MetalInput_PollKey(int* macKeyCode, int* down);
 extern "C" int MetalInput_CapsOn(void);
+extern "C" int MetalInput_PollChar(unsigned int* outChar);
 
 // macOS virtual key codes (kVK_*, from <Carbon/HIToolbox/Events.h>). Hardcoded
 // to avoid pulling Carbon into this translation unit; these are stable.
@@ -134,7 +136,32 @@ CocoaKeyboard::~CocoaKeyboard() {}
 
 void CocoaKeyboard::init()   { Keyboard::init(); }
 void CocoaKeyboard::reset()  { Keyboard::reset(); }
-void CocoaKeyboard::update() { Keyboard::update(); }
+
+void CocoaKeyboard::update()
+{
+	Keyboard::update();
+
+	// TheSuperHackers @port macOS text-input bridge. The Cocoa/Metal main loop
+	// has no Win32 WndProc, so the WM_CHAR -> IMEManager::serviceIMEMessage ->
+	// GWM_IME_CHAR path that feeds printable characters to text-entry gadgets on
+	// Windows never runs — leaving every in-game text field (player name, LAN
+	// game name, chat, ...) unable to accept typed input. Rebuild it here: drain
+	// the characters NSEvent already composed for us (correct for the live system
+	// keyboard layout, shift/caps/dead-keys) and deliver each to the focused GUI
+	// window as GWM_IME_CHAR — exactly the message GadgetTextEntryInput consumes
+	// to append a character (and to finish editing on Return).
+	if( TheWindowManager )
+	{
+		GameWindow *focus = TheWindowManager->winGetFocus();
+		unsigned int ch;
+		while( MetalInput_PollChar( &ch ) )   // drain fully even with no focus
+		{
+			if( focus )
+				TheWindowManager->winSendInputMsg( focus, GWM_IME_CHAR,
+																					 (WindowMsgData)ch, 0 );
+		}
+	}
+}
 
 Bool CocoaKeyboard::getCapsState() { return MetalInput_CapsOn() ? TRUE : FALSE; }
 

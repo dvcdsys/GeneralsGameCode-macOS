@@ -25,6 +25,7 @@ struct MouseEv { int type, x, y, delta; };
 struct KeyEv   { int macKeyCode, down; };
 std::deque<MouseEv> g_mouseQ;
 std::deque<KeyEv>   g_keyQ;
+std::deque<unsigned int> g_charQ;   // NSEvent-composed typed chars for text fields
 bool                g_capsOn = false;
 unsigned long       g_prevModFlags = 0;
 NSView*             g_inputView = nil;   // active content view, for coord conversion
@@ -546,6 +547,7 @@ struct UniformsCPU {
 namespace { struct KeyEv; }
 extern "C" void MetalView_PushKeyEvent(int keyCode, int down);
 extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode);
+extern "C" void MetalView_PushChar(unsigned int ch);
 
 @interface MetalView : NSView
 @end
@@ -567,6 +569,15 @@ extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode);
 // forwards up the chain to NSWindow, which beeps on unhandled ESC.
 - (void)keyDown:(NSEvent*)e {
     if (!e.isARepeat) MetalView_PushKeyEvent((int)e.keyCode, 1);
+    // Text-entry input: NSEvent has already applied the live system keyboard
+    // layout + shift/caps/option/dead-keys, so -characters is the correct typed
+    // character (unlike the raw keyCode path, which only knows a handful of
+    // hardcoded layouts). Queue them for the engine to hand to focused text
+    // fields as GWM_IME_CHAR — the macOS stand-in for the Win32 WM_CHAR pump.
+    // Repeats are included on purpose (held-key auto-repeat, like WM_CHAR).
+    NSString* chars = [e characters];
+    for (NSUInteger i = 0; i < chars.length; ++i)
+        MetalView_PushChar((unsigned int)[chars characterAtIndex:i]);
 }
 - (void)keyUp:(NSEvent*)e {
     MetalView_PushKeyEvent((int)e.keyCode, 0);
@@ -954,6 +965,26 @@ extern "C" void MetalView_PushFlagsChanged(unsigned long modFlags, int keyCode)
         }
     }
     g_prevModFlags = modFlags;
+}
+
+extern "C" void MetalView_PushChar(unsigned int ch)
+{
+    // Mirror Win32 WM_CHAR semantics: only printable characters (and Return)
+    // ever reach text fields. Everything else — backspace, tab, escape, the
+    // arrow / function keys (Cocoa maps these to the 0xF700–0xF8FF private-use
+    // range) and DEL — is already delivered via the raw-scancode path and must
+    // NOT be duplicated here, or it would be inserted as literal garbage text.
+    if (ch == 0x0D || ch == 0x03)          // Return / keypad-Enter -> VK_RETURN
+        ch = 0x0D;
+    else if (ch < 0x20 || ch == 0x7F)      // control chars + DEL
+        return;
+    else if (ch >= 0xF700 && ch <= 0xF8FF) // arrows / F-keys (NSEvent private use)
+        return;
+    if (InputLogOn() && g_inputLogCount < kInputLogMax) {
+        fprintf(stderr, "[mtl-in] CHAR U+%04X\n", ch);
+        ++g_inputLogCount;
+    }
+    g_charQ.push_back(ch);
 }
 
 static void DrainEvents()
@@ -2705,6 +2736,14 @@ extern "C" int MetalInput_PollKey(int* macKeyCode, int* down)
 }
 
 extern "C" int MetalInput_CapsOn(void) { return g_capsOn ? 1 : 0; }
+
+extern "C" int MetalInput_PollChar(unsigned int* outChar)
+{
+    if (g_charQ.empty()) return 0;
+    unsigned int c = g_charQ.front(); g_charQ.pop_front();
+    if (outChar) *outChar = c;
+    return 1;
+}
 
 // ---------------------------------------------------------------------------
 // Cursor hide/show counter (mirrors Win32 ShowCursor semantics).

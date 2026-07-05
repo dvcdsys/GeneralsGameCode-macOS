@@ -28,6 +28,13 @@
 #include "GameNetwork/networkutil.h"
 #include "GameClient/ClientInstance.h"
 
+#if defined(__APPLE__)
+// TheSuperHackers @port macOS: native IPv4 interface enumeration (see getAddresses).
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#endif
+
 IPEnumeration::IPEnumeration()
 {
 	m_IPlist = nullptr;
@@ -56,6 +63,56 @@ EnumeratedIP * IPEnumeration::getAddresses()
 	if (m_IPlist)
 		return m_IPlist;
 
+#if defined(__APPLE__)
+	// TheSuperHackers @port macOS: enumerate local IPv4 interfaces with getifaddrs()
+	// instead of gethostbyname(hostname). On macOS the machine's ".local" hostname
+	// usually does NOT resolve to its LAN address, so gethostbyname returned null and
+	// left m_IPlist empty — then LanLobbyMenuInit did `IP = IPlist->getIP()` on that
+	// null pointer and hard-crashed (EXC_BAD_ACCESS at 0x10) the moment you opened the
+	// LAN lobby. getifaddrs() is the canonical POSIX enumeration and needs no name
+	// resolution. Networking plumbing only — no game logic, Windows path untouched.
+
+	// Preserve the Windows multi-instance loopback-ID feature (unique 127.x per client).
+	if (rts::ClientInstance::isMultiInstance())
+	{
+		const UnsignedInt id = rts::ClientInstance::getInstanceId();
+		addNewIP(
+			127,
+			(UnsignedByte)(id >> 16),
+			(UnsignedByte)(id >> 8),
+			(UnsignedByte)(id));
+	}
+
+	struct ifaddrs *ifaddr = nullptr;
+	if (getifaddrs(&ifaddr) == 0)
+	{
+		for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next)
+		{
+			if (ifa->ifa_addr == nullptr)
+				continue;
+			if (ifa->ifa_addr->sa_family != AF_INET)
+				continue;                              // IPv4 only (engine uses 4-byte IPs)
+			if ((ifa->ifa_flags & IFF_UP) == 0)
+				continue;                              // skip interfaces that are down
+			if (ifa->ifa_flags & IFF_LOOPBACK)
+				continue;                              // skip 127.0.0.1
+
+			// s_addr is in network byte order; its 4 octets are already in dotted order,
+			// matching how the Windows path feeds h_addr_list bytes to addNewIP.
+			const struct sockaddr_in *sa = (const struct sockaddr_in *)ifa->ifa_addr;
+			const UnsignedByte *b = (const UnsignedByte *)&sa->sin_addr.s_addr;
+			addNewIP(b[0], b[1], b[2], b[3]);
+		}
+		freeifaddrs(ifaddr);
+	}
+
+	// Fallback: no usable interface (Wi-Fi off / no Ethernet) — add loopback so the LAN
+	// lobby still OPENS instead of crashing; the user just won't see other LAN games.
+	if (!m_IPlist)
+		addNewIP(127, 0, 0, 1);
+
+	return m_IPlist;
+#else
 	if (!m_isWinsockInitialized)
 	{
 		WORD verReq = MAKEWORD(2, 2);
@@ -121,6 +178,7 @@ EnumeratedIP * IPEnumeration::getAddresses()
 	}
 
 	return m_IPlist;
+#endif // __APPLE__
 }
 
 void IPEnumeration::addNewIP( UnsignedByte a, UnsignedByte b, UnsignedByte c, UnsignedByte d )
