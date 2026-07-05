@@ -1360,6 +1360,19 @@ inline HANDLE FindFirstFile(const char *searchSpec, WIN32_FIND_DATA *fd)
   else { dirPart = spec.substr(0, slash + 1); pattern = spec.substr(slash + 1); }
   if (pattern.empty()) pattern = "*";
 
+  // Win32 FindFirstFile wildcard idioms that POSIX fnmatch does NOT share:
+  //   "*."  -> every name with no extension. The engine's directory walker
+  //            (Win32LocalFileSystem::getFileListInDirectory) uses "*." to
+  //            enumerate sub-directories, then keeps the ones flagged as
+  //            directories. fnmatch("*.", "SubDir") returns 1 (no literal
+  //            trailing dot), so the un-translated pattern matched NOTHING and
+  //            every per-map sub-folder — i.e. all on-disk user maps — silently
+  //            failed to enumerate.
+  //   "*.*" -> Win treats this as "match everything" (including names with no
+  //            dot), whereas fnmatch would require a literal '.'.
+  // Both collapse to "*"; callers apply their own attribute/extension filter.
+  if (pattern == "*." || pattern == "*.*") pattern = "*";
+
   const char *openPath = dirPart.empty() ? "." : dirPart.c_str();
   DIR *d = ::opendir(openPath);
   if (!d) return INVALID_HANDLE_VALUE;
@@ -1367,7 +1380,9 @@ inline HANDLE FindFirstFile(const char *searchSpec, WIN32_FIND_DATA *fd)
   _Win32FindState *state = new _Win32FindState{ d, dirPart, pattern };
   struct dirent *ent;
   while ((ent = ::readdir(d)) != nullptr) {
-    if (::fnmatch(state->pattern.c_str(), ent->d_name, 0) == 0) {
+    // FNM_CASEFOLD: Win32 file matching is case-insensitive; emulate it so
+    // e.g. "*.map" also matches "Foo.MAP".
+    if (::fnmatch(state->pattern.c_str(), ent->d_name, FNM_CASEFOLD) == 0) {
       _Win32FillFindData(state->directory, ent->d_name, fd);
       return (HANDLE)state;
     }
@@ -1383,7 +1398,9 @@ inline BOOL FindNextFile(HANDLE h, WIN32_FIND_DATA *fd)
   _Win32FindState *state = (_Win32FindState *)h;
   struct dirent *ent;
   while ((ent = ::readdir(state->dir)) != nullptr) {
-    if (::fnmatch(state->pattern.c_str(), ent->d_name, 0) == 0) {
+    // FNM_CASEFOLD: Win32 file matching is case-insensitive; emulate it so
+    // e.g. "*.map" also matches "Foo.MAP".
+    if (::fnmatch(state->pattern.c_str(), ent->d_name, FNM_CASEFOLD) == 0) {
       _Win32FillFindData(state->directory, ent->d_name, fd);
       return TRUE;
     }
