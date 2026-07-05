@@ -19,16 +19,27 @@ You must own a legitimate copy of Zero Hour — the proprietary EA game data is
    [latest release](https://github.com/dvcdsys/GeneralsGameCode-macOS/releases).
 2. Open it and drag **GeneralsZH Launcher.app** onto the **Applications** folder.
 3. The app is ad-hoc signed (not notarized), so on first launch macOS Gatekeeper
-   blocks it (*"damaged"* / *"can't check for malicious software"*). Clear the
-   quarantine flag once in **Terminal**, then open the app normally:
-   ```bash
-   xattr -dr com.apple.quarantine "/Applications/GeneralsZH Launcher.app"
-   ```
+   blocks it — you'll see *"…is damaged and can't be opened"* or *"…can't be
+   opened because Apple cannot check it for malicious software."* This is
+   expected. Clear it **once** with either method:
+
+   - **Terminal (most reliable):** strip the quarantine flag, then open the app
+     normally from Launchpad / Applications.
+     ```bash
+     xattr -dr com.apple.quarantine "/Applications/GeneralsZH Launcher.app"
+     ```
+   - **No Terminal:** double-click the app once (it gets blocked), then open
+     **System Settings → Privacy & Security**, scroll to the *Security* section,
+     and click **Open Anyway** next to *GeneralsZH Launcher*. (On macOS 13–14 you
+     can instead right-click the app → **Open** → **Open**.)
+
+   If the **.dmg** itself is flagged, clear it the same way first:
+   `xattr -dr com.apple.quarantine ~/Downloads/GeneralsZH-Launcher.dmg`.
 4. In the launcher, pick the folder with your original Zero Hour data (the
    `.big` archives), then press **Play**.
 
 That's it — the launcher downloads the game engine for you, keeps it updated,
-and can update itself (the only terminal step is clearing quarantine once, above).
+and can update itself (the only manual step is clearing Gatekeeper once, above).
 
 ## Build from source (developers)
 

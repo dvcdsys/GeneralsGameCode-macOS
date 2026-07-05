@@ -25,7 +25,10 @@ bash build-app.sh          # -> "<repo>/dist/GeneralsZH Launcher.app"
 ```
 
 Requires the Swift toolchain (ships with Xcode / Command Line Tools).
-The app is ad-hoc signed; on first run use right-click → **Open**.
+The app is ad-hoc signed (not notarized); on first run macOS Gatekeeper blocks
+it. Clear it once — `xattr -dr com.apple.quarantine "<path>/GeneralsZH Launcher.app"`,
+or **System Settings → Privacy & Security → Open Anyway**. (Full end-user steps:
+top-level [`README.md`](../README.md#install--play).)
 
 ## Local testing before a release exists
 
