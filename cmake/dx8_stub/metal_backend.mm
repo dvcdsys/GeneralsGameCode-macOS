@@ -756,6 +756,26 @@ struct MetalContext {
     uint64_t                   bufFrameId;        // monotonic render-frame counter
     std::atomic<uint64_t>      bufCompletedFrame; // highest frame the GPU finished
 
+    // TheSuperHackers @port macOS @bugfix: dynamic-TEXTURE rename pool — same
+    // recycle discipline as the buffer pool above, for a different race.
+    // UnlockRect/flushToTexture upload with [tex replaceRegion:...], which
+    // writes texture memory immediately on the CPU while the PREVIOUS frame's
+    // committed command buffer may still be sampling that very texture on the
+    // GPU — a documented data race ("you must not call replaceRegion while the
+    // GPU is reading or writing the texture"). On Apple Silicon the visible
+    // symptom is transient BLACK rectangles / torn line patterns exactly where
+    // a re-uploaded texture (scrolling shell-map terrain pages, font/sentence
+    // atlases, video frames, radar) is drawn — the menu "black texture
+    // flicker". Fix: a texture that has been uploaded once never gets an
+    // in-place re-upload; MetalContext_RenameTexture hands the wrapper a fresh
+    // (pooled) MTLTexture for the new contents while in-flight frames keep the
+    // old one alive via the command buffer's retained references. The old
+    // texture is parked in texRetired tagged with the current render frame and
+    // moved to texFree (keyed by w/h/format/mips/usage) once the GPU completes
+    // that frame — steady state re-uses 2-3 textures per dynamic surface.
+    std::unordered_map<uint64_t, std::vector<void*> > texFree;      // TexPoolKey -> CF-retained textures
+    std::vector<std::pair<void*, uint64_t> >          texRetired;   // (CF-retained texture, frame retired)
+
     // Stage 6: shadow mapping. shadowMap is a private depth-only texture
     // (2048×2048 Depth32Float). The shim watches every 3D opaque Draw() during
     // the main render pass, snapshotting just enough state to replay it as a
@@ -1807,6 +1827,12 @@ extern "C" void MetalContext_Destroy(MetalContext* ctx)
         ctx->bufFree.clear();
         for (size_t i = 0; i < ctx->bufRetired.size(); ++i) CFRelease(ctx->bufRetired[i].first);
         ctx->bufRetired.clear();
+        // Release the dynamic-texture rename pool (free list + not-yet-recycled).
+        for (std::unordered_map<uint64_t, std::vector<void*> >::iterator it = ctx->texFree.begin(); it != ctx->texFree.end(); ++it)
+            for (size_t i = 0; i < it->second.size(); ++i) CFRelease(it->second[i]);
+        ctx->texFree.clear();
+        for (size_t i = 0; i < ctx->texRetired.size(); ++i) CFRelease(ctx->texRetired[i].first);
+        ctx->texRetired.clear();
         [ctx->window close];
         ctx->window = nil;
         ctx->view   = nil;
@@ -2450,6 +2476,7 @@ static void RunShadowReplay(MetalContext* ctx)
 
 static void FlushPendingMips(MetalContext* ctx);   // defined below; batched mip generation
 static void SweepRetiredBuffers(MetalContext* ctx); // defined below; dynamic-buffer recycling
+static void SweepRetiredTextures(MetalContext* ctx); // defined below; dynamic-texture recycling
 
 extern "C" void MetalContext_Present(MetalContext* ctx)
 {
@@ -2539,9 +2566,10 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         }
         if (ctx->cmd)      { [ctx->cmd release];      ctx->cmd = nil; }
         if (ctx->drawable) { [ctx->drawable release]; ctx->drawable = nil; }
-        // Recycle GPU-finished dynamic buffers and advance the frame counter used
-        // to tag buffers retired during the next frame.
+        // Recycle GPU-finished dynamic buffers/textures and advance the frame
+        // counter used to tag resources retired during the next frame.
         SweepRetiredBuffers(ctx);
+        SweepRetiredTextures(ctx);
         ctx->bufFrameId++;
         if (ctx->dbg < 0) ctx->dbg = getenv("MTL_DEBUG") ? 1 : 0;
         if (ctx->dbg > 0 && (ctx->frameIndex < 8 || (ctx->frameIndex % 120) == 0)) {
@@ -2930,6 +2958,100 @@ extern "C" void MetalContext_RetireBuffer(MetalContext* ctx, void* buffer)
     if (!buffer) return;
     if (!ctx) { CFRelease(buffer); return; }
     ctx->bufRetired.push_back(std::make_pair(buffer, ctx->bufFrameId));
+}
+
+// ---------------------------------------------------------------------------
+// Dynamic-texture rename pool (see the texFree/texRetired field comment in
+// MetalContext for the race this fixes — the menu "black texture flicker").
+// ---------------------------------------------------------------------------
+
+// Pool bucket key: textures are interchangeable iff every descriptor field the
+// pool copies matches. width/height fit 14 bits (max 16384 — beyond any D3D8
+// texture the engine creates), pixelFormat 16 bits, mip count 8, usage 8.
+static uint64_t TexPoolKey(id<MTLTexture> t)
+{
+    return  ((uint64_t)(t.width  & 0x3FFF))
+         |  ((uint64_t)(t.height & 0x3FFF) << 14)
+         |  ((uint64_t)((unsigned)t.pixelFormat    & 0xFFFF) << 28)
+         |  ((uint64_t)(t.mipmapLevelCount         & 0xFF)   << 44)
+         |  ((uint64_t)((unsigned)t.usage          & 0xFF)   << 52);
+}
+
+// Move retired textures whose frame the GPU has finished into the free pool.
+// Same correctness argument as SweepRetiredBuffers: command buffers complete
+// in commit order, so "retired frame <= completed frame" means no in-flight
+// command buffer can still be sampling the texture.
+static void SweepRetiredTextures(MetalContext* ctx)
+{
+    if (!ctx) return;
+    // Cap per free-bucket. Steady state needs only a handful (renames/frame ×
+    // frames-in-flight), but the shell-map/game load re-uploads EVERY terrain
+    // page once within a frame window — thousands of 128×128 retirees at once
+    // (~450 MB observed uncapped). Keep enough to absorb a camera-jump re-bake
+    // burst; release the rest back to the allocator.
+    const size_t kMaxFreePerKey = 256;
+    const uint64_t done = ctx->bufCompletedFrame.load(std::memory_order_relaxed);
+    std::vector<std::pair<void*, uint64_t> >& r = ctx->texRetired;
+    for (size_t i = 0; i < r.size(); ) {
+        if (r[i].second <= done) {
+            void* t = r[i].first;
+            std::vector<void*>& bucket = ctx->texFree[TexPoolKey((__bridge id<MTLTexture>)t)];
+            if (bucket.size() < kMaxFreePerKey) bucket.push_back(t);
+            else                                CFRelease(t);
+            r[i] = r.back(); r.pop_back();      // swap-remove
+        } else {
+            ++i;
+        }
+    }
+}
+
+extern "C" void* MetalContext_RenameTexture(void* oldTexture)
+{
+    if (!oldTexture) return nullptr;
+    static int off = -1;
+    if (off < 0) off = getenv("MTL_NO_TEX_RENAME") ? 1 : 0;
+    MetalContext* ctx = s_uploadCtx;
+    if (off || !ctx) return oldTexture;   // legacy in-place replaceRegion (A/B switch)
+    @autoreleasepool {
+        id<MTLTexture> old = (__bridge id<MTLTexture>)oldTexture;
+        const uint64_t key = TexPoolKey(old);
+        void* fresh = nullptr;
+        std::unordered_map<uint64_t, std::vector<void*> >::iterator it = ctx->texFree.find(key);
+        if (it != ctx->texFree.end() && !it->second.empty()) {
+            fresh = it->second.back();
+            it->second.pop_back();          // already CF-retained; ownership -> caller
+        } else {
+            MTLTextureDescriptor* desc =
+                [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:old.pixelFormat
+                                                                   width:old.width
+                                                                  height:old.height
+                                                               mipmapped:NO];
+            desc.mipmapLevelCount = old.mipmapLevelCount;
+            desc.usage            = old.usage;
+            id<MTLTexture> t = [ctx->device newTextureWithDescriptor:desc];
+            if (!t) return oldTexture;      // allocation failure: fall back in-place
+            fresh = (void*)CFBridgingRetain(t);
+            [t release];                    // MRC: new(+1) + bridge(+1) -> pool owns exactly one
+        }
+        // Park the old texture until the GPU finishes every frame that may
+        // still reference it (the caller's CF reference transfers here).
+        ctx->texRetired.push_back(std::make_pair(oldTexture, ctx->bufFrameId));
+        static int logOn = -1;
+        if (logOn < 0) logOn = getenv("MTL_RENAME_LOG") ? 1 : 0;
+        if (logOn) {
+            static unsigned long renames = 0;
+            if ((++renames % 256) == 1) {
+                size_t pooled = 0;
+                for (std::unordered_map<uint64_t, std::vector<void*> >::iterator pit = ctx->texFree.begin(); pit != ctx->texFree.end(); ++pit)
+                    pooled += pit->second.size();
+                fprintf(stderr, "[tex-rename] #%lu %lux%lu fmt=%lu pool: free=%zu retired=%zu\n",
+                        renames, (unsigned long)old.width, (unsigned long)old.height,
+                        (unsigned long)old.pixelFormat, pooled, ctx->texRetired.size());
+                fflush(stderr);
+            }
+        }
+        return fresh;
+    }
 }
 
 extern "C" void* MetalContext_BufferContents(void* buffer)

@@ -168,9 +168,18 @@ public:
             m_staging.resize((size_t)m_pitch * (h ? h : 1), 0);
         }
     }
-    ~MetalTexture8() { if (m_level0Surface) m_level0Surface->Release(); MetalContext_ReleaseTexture(m_texture); }
+    ~MetalTexture8();  // out-of-line below: unbinds the cached level-0 surface first
 
     void* dxTexture() const { return m_texture; } // opaque MTLTexture*
+
+    // Returns the MTLTexture the next upload must write into. The FIRST upload
+    // fills the texture before any draw referenced it, so in-place replaceRegion
+    // is safe; every RE-upload swaps in a fresh pooled texture instead
+    // (MetalContext_RenameTexture) because in-place writes race in-flight GPU
+    // frames still sampling the old contents (black/torn texture flicker).
+    // Defined out-of-line below — rebinds the cached level-0 surface, which
+    // needs the full MetalSurface8 definition.
+    void* prepareUploadBacking();
 
     // IUnknown
     STDMETHOD(QueryInterface)(REFIID, void** ppvObj) override { return BasicQueryInterface(this, ppvObj); }
@@ -220,9 +229,11 @@ public:
     {
         // Convert the locked source-format bytes to BGRA8 and push to the GPU.
         if (!m_texture || m_staging.empty()) return S_OK;
+        void* dst = prepareUploadBacking();
+        if (!dst) return S_OK;
         if (m_compressed) {
             // Upload the BC blocks verbatim (no conversion).
-            MetalContext_UploadTextureRaw(m_texture, (int)(m_width ? m_width : 1),
+            MetalContext_UploadTextureRaw(dst, (int)(m_width ? m_width : 1),
                                           (int)(m_height ? m_height : 1),
                                           m_staging.data(), (int)m_pitch);
             return S_OK;
@@ -248,7 +259,7 @@ public:
                              m_isMissing ? "  <-- MISSING" : "");
             }
         }
-        MetalContext_UploadTextureBGRA8(m_texture, (int)w, (int)h, bgra.data(), (int)(w * 4));
+        MetalContext_UploadTextureBGRA8(dst, (int)w, (int)h, bgra.data(), (int)(w * 4));
         return S_OK;
     }
     bool isMissingTex() const { return m_isMissing; }
@@ -264,6 +275,7 @@ private:
     UINT              m_pitch;
     bool              m_isMissing = false;
     bool              m_compressed = false;
+    bool              m_everUploaded = false;  // first upload = in-place; re-uploads rename
     std::vector<unsigned char> m_staging;
     // Persistent CPU mirror of mip level 0 (lazily created by GetSurfaceLevel).
     // Real D3D hands back the *same* surface memory each call; the engine relies
@@ -312,6 +324,9 @@ public:
     // MetalTexture8::GetSurfaceLevel), it carries the owning MTLTexture so that
     // a CopyRects/UnlockRect into it pushes the pixels to the GPU.
     void bindUploadTexture(void* mtlTexture) { m_uploadTexture = mtlTexture; }
+    // ...and the owning MetalTexture8 wrapper, so flushToTexture can route the
+    // upload through prepareUploadBacking (dynamic-texture rename on re-upload).
+    void bindOwnerTexture(MetalTexture8* owner) { m_ownerTex = owner; }
 
     // Accessors used by MetalDevice8::CopyRects.
     UINT      surfWidth()  const { return m_width; }
@@ -329,6 +344,10 @@ public:
     void flushToTexture()
     {
         if (!m_uploadTexture || m_staging.empty()) return;
+        // Re-uploads must not replaceRegion in-place while in-flight GPU frames
+        // still sample the texture — swap to a fresh pooled backing first.
+        if (m_ownerTex) m_uploadTexture = m_ownerTex->prepareUploadBacking();
+        if (!m_uploadTexture) return;
         if (m_compressed) {
             // Upload BC blocks verbatim (no conversion).
             MetalContext_UploadTextureRaw(m_uploadTexture, (int)(m_width ? m_width : 1),
@@ -418,6 +437,7 @@ private:
     UINT              m_pitch = 0;
     bool              m_compressed = false;
     void*             m_uploadTexture = nullptr;  // MTLTexture if this is a texture level
+    MetalTexture8*    m_ownerTex = nullptr;       // owning wrapper (rename routing); no ref held
     size_t            m_staging_size = 0;         // logical bytes (set in ctor; alloc is lazy)
     std::vector<unsigned char> m_staging;
     // Persistent BGRA scratch used by flushToTexture() for the BGR0/ARGB→BGRA8
@@ -454,6 +474,7 @@ HRESULT STDMETHODCALLTYPE MetalTexture8::GetSurfaceLevel(UINT Level, IDirect3DSu
             UINT h = m_height ? m_height : 1;
             MetalSurface8* surf = new MetalSurface8(m_device, w, h, m_format);
             surf->bindUploadTexture(m_texture);
+            surf->bindOwnerTexture(this);    // route re-uploads through the rename path
             m_level0Surface = surf;          // texture keeps one reference
         }
         m_level0Surface->AddRef();           // reference for the returned pointer
@@ -467,6 +488,43 @@ HRESULT STDMETHODCALLTYPE MetalTexture8::GetSurfaceLevel(UINT Level, IDirect3DSu
     UINT h = m_height >> Level; if (!h) h = 1;
     *ppSurfaceLevel = new MetalSurface8(m_device, w, h, m_format);
     return D3D_OK;
+}
+
+// MetalTexture8 destructor — out-of-line because it must unbind the cached
+// level-0 surface (full MetalSurface8 definition required). The engine may
+// legitimately hold the surface pointer past the texture's death; clearing the
+// bindings turns a late UnlockRect into a harmless CPU-only write instead of a
+// use-after-free on the wrapper / a replaceRegion on a released MTLTexture.
+MetalTexture8::~MetalTexture8()
+{
+    if (m_level0Surface) {
+        MetalSurface8* surf = static_cast<MetalSurface8*>(m_level0Surface);
+        surf->bindOwnerTexture(nullptr);
+        surf->bindUploadTexture(nullptr);
+        m_level0Surface->Release();
+    }
+    MetalContext_ReleaseTexture(m_texture);
+}
+
+// The FIRST upload into a texture happens before any draw could have
+// referenced it — in-place replaceRegion is safe and cheapest. Every RE-upload
+// swaps in a fresh pooled MTLTexture (MetalContext_RenameTexture): the old one
+// keeps serving the in-flight frames that already sampled/bound it (command
+// buffers retain their resources) and is recycled once the GPU finishes them.
+// Draws encoded after this point resolve the new pointer via dxTexture().
+void* MetalTexture8::prepareUploadBacking()
+{
+    if (!m_texture) return nullptr;
+    if (m_everUploaded) {
+        void* fresh = MetalContext_RenameTexture(m_texture);
+        if (fresh && fresh != m_texture) {
+            m_texture = fresh;
+            if (m_level0Surface)
+                static_cast<MetalSurface8*>(m_level0Surface)->bindUploadTexture(fresh);
+        }
+    }
+    m_everUploaded = true;
+    return m_texture;
 }
 
 // ---------------------------------------------------------------------------
@@ -519,6 +577,31 @@ public:
                 m_buffer   = fresh;
                 m_contents = MetalContext_BufferContents(m_buffer);
             }
+        } else if (!(Flags & (D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY))
+                   && m_everDrawn && m_ctx && m_length > 0) {
+            // PLAIN write lock (flags=0) on a buffer the GPU may still be
+            // reading: real D3D8 BLOCKS here until prior submitted draws finish,
+            // then lets the CPU write. Writing straight into the live shared
+            // MTLBuffer instead races the in-flight frame — torn vertex/UV data
+            // that shows as stretched "texture lines" whenever the engine
+            // re-fills a static buffer in place (terrain tiles re-baked as the
+            // camera scrolls, W3D AppendLockClass/WriteLockClass both lock with
+            // flags=0). Emulate the blocking semantics without stalling: rename
+            // to a fresh pooled buffer and COPY the old contents so partial
+            // writes still read-modify-write correctly. Draws already encoded
+            // keep the old buffer alive (command buffers retain resources);
+            // it recycles once the GPU finishes. Gated on m_everDrawn so the
+            // one-time fill of every static mesh buffer at load stays a plain
+            // in-place write (nothing in flight can reference it yet).
+            void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
+            if (fresh) {
+                void* fc = MetalContext_BufferContents(fresh);
+                if (fc && m_contents) std::memcpy(fc, m_contents, m_length);
+                MetalContext_RetireBuffer(m_ctx, m_buffer);
+                m_buffer   = fresh;
+                m_contents = fc;
+                m_everDrawn = false;   // fresh backing: nothing in flight references it
+            }
         }
         if (ppbData) *ppbData = m_contents ? ((BYTE*)m_contents + OffsetToLock) : nullptr;
         return S_OK; // shared MTLBuffer: writes are visible directly, no upload needed.
@@ -539,6 +622,7 @@ public:
 
     void* contents() const { return m_contents; }
     void* dxBuffer() const { return m_buffer; } // opaque MTLBuffer*
+    void  markDrawn()      { m_everDrawn = true; } // called when a draw references this buffer
 
 private:
     ULONG             m_refCount;
@@ -550,6 +634,7 @@ private:
     DWORD             m_usage;
     DWORD             m_fvf;
     D3DPOOL           m_pool;
+    bool              m_everDrawn = false;  // plain re-locks rename+copy (see Lock)
 };
 
 // ---------------------------------------------------------------------------
@@ -592,6 +677,20 @@ public:
                 m_buffer   = fresh;
                 m_contents = MetalContext_BufferContents(m_buffer);
             }
+        } else if (!(Flags & (D3DLOCK_NOOVERWRITE | D3DLOCK_READONLY))
+                   && m_everDrawn && m_ctx && m_length > 0) {
+            // Plain write lock on a GPU-visible buffer: rename+copy instead of
+            // racing in-flight frames — see the matching comment in
+            // MetalVertexBuffer8::Lock.
+            void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
+            if (fresh) {
+                void* fc = MetalContext_BufferContents(fresh);
+                if (fc && m_contents) std::memcpy(fc, m_contents, m_length);
+                MetalContext_RetireBuffer(m_ctx, m_buffer);
+                m_buffer   = fresh;
+                m_contents = fc;
+                m_everDrawn = false;   // fresh backing: nothing in flight references it
+            }
         }
         if (ppbData) *ppbData = m_contents ? ((BYTE*)m_contents + OffsetToLock) : nullptr;
         return S_OK;
@@ -611,6 +710,7 @@ public:
     }
 
     void* dxBuffer() const { return m_buffer; } // opaque MTLBuffer*
+    void  markDrawn()      { m_everDrawn = true; } // called when a draw references this buffer
 
 private:
     ULONG             m_refCount;
@@ -622,6 +722,7 @@ private:
     DWORD             m_usage;
     D3DFORMAT         m_format;
     D3DPOOL           m_pool;
+    bool              m_everDrawn = false;  // plain re-locks rename+copy (see Lock)
 };
 
 // ---------------------------------------------------------------------------
@@ -1059,6 +1160,7 @@ public:
         if (!m_ctx || !m_streamSource) return D3D_OK;
         MetalDrawCall dc; std::memset(&dc, 0, sizeof(dc));
         if (!FillCommon(dc)) return D3D_OK;
+        static_cast<MetalVertexBuffer8*>(m_streamSource)->markDrawn();
         dc.vertexBuffer = static_cast<MetalVertexBuffer8*>(m_streamSource)->dxBuffer();
         dc.stride       = m_streamStride;
         dc.vertexStart  = StartVertex;
@@ -1087,6 +1189,8 @@ public:
             else if (static_cast<MetalTexture8*>(m_textures[0])->isMissingTex()) ++g_missingBound;
             else ++g_realBound;
         }
+        static_cast<MetalVertexBuffer8*>(m_streamSource)->markDrawn();
+        static_cast<MetalIndexBuffer8*>(m_indices)->markDrawn();
         dc.vertexBuffer     = static_cast<MetalVertexBuffer8*>(m_streamSource)->dxBuffer();
         dc.stride           = m_streamStride;
         dc.indexBuffer      = static_cast<MetalIndexBuffer8*>(m_indices)->dxBuffer();

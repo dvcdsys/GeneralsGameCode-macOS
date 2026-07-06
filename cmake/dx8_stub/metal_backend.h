@@ -71,6 +71,17 @@ void  MetalContext_UploadTextureBGRA8(void* texture, int width, int height,
 void  MetalContext_UploadTextureRaw(void* texture, int width, int height,
                                     const void* bytes, int bytesPerRow);
 
+// Rename a dynamic texture before a RE-upload (D3D discard semantics).
+// replaceRegion on a texture a still-executing command buffer is sampling is a
+// documented CPU/GPU data race (torn or black tiles on screen), so a texture
+// that has already been uploaded once gets a FRESH backing texture from a
+// recycle pool for each subsequent upload; the old one keeps serving in-flight
+// frames and is recycled once the GPU finishes them. Takes ownership of the
+// caller's reference to oldTexture; returns a caller-owned replacement with an
+// identical descriptor (or oldTexture unchanged if renaming is disabled via
+// MTL_NO_TEX_RENAME / no context).
+void* MetalContext_RenameTexture(void* oldTexture);
+
 // Allocate a shared MTLBuffer (for vertex/index buffers). Returns opaque MTLBuffer*.
 // MetalContext_BufferContents returns the CPU-visible pointer.
 void* MetalContext_CreateBuffer(MetalContext* ctx, unsigned length);
