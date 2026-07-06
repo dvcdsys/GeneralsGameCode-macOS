@@ -3207,25 +3207,21 @@ void W3DModelDraw::replaceIndicatorColor(Color color)
 		return;
 
 #if defined(__APPLE__)
-	// TheSuperHackers @port macOS-port: SKIP player-house-color recoloring by
-	// default. The engine recolors meshes by:
-	//   1) locking the texture surface (LockRect)
-	//   2) palette-remapping team-color pixels CPU-side
-	//   3) writing back via UnlockRect
-	// Our Metal LockRect/UnlockRect path doesn't yet correctly round-trip every
-	// texture format the engine uses for infantry/vehicle skins (TGAs loaded as
-	// BGRA8, sometimes ARGB1555 / ARGB4444). When the round-trip fails, the
-	// recolored texture comes back fully-zero or fully-transparent → ALL infantry
-	// render as solid black silhouettes in-game (verified: same SKN mesh renders
-	// CORRECTLY through GEN_MODEL_VIEWER which never invokes recoloring).
-	// Trade-off: every player's units use the BASE skin colour (no team-color
-	// tinting). The selection-circle and minimap dots still show player colour.
-	// GEN_HOUSECOLOR=1 opts back into the broken path for debugging the
-	// underlying LockRect/UnlockRect bug.
+	// TheSuperHackers @port macOS-port: player-house-color recoloring is ON.
+	// It used to be skipped by default because recoloring rendered units as solid
+	// black silhouettes on macOS. Root cause is now fixed: the recolored texture
+	// upload runs DX8Wrapper::_Create_DX8_Texture(surface) ->
+	// D3DXLoadSurfaceFromSurface, which was a silent no-op E_FAIL stub in the
+	// DX8->Metal shim — so the recolored (team-coloured) pixels never reached the
+	// GPU and the texture came back blank. With that stub implemented for real
+	// (see cmake/dx8_stub/dx8_device.cpp), and the HOUSECOLOR vertex-material path
+	// verified correct on-device, team colouring works: units, captured flags and
+	// unit-type icons take the owning player's colour instead of a flat grey.
+	// Set GEN_NO_HOUSECOLOR=1 to revert to the old no-tint behaviour (A/B safety).
 	{
-		static int s_houseColor = -1;
-		if (s_houseColor < 0) s_houseColor = ::getenv("GEN_HOUSECOLOR") ? 1 : 0;
-		if (!s_houseColor) return;
+		static int s_noHouseColor = -1;
+		if (s_noHouseColor < 0) s_noHouseColor = ::getenv("GEN_NO_HOUSECOLOR") ? 1 : 0;
+		if (s_noHouseColor) return;
 	}
 #endif
 

@@ -27,6 +27,32 @@
 #include <d3dx8.h>
 
 // ==========================================================================
+// Loud stubs (MTL_STUB_LOG=1)
+// ==========================================================================
+// A "not really implemented" stub that returns E_FAIL / a null object does its
+// damage SILENTLY: the caller thinks it failed cleanly and carries on, and we
+// (repeatedly) burn debugging time chasing a rendering/logic bug whose real
+// cause is "this D3DX helper is a no-op". D3DXLoadSurfaceFromSurface was exactly
+// that — it silently broke every surface->texture copy (gray house-color art).
+//
+// Drop STUB_HIT() at the top of any such stub. With MTL_STUB_LOG=1 in the
+// environment each stub announces itself the first time it is hit, then at
+// powers of two, so a per-frame stub reveals itself without spamming the log.
+static inline bool StubLogOn()
+{
+    static int e = -1;
+    if (e < 0) e = getenv("MTL_STUB_LOG") ? 1 : 0;
+    return e != 0;
+}
+#define STUB_HIT() do {                                                        \
+    static unsigned long _sh_n = 0;                                            \
+    if (StubLogOn() && ((_sh_n & (_sh_n - 1)) == 0))                           \
+        fprintf(stderr, "[STUB] %s  (hit #%lu) -- unimplemented no-op\n",      \
+                __func__, _sh_n + 1);                                          \
+    ++_sh_n;                                                                    \
+} while (0)
+
+// ==========================================================================
 // Direct3D 8
 // ==========================================================================
 // Direct3DCreate8 now lives in dx8_device.cpp (Metal-backed factory). Milestone 1.
@@ -38,6 +64,7 @@ extern "C" HRESULT WINAPI DirectInput8Create(HINSTANCE /*hinst*/, DWORD /*dwVers
                                              REFIID /*riidltf*/, LPVOID* ppvOut,
                                              LPUNKNOWN /*punkOuter*/)
 {
+    STUB_HIT();
     if (ppvOut)
         *ppvOut = nullptr;
     return E_FAIL;
@@ -218,6 +245,7 @@ UINT WINAPI D3DXGetFVFVertexSize(DWORD FVF)
 
 HRESULT WINAPI D3DXGetErrorStringA(HRESULT /*hr*/, LPSTR pBuffer, UINT BufferLen)
 {
+    STUB_HIT();
     if (pBuffer && BufferLen > 0)
         pBuffer[0] = '\0';
     return E_FAIL;
@@ -228,21 +256,23 @@ HRESULT WINAPI D3DXAssembleShader(LPCVOID, UINT, DWORD,
                                   LPD3DXBUFFER* ppCompiledShader,
                                   LPD3DXBUFFER* ppCompilationErrors)
 {
+    STUB_HIT();
     if (ppConstants) *ppConstants = nullptr;
     if (ppCompiledShader) *ppCompiledShader = nullptr;
     if (ppCompilationErrors) *ppCompilationErrors = nullptr;
     return E_FAIL;
 }
 
-HRESULT WINAPI D3DXLoadSurfaceFromSurface(LPDIRECT3DSURFACE8, CONST PALETTEENTRY*, CONST RECT*,
-                                          LPDIRECT3DSURFACE8, CONST PALETTEENTRY*, CONST RECT*,
-                                          DWORD, D3DCOLOR)
-{
-    return E_FAIL;
-}
+// D3DXLoadSurfaceFromSurface is implemented for real in dx8_device.cpp (needs
+// MetalSurface8 internals). It was a no-op E_FAIL stub here, which silently
+// broke every surface->texture copy — see the note on the real implementation.
 
 HRESULT WINAPI D3DXFilterTexture(LPDIRECT3DBASETEXTURE8, CONST PALETTEENTRY*, UINT, DWORD)
 {
+    // No-op: the Metal backend GPU-generates mip chains itself (GenerateMips),
+    // so engine-side mip filtering is not needed. Loud under MTL_STUB_LOG so it
+    // is not mistaken for a silent failure if mips ever look wrong.
+    STUB_HIT();
     return E_FAIL;
 }
 
@@ -266,6 +296,7 @@ HRESULT WINAPI D3DXCreateTexture(LPDIRECT3DDEVICE8 pDevice, UINT Width, UINT Hei
 HRESULT WINAPI D3DXCreateCubeTexture(LPDIRECT3DDEVICE8, UINT, UINT, DWORD,
                                      D3DFORMAT, D3DPOOL, LPDIRECT3DCUBETEXTURE8* ppCubeTexture)
 {
+    STUB_HIT();
     if (ppCubeTexture) *ppCubeTexture = nullptr;
     return E_FAIL;
 }
@@ -273,6 +304,7 @@ HRESULT WINAPI D3DXCreateCubeTexture(LPDIRECT3DDEVICE8, UINT, UINT, DWORD,
 HRESULT WINAPI D3DXCreateVolumeTexture(LPDIRECT3DDEVICE8, UINT, UINT, UINT, UINT, DWORD,
                                        D3DFORMAT, D3DPOOL, LPDIRECT3DVOLUMETEXTURE8* ppVolumeTexture)
 {
+    STUB_HIT();
     if (ppVolumeTexture) *ppVolumeTexture = nullptr;
     return E_FAIL;
 }
@@ -282,6 +314,7 @@ HRESULT WINAPI D3DXCreateTextureFromFileExA(LPDIRECT3DDEVICE8, LPCSTR, UINT, UIN
                                             D3DXIMAGE_INFO*, PALETTEENTRY*,
                                             LPDIRECT3DTEXTURE8* ppTexture)
 {
+    STUB_HIT();
     if (ppTexture) *ppTexture = nullptr;
     return E_FAIL;
 }

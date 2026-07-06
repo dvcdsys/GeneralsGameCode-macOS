@@ -528,6 +528,104 @@ void* MetalTexture8::prepareUploadBacking()
 }
 
 // ---------------------------------------------------------------------------
+// D3DXLoadSurfaceFromSurface — REAL implementation.
+//
+// This was a no-op E_FAIL stub in dx8_stub.cpp, which silently broke EVERY
+// surface->texture copy. WW3D's DX8Wrapper::_Create_DX8_Texture(surface) blits a
+// source surface into a freshly created texture level with exactly this call;
+// with the stub doing nothing, any texture built from a surface came out blank.
+// That path is how house-color RECOLORED textures reach the GPU
+// (W3DAssetManager::Recolor_Texture_One_Time -> new TextureClass(newsurf) ->
+// _Create_DX8_Texture(surface) -> D3DXLoadSurfaceFromSurface), so captured
+// flags, unit-type icons, fuel and other recolored art rendered as a flat gray
+// (the never-uploaded texture) instead of the owning player's colour. Also used
+// by SurfaceClass::Copy/Stretch_Copy (different size) and the missing-texture
+// builder — all of which were quietly no-ops before.
+//
+// All our surfaces are MetalSurface8. Copy src rect -> dst rect (NULL rect =
+// whole surface), nearest-neighbor when the sizes differ, converting pixel
+// format through BGRA8 when needed; then push the destination to its GPU texture
+// if it is a texture level.
+extern "C" HRESULT WINAPI D3DXLoadSurfaceFromSurface(
+    IDirect3DSurface8* pDestSurface, const PALETTEENTRY*, const RECT* pDestRect,
+    IDirect3DSurface8* pSrcSurface, const PALETTEENTRY*, const RECT* pSrcRect,
+    DWORD /*Filter*/, D3DCOLOR /*ColorKey*/)
+{
+    if (!pDestSurface || !pSrcSurface) return E_FAIL;
+    MetalSurface8* dst = static_cast<MetalSurface8*>(pDestSurface);
+    MetalSurface8* src = static_cast<MetalSurface8*>(pSrcSurface);
+
+    const D3DFORMAT sfmt = src->surfFormat(), dfmt = dst->surfFormat();
+    const UINT sbpp = FormatBpp(sfmt), dbpp = FormatBpp(dfmt);
+    const UINT sPitch = src->surfPitch(), dPitch = dst->surfPitch();
+    unsigned char*       dstBits = dst->surfBits();
+    const unsigned char* srcBits = src->surfBits();
+    if (!dstBits || !srcBits) return E_FAIL;
+    const bool sameFmt = (sfmt == dfmt);
+
+    // Compressed (BC/DXT): can't convert per-pixel — raw same-format block copy.
+    if (IsCompressedFmt(sfmt) || IsCompressedFmt(dfmt)) {
+        if (sameFmt) {
+            size_t n = src->surfDataSize();
+            if (dst->surfDataSize() < n) n = dst->surfDataSize();
+            std::memcpy(dstBits, srcBits, n);
+            dst->flushToTexture();
+        }
+        return D3D_OK;
+    }
+
+    // Source / dest rectangles (NULL => whole surface).
+    const int sx0 = pSrcRect  ? (int)pSrcRect->left  : 0;
+    const int sy0 = pSrcRect  ? (int)pSrcRect->top   : 0;
+    const int sw  = pSrcRect  ? (int)(pSrcRect->right  - pSrcRect->left) : (int)src->surfWidth();
+    const int sh  = pSrcRect  ? (int)(pSrcRect->bottom - pSrcRect->top)  : (int)src->surfHeight();
+    const int dx0 = pDestRect ? (int)pDestRect->left : 0;
+    const int dy0 = pDestRect ? (int)pDestRect->top  : 0;
+    const int dw  = pDestRect ? (int)(pDestRect->right  - pDestRect->left) : (int)dst->surfWidth();
+    const int dh  = pDestRect ? (int)(pDestRect->bottom - pDestRect->top)  : (int)dst->surfHeight();
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) return E_FAIL;
+
+    std::vector<unsigned char> srcRowBGRA;  // lazy scratch for format conversion
+    for (int ty = 0; ty < dh; ++ty) {
+        const int dyy = dy0 + ty; if (dyy < 0 || dyy >= (int)dst->surfHeight()) continue;
+        const int syy = sy0 + ((dh == sh) ? ty : (int)((long long)ty * sh / dh));
+        if (syy < 0 || syy >= (int)src->surfHeight()) continue;
+        const unsigned char* srow = srcBits + (size_t)syy * sPitch;
+        unsigned char*       drow = dstBits + (size_t)dyy * dPitch;
+
+        if (sameFmt && dw == sw) {
+            // 1:1 same-format fast path (the recolor / _Create_DX8_Texture case).
+            int copyW = dw;
+            if (dx0 + copyW > (int)dst->surfWidth()) copyW = (int)dst->surfWidth() - dx0;
+            if (copyW > 0)
+                std::memcpy(drow + (size_t)dx0 * dbpp, srow + (size_t)sx0 * sbpp, (size_t)copyW * sbpp);
+            continue;
+        }
+
+        // General path: convert the whole source row to BGRA8 once, then sample.
+        if (srcRowBGRA.size() < (size_t)src->surfWidth() * 4)
+            srcRowBGRA.resize((size_t)src->surfWidth() * 4);
+        ConvertRowToBGRA8(sfmt, srow, srcRowBGRA.data(), src->surfWidth());
+
+        for (int tx = 0; tx < dw; ++tx) {
+            const int dxx = dx0 + tx; if (dxx < 0 || dxx >= (int)dst->surfWidth()) continue;
+            const int sxx = sx0 + ((dw == sw) ? tx : (int)((long long)tx * sw / dw));
+            if (sxx < 0 || sxx >= (int)src->surfWidth()) continue;
+            if (dbpp == 4) {
+                const unsigned char* sp = srcRowBGRA.data() + (size_t)sxx * 4;
+                unsigned char* dp = drow + (size_t)dxx * 4;
+                dp[0]=sp[0]; dp[1]=sp[1]; dp[2]=sp[2]; dp[3]=sp[3];
+            } else if (sameFmt) {
+                std::memcpy(drow + (size_t)dxx * dbpp, srow + (size_t)sxx * sbpp, dbpp);
+            }
+        }
+    }
+
+    dst->flushToTexture();
+    return D3D_OK;
+}
+
+// ---------------------------------------------------------------------------
 // IDirect3DVertexBuffer8  (wraps an MTLBuffer; Lock/Unlock expose CPU pointer)
 // ---------------------------------------------------------------------------
 class MetalVertexBuffer8 : public IDirect3DVertexBuffer8 {
