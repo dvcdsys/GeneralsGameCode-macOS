@@ -76,6 +76,10 @@ void  MetalContext_UploadTextureRaw(void* texture, int width, int height,
 void* MetalContext_CreateBuffer(MetalContext* ctx, unsigned length);
 void* MetalContext_BufferContents(void* buffer);
 void  MetalContext_ReleaseBuffer(void* buffer);
+// Retire a per-draw/per-DISCARD dynamic buffer instead of releasing it, so it is
+// recycled once the GPU finishes the current frame rather than freed and
+// reallocated every operation (see MetalContext_RetireBuffer in metal_backend.mm).
+void  MetalContext_RetireBuffer(MetalContext* ctx, void* buffer);
 
 // One fixed-function light (Stage 4). Layout is private to the shim (repacked
 // into the GPU uniform struct by the backend), so no MSL alignment needed.

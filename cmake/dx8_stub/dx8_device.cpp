@@ -515,7 +515,7 @@ public:
         if ((Flags & D3DLOCK_DISCARD) && m_ctx && m_length > 0) {
             void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
             if (fresh) {
-                MetalContext_ReleaseBuffer(m_buffer); // drop our ref; GPU keeps its own
+                MetalContext_RetireBuffer(m_ctx, m_buffer); // recycle after GPU completion, not free+realloc
                 m_buffer   = fresh;
                 m_contents = MetalContext_BufferContents(m_buffer);
             }
@@ -588,7 +588,7 @@ public:
         if ((Flags & D3DLOCK_DISCARD) && m_ctx && m_length > 0) {
             void* fresh = MetalContext_CreateBuffer(m_ctx, m_length);
             if (fresh) {
-                MetalContext_ReleaseBuffer(m_buffer);
+                MetalContext_RetireBuffer(m_ctx, m_buffer); // recycle after GPU completion, not free+realloc
                 m_buffer   = fresh;
                 m_contents = MetalContext_BufferContents(m_buffer);
             }
@@ -1112,7 +1112,7 @@ public:
         dc.vertexCount  = vcount;
         dc.primType     = (unsigned)PrimType;
         MetalContext_Draw(m_ctx, &dc);     // the encoder retains vb until the cmd buffer completes
-        MetalContext_ReleaseBuffer(vb);
+        MetalContext_RetireBuffer(m_ctx, vb); // recycle after GPU completion, not free+realloc per draw
         return D3D_OK;
     }
     STDMETHOD(DrawIndexedPrimitiveUP)(D3DPRIMITIVETYPE PrimType, UINT MinIndex, UINT NumVertices, UINT PrimCount, CONST void* pIndex, D3DFORMAT IndexFmt, CONST void* pVtx, UINT Stride) override
@@ -1141,8 +1141,8 @@ public:
         dc.baseVertex       = 0;
         dc.primType         = (unsigned)PrimType;
         MetalContext_Draw(m_ctx, &dc);
-        MetalContext_ReleaseBuffer(vb);
-        MetalContext_ReleaseBuffer(ib);
+        MetalContext_RetireBuffer(m_ctx, vb); // recycle after GPU completion, not free+realloc per draw
+        MetalContext_RetireBuffer(m_ctx, ib);
         return D3D_OK;
     }
     STDMETHOD(ProcessVertices)(UINT, UINT, UINT, IDirect3DVertexBuffer8*, DWORD) override { return D3D_OK; }

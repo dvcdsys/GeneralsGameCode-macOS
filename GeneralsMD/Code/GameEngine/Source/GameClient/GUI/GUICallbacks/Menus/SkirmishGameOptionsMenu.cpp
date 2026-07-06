@@ -523,6 +523,38 @@ void DebugAutoStartSkirmish( const char *mapName )
 		(autoDiff == DIFFICULTY_HARD) ? SLOT_BRUTAL_AI :
 		(autoDiff == DIFFICULTY_NORMAL) ? SLOT_MED_AI : SLOT_EASY_AI;
 
+	// GEN_AUTO_BOTS=N: macOS render-stress harness. The local human OBSERVES while
+	// N AI players are split across two teams (alternating) so they fight each
+	// other — a heavy, long, deterministic bot battle with no menu clicks, used
+	// to reproduce the long-run render wedge autonomously. Overrides the
+	// external/ally/observer modes above. Pair with a large GEN_AUTO_MAP.
+	int autoBots = 0;
+	if (const char* bs = ::getenv("GEN_AUTO_BOTS")) autoBots = atoi(bs);
+	if (autoBots >= 2)
+	{
+		// The local human (idle) anchors the camera at their base. Bot ALLIES spawn on
+		// the human's team (adjacent starts) and bot ENEMIES attack, so the sustained
+		// heavy battle renders ON CAMERA — an OBSERVER on empty terrain rendered a
+		// static scene (~549 draws) and never accumulated the wedge, proving the leak
+		// is tied to on-camera dynamic content. The human takes no actions; we only
+		// need the render load. GEN_AUTO_DIFF=hard makes the armies big fast.
+		GameSlot human;
+		human.setName(prefs.getUserName());
+		human.setState(SLOT_PLAYER, prefs.getUserName());
+		human.setColor(prefs.getPreferredColor());
+		human.setPlayerTemplate(prefs.getPreferredFaction());
+		human.setTeamNumber(TEAM_HUMAN_ALLY);   // team 0
+		TheSkirmishGameInfo->setSlot(0, human);
+		for (int i = 1; i <= autoBots && i <= 7; ++i)     // slots 1..7 = bots
+		{
+			GameSlot b;
+			b.setState(aiSlotState);
+			b.setTeamNumber((i % 2) ? TEAM_ENEMY : TEAM_HUMAN_ALLY);  // alternate → allies + enemies
+			TheSkirmishGameInfo->setSlot(i, b);
+		}
+	}
+	else
+	{
 	// Slot 0: the local human player.
 	GameSlot gSlot;
 	gSlot.setName(prefs.getUserName());
@@ -579,6 +611,7 @@ void DebugAutoStartSkirmish( const char *mapName )
 		enemySlot.setTeamNumber(TEAM_ENEMY);
 		TheSkirmishGameInfo->setSlot(2, enemySlot);
 	}
+	}   // end else (default 1-human + AI setup, non-GEN_AUTO_BOTS)
 
 	TheSkirmishGameInfo->setSeed(GetTickCount());
 	TheSkirmishGameInfo->setStartingCash( prefs.getStartingCash() );
@@ -588,7 +621,28 @@ void DebugAutoStartSkirmish( const char *mapName )
 	AsciiString map;
 	if ( mapName && mapName[0] )
 		map = mapName;
-	else
+	else if ( autoBots >= 2 && TheMapCache )
+	{
+		// For the bot-battle harness, auto-pick a real AI-supported multiplayer map
+		// (community maps put an "[AI]" tag in their display name — the AIs on those
+		// actually build and fight; the default MP map often has no AI support and
+		// the bots just idle). Choose the smallest AI map that seats every player so
+		// the map fills up. Logs candidates so the exact names are discoverable.
+		const Int want = autoBots + 1;   // + the camera-anchor human
+		Int best = 0x7fffffff;
+		for (std::map<AsciiString, MapMetaData>::iterator it = TheMapCache->begin(); it != TheMapCache->end(); ++it)
+		{
+			const MapMetaData& m = it->second;
+			if (!m.m_isMultiplayer || m.m_numPlayers < want) continue;
+			AsciiString dn; dn.translate(m.m_displayName);
+			if (!strstr(dn.str(), "| AI") && !strstr(dn.str(), "|AI")) continue;   // require the AI tag
+			DEBUG_LOG(("DebugAutoStartSkirmish: AI-map candidate '%s' [%s] (%d players)", it->first.str(), dn.str(), m.m_numPlayers));
+			if (m.m_numPlayers < best) { best = m.m_numPlayers; map = it->first; }
+		}
+		if (!map.isEmpty())
+			DEBUG_LOG(("DebugAutoStartSkirmish: picked AI map '%s' (%d players) for %d bots", map.str(), best, autoBots));
+	}
+	if ( map.isEmpty() )
 		map = prefs.getPreferredMap();
 
 	// Validate against the cache; fall back to the default multiplayer map if unknown.

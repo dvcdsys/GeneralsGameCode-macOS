@@ -14,6 +14,7 @@
 #include <cstring>
 #include <strings.h>   // strcasecmp for env-var parsing
 #include <unordered_map>
+#include <atomic>
 #include <deque>
 
 // ---------------------------------------------------------------------------
@@ -707,6 +708,53 @@ struct MetalContext {
     int                  msaaW;
     int                  msaaH;
     int                  msaaSamples;
+
+    // TheSuperHackers @port macOS @bugfix: textures uploaded this frame that need
+    // their mip chain (re)generated. Batched into ONE blit command buffer at
+    // Present instead of committing a fresh command buffer per upload — see
+    // GenerateMips / FlushPendingMips. The set retains its members so a texture
+    // released mid-frame stays valid until the flush. Was a per-upload command
+    // buffer, which flooded the shared render queue (dynamic font/UI textures
+    // re-upload every frame) → IOGPU submission saturation → main thread hangs
+    // in [queue commandBuffer] on the in-flight semaphore after ~25 min.
+    NSMutableSet*        pendingMips;
+
+    // TheSuperHackers @port macOS @perf: per-encoder bound-state cache for
+    // redundant-set elimination in MetalContext_Draw. Every state-setter on
+    // ctx->enc goes through MetalContext_Draw, and a new encoder resets all
+    // GPU state — so caching the last-bound object/value and skipping unchanged
+    // set* calls is safe as long as these are reset in EnsureEncoder. Skipping
+    // redundant binds lets Metal skip re-emitting the pipeline argument tables
+    // (encodeAndEmitRenderState) — the dominant per-draw cost when the sorting
+    // renderer / stencil shadow-volume passes flush tens of thousands of
+    // state-coherent draws in a heavy battle (the >4-min freeze at 120 FPS).
+    id<MTLRenderPipelineState> boundPS;
+    id<MTLBuffer>              boundVB;
+    id<MTLDepthStencilState>   boundDSS;
+    id<MTLTexture>             boundTex0;
+    id<MTLSamplerState>        boundSmp0;
+    int                        boundCull;        // -1 = none set this encoder
+    long long                  boundStencilRef;  // -1 = none set this encoder
+    bool                       boundShadowSlot;  // shadow tex+smp bound this encoder
+
+    // TheSuperHackers @port macOS @bugfix: dynamic-buffer recycle pool. Every
+    // D3DLOCK_DISCARD (MetalVertexBuffer8/IndexBuffer8::Lock) and every
+    // DrawPrimitiveUP/DrawIndexedPrimitiveUP hands a draw a FRESH MTLBuffer that
+    // the GPU keeps alive until its command buffer completes. Allocating one per
+    // operation floods the IOGPU allocator in heavy battles (thousands/frame ×
+    // up to 64 in-flight frames) → resource exhaustion → the main thread wedges
+    // in [queue commandBuffer]/IOGPUResourceCreate after a few minutes. Instead,
+    // MetalContext_RetireBuffer parks the buffer tagged with the render frame it
+    // was used on; once the GPU signals that frame complete (bufCompletedFrame,
+    // set from the command-buffer completion handler), SweepRetiredBuffers moves
+    // it into bufFree (keyed by allocated length) and MetalContext_CreateBuffer
+    // reuses it — bounding live buffers to the working set. bufFree/bufRetired are
+    // touched only on the render thread; bufCompletedFrame is the sole cross-thread
+    // value (atomic, written by the completion handler).
+    std::unordered_map<unsigned, std::vector<void*> > bufFree;      // bucketSize -> CF-retained buffers
+    std::vector<std::pair<void*, uint64_t> >          bufRetired;   // (CF-retained buffer, frame used)
+    uint64_t                   bufFrameId;        // monotonic render-frame counter
+    std::atomic<uint64_t>      bufCompletedFrame; // highest frame the GPU finished
 
     // Stage 6: shadow mapping. shadowMap is a private depth-only texture
     // (2048×2048 Depth32Float). The shim watches every 3D opaque Draw() during
@@ -1525,6 +1573,14 @@ static bool EnsureEncoder(MetalContext* ctx)
     // very first draw of the frame.
     ctx->appliedVpX = 0; ctx->appliedVpY = 0;
     ctx->appliedVpW = ctx->width; ctx->appliedVpH = ctx->height;
+
+    // Fresh encoder → all GPU state is cleared. Reset the bound-state cache
+    // (see MetalContext_Draw) and set the state that is constant for every draw
+    // once, here, instead of per draw: the D3D front face is always CW.
+    ctx->boundPS = nil; ctx->boundVB = nil; ctx->boundDSS = nil;
+    ctx->boundTex0 = nil; ctx->boundSmp0 = nil;
+    ctx->boundCull = -1; ctx->boundStencilRef = -1; ctx->boundShadowSlot = false;
+    [ctx->enc setFrontFacingWinding:MTLWindingClockwise];   // D3D front face = CW
     return true;
 }
 
@@ -1606,6 +1662,9 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->msaaColor = nil;
         ctx->msaaW = 0;
         ctx->msaaH = 0;
+        ctx->pendingMips = nil;   // lazily allocated on first mipped-texture upload
+        ctx->bufFrameId = 0;
+        ctx->bufCompletedFrame.store(0, std::memory_order_relaxed);
 
         // Startup banner. The msaa here is the boot default — set by
         // MTL_MSAA env override or 1 (clean baseline). The "Metal Optimised"
@@ -1741,6 +1800,13 @@ extern "C" void MetalContext_Destroy(MetalContext* ctx)
         if (ctx->enc) { [ctx->enc endEncoding]; [ctx->enc release]; ctx->enc = nil; }
         if (ctx->cmd) { [ctx->cmd release]; ctx->cmd = nil; }
         if (ctx->drawable) { [ctx->drawable release]; ctx->drawable = nil; }
+        if (ctx->pendingMips) { [ctx->pendingMips release]; ctx->pendingMips = nil; }
+        // Release the dynamic-buffer recycle pool (free list + not-yet-recycled).
+        for (std::unordered_map<unsigned, std::vector<void*> >::iterator it = ctx->bufFree.begin(); it != ctx->bufFree.end(); ++it)
+            for (size_t i = 0; i < it->second.size(); ++i) CFRelease(it->second[i]);
+        ctx->bufFree.clear();
+        for (size_t i = 0; i < ctx->bufRetired.size(); ++i) CFRelease(ctx->bufRetired[i].first);
+        ctx->bufRetired.clear();
         [ctx->window close];
         ctx->window = nil;
         ctx->view   = nil;
@@ -2382,6 +2448,9 @@ static void RunShadowReplay(MetalContext* ctx)
     ctx->dbgFvfMask = 0;
 }
 
+static void FlushPendingMips(MetalContext* ctx);   // defined below; batched mip generation
+static void SweepRetiredBuffers(MetalContext* ctx); // defined below; dynamic-buffer recycling
+
 extern "C" void MetalContext_Present(MetalContext* ctx)
 {
     if (!ctx) return;
@@ -2389,6 +2458,13 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         // If nothing was drawn this frame, still clear+present.
         if (!ctx->enc && !ctx->drawable) EnsureEncoder(ctx);
         if (ctx->enc) { [ctx->enc endEncoding]; [ctx->enc release]; ctx->enc = nil; }
+
+        // Regenerate mip chains for textures uploaded this frame, batched into a
+        // single command buffer and committed here — before the frame's render
+        // buffer (ctx->cmd) is committed below, so the mips are ready when the GPU
+        // executes the frame. The encoder is already ended, so ctx->cmd has no
+        // open encoder while this separate command buffer is built + committed.
+        FlushPendingMips(ctx);
 
         // Stage 6: replay captured draws into the shadow map BEFORE present.
         // The next frame's main fragment shader will sample it. Same command
@@ -2424,6 +2500,13 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
             [blit endEncoding];
         }
         if (ctx->cmd && ctx->drawable) {
+            // Recycle the dynamic buffers this frame's draws referenced once the
+            // GPU finishes it (see MetalContext_RetireBuffer / SweepRetiredBuffers).
+            const uint64_t fid = ctx->bufFrameId;
+            MetalContext* c = ctx;
+            [ctx->cmd addCompletedHandler:^(id<MTLCommandBuffer>){
+                c->bufCompletedFrame.store(fid, std::memory_order_relaxed);
+            }];
             [ctx->cmd presentDrawable:ctx->drawable];
             [ctx->cmd commit];
         }
@@ -2456,6 +2539,10 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         }
         if (ctx->cmd)      { [ctx->cmd release];      ctx->cmd = nil; }
         if (ctx->drawable) { [ctx->drawable release]; ctx->drawable = nil; }
+        // Recycle GPU-finished dynamic buffers and advance the frame counter used
+        // to tag buffers retired during the next frame.
+        SweepRetiredBuffers(ctx);
+        ctx->bufFrameId++;
         if (ctx->dbg < 0) ctx->dbg = getenv("MTL_DEBUG") ? 1 : 0;
         if (ctx->dbg > 0 && (ctx->frameIndex < 8 || (ctx->frameIndex % 120) == 0)) {
             fprintf(stderr, "[metal] frame %ld: %d draws (%d textured)\n",
@@ -2505,22 +2592,39 @@ static NSUInteger MipCountFor(int width, int height)
     return levels;
 }
 
-// GPU-generate the mip chain for a texture whose level 0 was just uploaded.
+// Queue a texture (whose level 0 was just uploaded) for mip-chain regeneration.
 // No-op for single-level textures (compressed / 1x1 / MTL_NO_MIPMAPS) and when
-// no context/queue is available. Committed on its own command buffer; on a
-// single command queue Metal executes committed buffers in order, so this
-// blit runs before the frame's render buffer (committed later) samples the
-// texture. Called from the upload entrypoints; self-gates on mip level count.
+// no context is available. Self-gates on mip level count. The actual GPU work is
+// deferred and batched into ONE command buffer at Present (FlushPendingMips) so
+// that dynamic textures re-uploaded every frame (font/UI sentences, render
+// targets) cost at most one extra command buffer per frame — not one per upload,
+// which saturated the IOGPU submission queue and wedged the main thread.
 static void GenerateMips(id<MTLTexture> tex)
 {
     if (!tex || tex.mipmapLevelCount <= 1) return;
     MetalContext* ctx = s_uploadCtx;
-    if (!ctx || !ctx->queue) return;
+    if (!ctx) return;
+    if (!ctx->pendingMips) ctx->pendingMips = [[NSMutableSet alloc] init];
+    [ctx->pendingMips addObject:tex];   // set retains; keeps tex valid until flush
+}
+
+// Generate mip chains for every texture uploaded since the last flush, in a
+// single blit command buffer. Called at the top of Present, so it is committed
+// just before the frame's render command buffer — Metal executes committed
+// buffers in commit order on one queue, so the mips are ready before the frame
+// samples them. Bounds mip work to one command buffer per frame regardless of
+// how many textures were uploaded.
+static void FlushPendingMips(MetalContext* ctx)
+{
+    if (!ctx || !ctx->queue || !ctx->pendingMips || ctx->pendingMips.count == 0) return;
     id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
     id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
-    [blit generateMipmapsForTexture:tex];
+    for (id<MTLTexture> tex in ctx->pendingMips) {
+        if (tex.mipmapLevelCount > 1) [blit generateMipmapsForTexture:tex];
+    }
     [blit endEncoding];
     [cb commit];
+    [ctx->pendingMips removeAllObjects];
 }
 
 extern "C" void* MetalContext_CreateTextureFmt(MetalContext* ctx, int width, int height, int bcKind)
@@ -2764,15 +2868,68 @@ extern "C" void MetalContext_UploadTextureBGRA8(void* texture, int width, int he
     }
 }
 
+// Round an allocation up to a reuse bucket (next power of two, min 4 KiB) so that
+// varying DrawPrimitiveUP sizes still hit the recycle pool instead of allocating
+// a fresh MTLBuffer every draw. The buffer is oversized vs the request; the draw
+// only reads stride*count ≤ request ≤ bucket, so the slack is harmless.
+static unsigned BufferBucket(unsigned len)
+{
+    unsigned b = 4096;
+    while (b < len) b <<= 1;
+    return b;
+}
+
+// Move retired dynamic buffers whose frame the GPU has finished into the free
+// pool for reuse. Command buffers complete in commit order, so bufCompletedFrame
+// is monotonic and "retired frame ≤ completed frame" means the GPU is done with
+// the buffer. Cheap; called once per Present. Buffers retired on a frame that was
+// never committed (no drawable) self-heal here once any later frame completes.
+static void SweepRetiredBuffers(MetalContext* ctx)
+{
+    if (!ctx) return;
+    const uint64_t done = ctx->bufCompletedFrame.load(std::memory_order_relaxed);
+    std::vector<std::pair<void*, uint64_t> >& r = ctx->bufRetired;
+    for (size_t i = 0; i < r.size(); ) {
+        if (r[i].second <= done) {
+            void* b = r[i].first;
+            unsigned bucket = (unsigned)[(__bridge id<MTLBuffer>)b length];
+            ctx->bufFree[bucket].push_back(b);
+            r[i] = r.back(); r.pop_back();      // swap-remove
+        } else {
+            ++i;
+        }
+    }
+}
+
 extern "C" void* MetalContext_CreateBuffer(MetalContext* ctx, unsigned length)
 {
     if (!ctx) return nullptr;
+    if (length == 0) length = 1;
+    const unsigned bucket = BufferBucket(length);
+    // Reuse a recycled buffer of this bucket if one is free (the common path in
+    // steady state — bounds allocations to the working set).
+    std::unordered_map<unsigned, std::vector<void*> >::iterator it = ctx->bufFree.find(bucket);
+    if (it != ctx->bufFree.end() && !it->second.empty()) {
+        void* b = it->second.back();
+        it->second.pop_back();
+        return b;   // already CF-retained; ownership transfers to the caller
+    }
     @autoreleasepool {
-        if (length == 0) length = 1;
-        id<MTLBuffer> buf = [ctx->device newBufferWithLength:length
+        id<MTLBuffer> buf = [ctx->device newBufferWithLength:bucket
                                                      options:MTLResourceStorageModeShared];
         return (void*)CFBridgingRetain(buf);
     }
+}
+
+// Retire a dynamic buffer that was just handed to a draw (a DISCARD orphan or a
+// DrawPrimitiveUP temp). The caller's CF ref transfers here; the buffer stays
+// alive and is recycled once the GPU finishes the current frame. This replaces an
+// immediate MetalContext_ReleaseBuffer at the draw sites.
+extern "C" void MetalContext_RetireBuffer(MetalContext* ctx, void* buffer)
+{
+    if (!buffer) return;
+    if (!ctx) { CFRelease(buffer); return; }
+    ctx->bufRetired.push_back(std::make_pair(buffer, ctx->bufFrameId));
 }
 
 extern "C" void* MetalContext_BufferContents(void* buffer)
@@ -3119,8 +3276,8 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
           } }
         // -------------------------------------------------------------------
 
-        [ctx->enc setRenderPipelineState:ps];
-        [ctx->enc setVertexBuffer:vb offset:0 atIndex:0];
+        if (ps != ctx->boundPS) { [ctx->enc setRenderPipelineState:ps]; ctx->boundPS = ps; }
+        if (vb != ctx->boundVB) { [ctx->enc setVertexBuffer:vb offset:0 atIndex:0]; ctx->boundVB = vb; }
 
         // Build the vertex uniform block (transforms + FF lighting).
         UniformsCPU u;
@@ -3259,9 +3416,15 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         // passes that set ref=0x80808080. Same goes for read/write masks —
         // already handled by GetDepthState via MTLStencilDescriptor.readMask /
         // writeMask which Metal documents as honouring only the low 8 bits.
-        [ctx->enc setDepthStencilState:GetDepthState(ctx, dc)];
-        if (dc->stencilEnable)
-            [ctx->enc setStencilReferenceValue:((uint32_t)dc->stencilRef & 0xFFu)];
+        id<MTLDepthStencilState> dss = GetDepthState(ctx, dc);
+        if (dss != ctx->boundDSS) { [ctx->enc setDepthStencilState:dss]; ctx->boundDSS = dss; }
+        if (dc->stencilEnable) {
+            long long sref = (long long)((uint32_t)dc->stencilRef & 0xFFu);
+            if (sref != ctx->boundStencilRef) {
+                [ctx->enc setStencilReferenceValue:(uint32_t)sref];
+                ctx->boundStencilRef = sref;
+            }
+        }
 
         // Diagnostic: MTL_STENCIL_LOG=1 prints per-stencil-draw state so we
         // can see what the engine pumps through (especially on shellmap where
@@ -3308,13 +3471,14 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
               s_leakCnt++;
           }
         }
-        [ctx->enc setFrontFacingWinding:MTLWindingClockwise];   // D3D front face = CW
+        // Front-facing winding (constant CW) is set once per encoder in
+        // EnsureEncoder — not here.
         MTLCullMode cull = MTLCullModeNone;
         if (dc->cullMode == 2 /*D3DCULL_CW*/)  cull = MTLCullModeFront;
         else if (dc->cullMode == 3 /*D3DCULL_CCW*/) cull = MTLCullModeBack;
         { static int s_nocull = -1; if (s_nocull < 0) s_nocull = getenv("MTL_NOCULL") ? 1 : 0;
           if (s_nocull) cull = MTLCullModeNone; }
-        [ctx->enc setCullMode:cull];
+        if ((int)cull != ctx->boundCull) { [ctx->enc setCullMode:cull]; ctx->boundCull = (int)cull; }
 
         FSParams fp;
         std::memset(&fp, 0, sizeof(fp));
@@ -3378,17 +3542,21 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
         fp.tfactor[2] = ((dc->tfactor      ) & 0xFF) / 255.0f;  // B
         fp.tfactor[3] = ((dc->tfactor >> 24) & 0xFF) / 255.0f;  // A
         [ctx->enc setFragmentBytes:&fp length:sizeof(fp) atIndex:0];
-        [ctx->enc setFragmentTexture:tex atIndex:0];
+        if (tex != ctx->boundTex0) { [ctx->enc setFragmentTexture:tex atIndex:0]; ctx->boundTex0 = tex; }
         // Per-draw sampler based on D3DTSS_ADDRESSU/V (CLAMP for the terrain
         // atlas, WRAP for everything else). Falls back to the legacy global
         // sampler when address modes are unset (key 0 == default WRAP/WRAP).
-        [ctx->enc setFragmentSamplerState:GetSampler(ctx, dc) atIndex:0];
+        id<MTLSamplerState> smp = GetSampler(ctx, dc);
+        if (smp != ctx->boundSmp0) { [ctx->enc setFragmentSamplerState:smp atIndex:0]; ctx->boundSmp0 = smp; }
 
         // Shadow texture/sampler at slot 2 — the fs only samples when
-        // fp.shadowEnable != 0, but Metal still requires bindings.
-        if (ctx->shadowMap) {
+        // fp.shadowEnable != 0, but Metal still requires bindings. Constant for
+        // the whole encoder, so bind once (shadowMap only ever appears/changes
+        // across a Begin/EndShadowPass, which ends this encoder → re-bound next).
+        if (ctx->shadowMap && !ctx->boundShadowSlot) {
             [ctx->enc setFragmentTexture:ctx->shadowMap atIndex:2];
             [ctx->enc setFragmentSamplerState:ctx->shadowSmp atIndex:2];
+            ctx->boundShadowSlot = true;
         }
 
         MTLPrimitiveType prim = MTLPrimitiveTypeTriangle;
