@@ -1637,6 +1637,31 @@ inline void ApplyViewportIfChanged(MetalContext* ctx, int x, int y, int w, int h
 // There is exactly one MetalContext per process (single device/queue).
 static MetalContext* s_uploadCtx = nullptr;
 
+// Texture-pool bucket key from raw descriptor fields (shared by the rename pool
+// and the create/release recycling pool below). Two textures are interchangeable
+// iff every field here matches. Keep in lockstep with TexPoolKey(id<MTLTexture>).
+static inline uint64_t TexKeyFields(NSUInteger w, NSUInteger h, unsigned pf,
+                                    NSUInteger mip, unsigned usage) {
+    return  ((uint64_t)(w   & 0x3FFF))
+         |  ((uint64_t)(h   & 0x3FFF) << 14)
+         |  ((uint64_t)(pf  & 0xFFFF) << 28)
+         |  ((uint64_t)(mip & 0xFF)   << 44)
+         |  ((uint64_t)(usage & 0xFF) << 52);
+}
+
+// Should this texture (by descriptor) be routed through the create/release
+// recycling pool? Targets the small uncompressed textures that churn every
+// frame — the font/text glyph atlases from Render2DSentenceClass::Build_Textures
+// (~1.3 created+destroyed per frame, whose freed Metal memory the allocator does
+// not reclaim promptly → a steady multi-MB/s IOAccelerator leak). Large / BC
+// textures are created once and kept, so they keep the plain alloc + immediate-
+// free path (no pool hoarding). MTL_NO_TEXPOOL=1 disables (A/B).
+static inline bool TexPoolable(NSUInteger w, NSUInteger h, MTLPixelFormat pf) {
+    static int off = -1;
+    if (off < 0) off = getenv("MTL_NO_TEXPOOL") ? 1 : 0;
+    return !off && pf == MTLPixelFormatBGRA8Unorm && w <= 256 && h <= 256;
+}
+
 extern "C" MetalContext* MetalContext_Create(int width, int height, int /*windowed*/)
 {
     @autoreleasepool {
@@ -2571,6 +2596,19 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         SweepRetiredBuffers(ctx);
         SweepRetiredTextures(ctx);
         ctx->bufFrameId++;
+        // MTL_POOL_LOG=1: dump the recycle-pool sizes every 120 frames. Kept as
+        // diagnostic infra — this is how the font-texture-churn leak was found
+        // (texFree/bufFree stay bounded, no unbounded growth).
+        { static int s_poolLog = -1; if (s_poolLog < 0) s_poolLog = getenv("MTL_POOL_LOG") ? 1 : 0;
+          if (s_poolLog && (ctx->frameIndex % 120) == 0) {
+              size_t bfN=0, bfBytes=0; for (auto& kv : ctx->bufFree) { bfN += kv.second.size(); bfBytes += (size_t)kv.first * kv.second.size(); }
+              size_t tfN=0; for (auto& kv : ctx->texFree) tfN += kv.second.size();
+              fprintf(stderr, "[pool] f%ld bufFree=%zu(%zuKB) bufRetired=%zu | texFree=%zu(keys=%zu) texRetired=%zu | pendingMips=%lu\n",
+                      ctx->frameIndex, bfN, bfBytes/1024, ctx->bufRetired.size(),
+                      tfN, ctx->texFree.size(), ctx->texRetired.size(),
+                      (unsigned long)(ctx->pendingMips ? ctx->pendingMips.count : 0));
+              fflush(stderr);
+          } }
         if (ctx->dbg < 0) ctx->dbg = getenv("MTL_DEBUG") ? 1 : 0;
         if (ctx->dbg > 0 && (ctx->frameIndex < 8 || (ctx->frameIndex % 120) == 0)) {
             fprintf(stderr, "[metal] frame %ld: %d draws (%d textured)\n",
@@ -2679,6 +2717,22 @@ extern "C" void* MetalContext_CreateTextureFmt(MetalContext* ctx, int width, int
         if (!compressed && MipmapsEnabled())
             desc.mipmapLevelCount = MipCountFor(w, h);
         desc.usage = MTLTextureUsageShaderRead;
+        // Create/release recycling pool: reuse a same-descriptor texture retired
+        // by MetalContext_ReleaseTexture (frame-delayed → GPU-safe) instead of
+        // allocating a fresh MTLTexture. Kills the font-glyph churn leak. The
+        // caller always fully re-uploads a freshly-created texture before it is
+        // sampled (D3D leaves new-texture contents undefined), so stale pooled
+        // pixels are safe. Same texFree pool + key as the rename path.
+        if (TexPoolable((NSUInteger)w, (NSUInteger)h, pf)) {
+            uint64_t key = TexKeyFields((NSUInteger)w, (NSUInteger)h, (unsigned)pf,
+                                        desc.mipmapLevelCount, (unsigned)MTLTextureUsageShaderRead);
+            std::unordered_map<uint64_t, std::vector<void*> >::iterator it = ctx->texFree.find(key);
+            if (it != ctx->texFree.end() && !it->second.empty()) {
+                void* reuse = it->second.back();
+                it->second.pop_back();          // already CF-retained; ownership -> caller
+                return reuse;
+            }
+        }
         id<MTLTexture> tex = [ctx->device newTextureWithDescriptor:desc];
         return (void*)CFBridgingRetain(tex);
     }
@@ -2705,7 +2759,23 @@ extern "C" void MetalContext_UploadTextureRaw(void* texture, int width, int heig
 
 extern "C" void MetalContext_ReleaseTexture(void* texture)
 {
-    if (texture) CFRelease(texture);
+    if (!texture) return;
+    // Route small uncompressed textures (the churny font/text glyph atlases) into
+    // the frame-delayed recycle pool instead of freeing immediately: they are
+    // re-created every frame, and Metal does not reclaim the freed backing fast
+    // enough → a steady IOAccelerator leak. SweepRetiredTextures moves them to
+    // texFree once the GPU finishes any frame still referencing them (capped
+    // 256/key; excess is freed). CreateTextureFmt reuses them. Everything else
+    // (large / BC / render-target textures) frees immediately, as before.
+    MetalContext* ctx = s_uploadCtx;
+    if (ctx) {
+        id<MTLTexture> t = (__bridge id<MTLTexture>)texture;
+        if (TexPoolable(t.width, t.height, t.pixelFormat)) {
+            ctx->texRetired.push_back(std::make_pair(texture, ctx->bufFrameId));
+            return;   // CF ref transfers to the retire list
+        }
+    }
+    CFRelease(texture);
 }
 
 // Engine-side trapezoid-water tag (set in W3DWater.cpp drawTrapezoidWater
@@ -2970,11 +3040,8 @@ extern "C" void MetalContext_RetireBuffer(MetalContext* ctx, void* buffer)
 // texture the engine creates), pixelFormat 16 bits, mip count 8, usage 8.
 static uint64_t TexPoolKey(id<MTLTexture> t)
 {
-    return  ((uint64_t)(t.width  & 0x3FFF))
-         |  ((uint64_t)(t.height & 0x3FFF) << 14)
-         |  ((uint64_t)((unsigned)t.pixelFormat    & 0xFFFF) << 28)
-         |  ((uint64_t)(t.mipmapLevelCount         & 0xFF)   << 44)
-         |  ((uint64_t)((unsigned)t.usage          & 0xFF)   << 52);
+    return TexKeyFields(t.width, t.height, (unsigned)t.pixelFormat,
+                        t.mipmapLevelCount, (unsigned)t.usage);
 }
 
 // Move retired textures whose frame the GPU has finished into the free pool.
