@@ -55,6 +55,29 @@ enum Config {
         URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases?per_page=50")!
     }
 
+    // MARK: - Repo raw content (Extensions)
+
+    /// Branch the launcher reads loose repo content (extensions/) from. Extensions
+    /// are fetched live from the repo — no release needed; a repo edit ships them.
+    static let rawBranch = "main"
+
+    /// Raw file URL for a repo-relative path (e.g. "extensions/manifest.json").
+    static func rawURL(_ repoPath: String) -> URL {
+        URL(string: "https://raw.githubusercontent.com/\(repoOwner)/\(repoName)/\(rawBranch)/\(repoPath)")!
+    }
+
+    /// The extensions catalog the Extensions tab lists.
+    static var extensionsManifestURL: URL { rawURL("extensions/manifest.json") }
+
+    /// Dev override: read extensions from a local checkout's `extensions/` dir
+    /// instead of GitHub (point at `<repo>/extensions`). Lets the Extensions tab
+    /// be exercised before the folder is pushed to the repo.
+    static var localExtensionsDir: URL? {
+        guard let p = ProcessInfo.processInfo.environment["GZH_EXTENSIONS_DIR"],
+              !p.isEmpty else { return nil }
+        return URL(fileURLWithPath: (p as NSString).expandingTildeInPath)
+    }
+
     /// Dev override: point at a local .zip to install instead of downloading.
     /// Lets the launcher be exercised end-to-end before any release exists.
     static var localPayloadOverride: URL? {

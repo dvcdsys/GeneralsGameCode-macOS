@@ -146,6 +146,94 @@ final class LauncherModel: ObservableObject {
         status = "Mod cleared — will launch the original game."
     }
 
+    // MARK: - Extensions (loose add-ons installed into the game-data folder)
+
+    /// Catalog fetched from extensions/manifest.json (repo or local dev dir).
+    @Published var extensionCatalog: [ExtensionEntry] = []
+    /// IDs whose files are all present in the current data folder.
+    @Published var installedExtensionIDs: Set<String> = []
+    /// Non-nil once a load has been attempted (drives the "loading/empty" UI).
+    @Published var extensionsLoaded = false
+
+    /// True when every file the extension installs already exists in the data
+    /// folder. Only meaningful for "files" entries — mod-links install nothing.
+    func isExtensionInstalled(_ ext: ExtensionEntry) -> Bool {
+        guard dataDirIsValid, !ext.fileList.isEmpty else { return false }
+        let dataDir = URL(fileURLWithPath: dataDirPath)
+        return ext.fileList.allSatisfy {
+            FileManager.default.fileExists(atPath: dataDir.appendingPathComponent($0.dest).path)
+        }
+    }
+
+    /// Recompute installed state from disk (after a load / install / remove).
+    func refreshInstalledExtensions() {
+        installedExtensionIDs = Set(extensionCatalog
+            .filter { !$0.isModLink && isExtensionInstalled($0) }.map(\.id))
+    }
+
+    /// Open an external URL (a mod's official download page) in the browser.
+    func openURL(_ string: String) {
+        guard let url = URL(string: string) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    /// Load the extensions catalog. Safe to call repeatedly (e.g. on tab appear).
+    func loadExtensions() {
+        Task {
+            do {
+                let manifest = try await ExtensionsClient.fetchManifest()
+                extensionCatalog = manifest.extensions
+                refreshInstalledExtensions()
+            } catch {
+                // Non-fatal: leave the catalog empty and surface a hint.
+                extensionCatalog = []
+                lastError = "Couldn't load extensions catalog: "
+                    + ((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
+            }
+            extensionsLoaded = true
+        }
+    }
+
+    /// Fetch each of the extension's files and copy them into the data folder.
+    func installExtension(_ ext: ExtensionEntry) {
+        guard !isBusy else { return }
+        lastError = nil
+        guard dataDirIsValid else { fail(LauncherError.dataDirInvalid); return }
+        let dataDir = URL(fileURLWithPath: dataDirPath)
+        isBusy = true
+        status = "Installing “\(ext.name)”…"
+        Task {
+            do {
+                for f in ext.fileList {
+                    let data = try await ExtensionsClient.fetchFile(src: f.src)
+                    let dest = dataDir.appendingPathComponent(f.dest)
+                    try FileManager.default.createDirectory(
+                        at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: dest, options: .atomic)
+                }
+                status = "“\(ext.name)” installed. Restart the game to load it."
+            } catch {
+                fail(error)
+            }
+            refreshInstalledExtensions()
+            isBusy = false
+        }
+    }
+
+    /// Delete the extension's files from the data folder (full uninstall — the
+    /// overrides are purely additive so removal reverts the add-on).
+    func removeExtension(_ ext: ExtensionEntry) {
+        guard !isBusy else { return }
+        lastError = nil
+        guard dataDirIsValid else { fail(LauncherError.dataDirInvalid); return }
+        let dataDir = URL(fileURLWithPath: dataDirPath)
+        for f in ext.fileList {
+            try? FileManager.default.removeItem(at: dataDir.appendingPathComponent(f.dest))
+        }
+        refreshInstalledExtensions()
+        status = "“\(ext.name)” removed."
+    }
+
     // MARK: - User-data folder
 
     func chooseUserDataDir() {
