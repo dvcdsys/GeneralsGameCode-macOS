@@ -54,6 +54,11 @@ struct PlayTab: View {
             if !model.dataDirPath.isEmpty && !model.dataDirIsValid {
                 warn("No .big archives found in this folder — check the path.")
             }
+            Button("Don't have the game? Get Zero Hour on Steam") {
+                model.openURL(Config.buyGameURL)
+            }
+            .buttonStyle(.link).font(.caption2)
+            .help("Opens the official store — Command & Conquer: The Ultimate Collection (includes Generals + Zero Hour).")
         }
     }
 

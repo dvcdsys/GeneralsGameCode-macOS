@@ -1,17 +1,27 @@
 # Generals Zero Hour — macOS (Apple Silicon)
 
-> [!WARNING]
-> ## 🚧 Under active development — I'm still setting up this repository
-> **Work in progress.** Releases, CI and docs are being configured right now —
-> things will move, break and change without notice. Not ready for general use yet.
-
 Native **Metal** port of *Command & Conquer: Generals — Zero Hour* for Apple
 Silicon. No Wine, no DXVK, no translation layer — the engine runs as a native
 macOS binary through an in-tree D3D8 → Metal shim. Game logic, AI and data are
 unchanged; only the platform layer is ported.
 
+> ## ▶ Playable now — with a couple of caveats
+> The game **runs and is playable**: **skirmish** and **singleplayer** both work.
+> **Networked multiplayer isn't in yet** — there's no online (or LAN) play for
+> the moment.
+>
+> **On the roadmap:** graphics-quality improvements, and **multiplayer built
+> straight for online play over the internet** (skipping LAN, which isn't really
+> relevant today).
+>
+> And a heartfelt nod to **[Cold War Crisis](https://www.moddb.com/mods/cold-war-crisis)** —
+> a brilliant total-conversion and a personal favourite. The launcher has
+> one-click helpers for it (see the **Mods & Extensions** tab).
+
 You must own a legitimate copy of Zero Hour — the proprietary EA game data is
-**not** included.
+**not** included. The easiest way to get it is *Command & Conquer: The Ultimate
+Collection* on **[Steam](https://store.steampowered.com/bundle/39394)** (it
+includes both *Generals* and *Zero Hour*).
 
 ## Install & play
 
@@ -69,6 +79,9 @@ GZH_LOCAL_PAYLOAD="$(pwd)/dist/GeneralsZH-macOS-arm64.zip" \
   — the upstream project this repository is forked from; their modernized C++
   baseline is the foundation every macOS-specific change sits on.
 - **Westwood Studios** — for the original *Command & Conquer: Generals*.
+- **[Cold War Crisis](https://www.moddb.com/mods/cold-war-crisis)** and its authors
+  — a superb mod this project is a fan of; the launcher ships optional one-click
+  helpers for it (which contain only our own additive overrides, never CWC's assets).
 
 ## License
 

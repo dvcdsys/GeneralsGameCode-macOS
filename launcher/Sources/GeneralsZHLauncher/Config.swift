@@ -20,6 +20,11 @@ enum Config {
     /// The executable inside the engine payload.
     static let binaryName = "generalszh"
 
+    /// Official store page to buy a legitimate copy of the game. The proprietary
+    /// EA data isn't included, so we link users to where they can buy it — this is
+    /// *Command & Conquer: The Ultimate Collection* (includes Generals + Zero Hour).
+    static let buyGameURL = "https://store.steampowered.com/bundle/39394"
+
     // MARK: - On-disk layout: ~/Library/Application Support/GeneralsZH/
 
     static var supportDir: URL {
