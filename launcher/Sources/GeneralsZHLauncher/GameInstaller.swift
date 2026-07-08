@@ -48,6 +48,20 @@ final class LauncherModel: ObservableObject {
         didSet { UserDefaults.standard.set(frameRateCap, forKey: "frameRateCap") }
     }
 
+    /// Disable the animated 3D scene behind the main menu (the engine's
+    /// "shellmap"). Sets the GEN_NO_SHELLMAP env hook (GameEngine.cpp), which
+    /// forces GlobalData::m_shellMapOn = FALSE *after* INI has loaded, so the
+    /// shell renders a static background instead of a live map scene. (The native
+    /// -noshellmap command-line flag is parsed before INI and gets overwritten by
+    /// a mod's ShellMapOn=Yes — e.g. Cold War Crisis — so it can't be used here.)
+    /// Defaults to ON (scene disabled): the shellmap scene has a GPU-memory leak
+    /// on macOS that grows the whole time the menu is shown; skipping it keeps
+    /// menu memory flat. Persisted.
+    @Published var disableMenuShellMap: Bool =
+        (UserDefaults.standard.object(forKey: "disableMenuShellMap") as? Bool) ?? true {
+        didSet { UserDefaults.standard.set(disableMenuShellMap, forKey: "disableMenuShellMap") }
+    }
+
     // Update state (populated by checkForUpdates).
     @Published var latestEngineVersion: String? = nil
     @Published var latestLauncherVersion: String? = nil
@@ -629,6 +643,13 @@ final class LauncherModel: ObservableObject {
         // decoupling (FramePacer) so gameplay stays at 30 Hz while the picture
         // renders at the higher rate — smoother motion, correct game speed.
         env["GEN_FPS_CAP"] = String(frameRateCap)
+        // Disable the animated 3D menu background (shellmap) via the engine's
+        // macOS init hook (GameEngine.cpp). Set as an env var, NOT the -noshellmap
+        // command-line flag: -noshellmap is parsed before INI, so a mod's
+        // GameData.ini (e.g. Cold War Crisis) re-enables ShellMapOn and defeats it.
+        // GEN_NO_SHELLMAP is applied after INI and sticks.
+        env.removeValue(forKey: "GEN_NO_SHELLMAP")
+        if disableMenuShellMap { env["GEN_NO_SHELLMAP"] = "1" }
         proc.environment = env
         proc.terminationHandler = { [weak self] _ in
             Task { @MainActor in

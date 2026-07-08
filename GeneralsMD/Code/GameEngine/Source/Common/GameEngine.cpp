@@ -883,6 +883,21 @@ void GameEngine::init()
 				TheWritableGlobalData->m_afterIntro = TRUE;
 			}
 		}
+		// GEN_NO_SHELLMAP=1: disable ONLY the animated 3D menu background (the
+		// "shellmap") while leaving the intro movies intact. Applied here, after
+		// INI has been loaded, so it sticks even when a (mod's) GameData.ini sets
+		// ShellMapOn=Yes — which silently defeats the early-parsed -noshellmap
+		// command-line flag (that is parsed before INI). The shell then falls back
+		// to a static background (Menus/BlankWindow.wnd). Used by the macOS
+		// launcher's "Disable menu 3D scene" option to sidestep the shellmap
+		// GPU-memory growth while sitting in the menu.
+		{
+			const char *noShellMap = ::getenv("GEN_NO_SHELLMAP");
+			if (noShellMap && noShellMap[0] && noShellMap[0] != '0')
+			{
+				TheWritableGlobalData->m_shellMapOn = FALSE;
+			}
+		}
 #endif
 
 		//

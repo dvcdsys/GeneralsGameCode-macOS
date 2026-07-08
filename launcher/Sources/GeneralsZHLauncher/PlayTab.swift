@@ -136,6 +136,17 @@ struct PlayTab: View {
                 .help("Higher FPS renders motion smoother. Game speed stays correct — the simulation still runs at 30 Hz.")
                 Spacer()
             }
+            HStack {
+                Toggle("Disable menu 3D scene", isOn: $model.disableMenuShellMap)
+                    .toggleStyle(.checkbox)
+                    .disabled(model.gameRunning)
+                    .help("The animated 3D scene behind the main menu (the \"shellmap\") "
+                        + "has a GPU-memory leak on macOS that keeps growing the whole time "
+                        + "the menu is shown. It's disabled by default so menu memory stays "
+                        + "flat — you get a static menu background instead. Uncheck to restore "
+                        + "the animated scene. (Sets GEN_NO_SHELLMAP for the engine.)")
+                Spacer()
+            }
             if model.gameRunning {
                 Text("Quit the game to change display settings.")
                     .font(.caption2).foregroundColor(.secondary)
