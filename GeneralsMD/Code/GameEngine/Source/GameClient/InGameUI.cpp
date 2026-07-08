@@ -2276,6 +2276,12 @@ void InGameUI::reset()
 	setForceAttackMode(false);
 	setPreferSelectionMode(false);
 	clearAttackMoveToMode();
+	// TheSuperHackers @bugfix Guard-from-position: drop the two-click state AND
+	// its radius decal at match teardown. Without this, exiting a game mid-
+	// targeting leaves m_guardFromPositionHomeDecal pointing at a decal the
+	// shadow manager destroys with the map — the next game's update() (or the
+	// clear() before the next createRadiusDecal) then touches freed memory.
+	clearGuardFromPositionState();
 
 	// TheSuperHackers @bugfix Disable all camera interactions to prevent them getting stuck after game end.
 	setScrolling(false);

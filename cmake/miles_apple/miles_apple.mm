@@ -973,6 +973,12 @@ int AIL_set_sample_file(HSAMPLE sample, const void *file_image, int /*block*/) {
     // an event is starting, never inside the audio thread.
     @try {
         if (s->node) {
+            // Stop before detach (and bump the generation so stale completion
+            // blocks no-op). Detaching a still-playing node leaves its internal
+            // AudioUnit alive inside AVAudioEngine — at battle sound rates
+            // (~3 binds/s) that accumulated hundreds of AUAudioUnitV2Bridge
+            // objects per minute (heap-diff verified), a steady leak.
+            stopAndDetach(s);
             [g_device.engine detachNode:s->node];
             s->node = nil;
         }
@@ -1258,6 +1264,9 @@ int AIL_set_3D_sample_file(H3DSAMPLE sample, const void *file_image) {
     s->player.buffer = buf;
     @try {
         if (s->player.node) {
+            // Stop before detach — same AudioUnit-accumulation leak as the 2D
+            // path in AIL_set_sample_file above.
+            stopAndDetach(&s->player);
             [g_device.engine detachNode:s->player.node];
             s->player.node = nil;
         }

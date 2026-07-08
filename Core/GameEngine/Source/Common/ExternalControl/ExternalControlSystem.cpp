@@ -526,7 +526,17 @@ private:
 				batch["dropped"] = (unsigned)dropped;
 			std::string payload = batch.dump();
 			for (const std::shared_ptr<ix::WebSocket>& c : clients)
+			{
+				// Slow-client guard: ixwebsocket buffers outgoing frames per socket
+				// WITHOUT a cap — a consumer that reads slower than we broadcast
+				// (30 Hz × busy-battle batches) grows that buffer forever inside
+				// the GAME process. Skip the batch for a client that still has
+				// >4 MB queued; events are resumable via seq, and a dropped batch
+				// is better than unbounded memory growth.
+				if (c->bufferedAmount() > 4u * 1024u * 1024u)
+					continue;
 				c->send(payload);
+			}
 		}
 	}
 
@@ -1303,6 +1313,23 @@ private:
 
 		// Build the group from owned object IDs.
 		AIGroupPtr group = TheAI->createGroup();
+		// Native dispatch pairs EVERY createGroup with destroyGroup (retail-
+		// compatible mode; AIGroupPtr is a raw pointer there) / removeAll
+		// (refcount mode) — see GameLogicDispatch.cpp. This handler has many
+		// early returns, so release via RAII. Without it every bot command
+		// leaked one AIGroup + its member list: AIGroupPool grew by hundreds
+		// of blobs per bot session (GEN_POOL_LOG-verified, 773 grows in one
+		// third of a session).
+		struct GroupReleaser {
+			AIGroupPtr g;
+			~GroupReleaser() {
+#if RETAIL_COMPATIBLE_AIGROUP
+				if (g && TheAI) TheAI->destroyGroup(g);
+#else
+				if (g) g->removeAll();
+#endif
+			}
+		} groupReleaser{ group };
 		int matched = 0, skipped = 0;
 		if (cmd.contains("ids") && cmd["ids"].is_array())
 		{

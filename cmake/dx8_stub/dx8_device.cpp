@@ -628,6 +628,12 @@ extern "C" HRESULT WINAPI D3DXLoadSurfaceFromSurface(
 // ---------------------------------------------------------------------------
 // IDirect3DVertexBuffer8  (wraps an MTLBuffer; Lock/Unlock expose CPU pointer)
 // ---------------------------------------------------------------------------
+// MTL_POOL_LOG diagnostics: live engine-held D3D buffer wrappers. Growth here
+// = the ENGINE accumulates VB/IB objects (leak above the shim); growth of raw
+// MTLBuffers without wrapper growth = a shim-side CF-ref leak.
+std::atomic<long> g_liveVB8(0);
+std::atomic<long> g_liveIB8(0);
+
 class MetalVertexBuffer8 : public IDirect3DVertexBuffer8 {
 public:
     MetalVertexBuffer8(IDirect3DDevice8* dev, MetalContext* ctx, UINT length, DWORD usage, DWORD fvf, D3DPOOL pool)
@@ -635,8 +641,9 @@ public:
     {
         m_buffer   = MetalContext_CreateBuffer(ctx, length);
         m_contents = MetalContext_BufferContents(m_buffer);
+        g_liveVB8.fetch_add(1, std::memory_order_relaxed);
     }
-    ~MetalVertexBuffer8() { MetalContext_ReleaseBuffer(m_buffer); }
+    ~MetalVertexBuffer8() { MetalContext_ReleaseBuffer(m_buffer); g_liveVB8.fetch_sub(1, std::memory_order_relaxed); }
 
     STDMETHOD(QueryInterface)(REFIID, void** ppvObj) override { return BasicQueryInterface(this, ppvObj); }
     STDMETHOD_(ULONG, AddRef)() override { return ++m_refCount; }
@@ -741,12 +748,14 @@ private:
 class MetalIndexBuffer8 : public IDirect3DIndexBuffer8 {
 public:
     MetalIndexBuffer8(IDirect3DDevice8* dev, MetalContext* ctx, UINT length, DWORD usage, D3DFORMAT fmt, D3DPOOL pool)
+        // (live-count bookkeeping mirrors MetalVertexBuffer8)
         : m_refCount(1), m_device(dev), m_ctx(ctx), m_length(length), m_usage(usage), m_format(fmt), m_pool(pool)
     {
         m_buffer   = MetalContext_CreateBuffer(ctx, length);
         m_contents = MetalContext_BufferContents(m_buffer);
+        g_liveIB8.fetch_add(1, std::memory_order_relaxed);
     }
-    ~MetalIndexBuffer8() { MetalContext_ReleaseBuffer(m_buffer); }
+    ~MetalIndexBuffer8() { MetalContext_ReleaseBuffer(m_buffer); g_liveIB8.fetch_sub(1, std::memory_order_relaxed); }
 
     STDMETHOD(QueryInterface)(REFIID, void** ppvObj) override { return BasicQueryInterface(this, ppvObj); }
     STDMETHOD_(ULONG, AddRef)() override { return ++m_refCount; }
@@ -1800,3 +1809,9 @@ extern "C" IDirect3D8* WINAPI Direct3DCreate8(UINT /*SDKVersion*/)
 {
     return new MetalDirect3D8();
 }
+
+// MTL_POOL_LOG diagnostics (see g_liveVB8/g_liveIB8): exported for the pool-log
+// line in metal_backend.mm (weak-imported there, same pattern as
+// MetalDebug_InTrapezoidWater).
+extern "C" long MetalDiag_LiveVB8(void) { return g_liveVB8.load(std::memory_order_relaxed); }
+extern "C" long MetalDiag_LiveIB8(void) { return g_liveIB8.load(std::memory_order_relaxed); }

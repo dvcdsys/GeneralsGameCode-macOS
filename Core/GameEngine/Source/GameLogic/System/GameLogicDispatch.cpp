@@ -463,8 +463,16 @@ void GameLogic::logicMessageDispatcher( GameMessage *msg, void *userData )
 				if (TheFramePacer->isMacHighFpsMode())
 				{
 					const Int renderCap = TheFramePacer->getActualFramesPerSecondLimit();
-					TheFramePacer->setLogicTimeScaleFps(maxFPS);
-					TheFramePacer->enableLogicTimeScale(maxFPS < renderCap);
+					// GEN_LOGIC_FPS (harness/debug) outranks the game-speed slider —
+					// without this the new-game message resets the sim rate back to
+					// the prefs value (30) and soak runs can't be time-compressed.
+					Int logicFps = maxFPS;
+					{
+						const char* lf = ::getenv("GEN_LOGIC_FPS");
+						if (lf && *lf && atoi(lf) > 0) logicFps = atoi(lf);
+					}
+					TheFramePacer->setLogicTimeScaleFps(logicFps);
+					TheFramePacer->enableLogicTimeScale(logicFps < renderCap);
 				}
 				else
 #endif

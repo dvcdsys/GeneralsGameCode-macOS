@@ -15,6 +15,8 @@
 #include <strings.h>   // strcasecmp for env-var parsing
 #include <unordered_map>
 #include <atomic>
+#include <execinfo.h>
+#include <mutex>
 #include <deque>
 
 // ---------------------------------------------------------------------------
@@ -756,6 +758,43 @@ struct MetalContext {
     uint64_t                   bufFrameId;        // monotonic render-frame counter
     std::atomic<uint64_t>      bufCompletedFrame; // highest frame the GPU finished
 
+    // TheSuperHackers @port macOS @bugfix: command-buffer backpressure. The
+    // engine's synchronous map load pumps LoadScreen draw/Present ticks
+    // without ever returning to the runloop, and the committed command
+    // buffers' completions fall behind — thousands end up in flight at once.
+    // IOGPU sizes its per-device command-storage shmem pool to that PEAK and
+    // never shrinks it: ~3000 live 32 KB storages (~200 MB, malloc_history-
+    // verified) stayed resident for the rest of the process. Cap the
+    // uncompleted count: every committed cb (frame + mip-flush) bumps
+    // cbInFlight and decrements it in its completed-handler; commit sites
+    // block with waitUntilCompleted once the cap is exceeded (never hit
+    // during normal gameplay — in-flight stays ~2-3; only bursty loads
+    // throttle, bounding the pool instead of the pool absorbing the burst).
+    std::atomic<int>           cbInFlight;
+    // MTL_POOL_LOG diagnostics: lifetime command-buffer / presentation tallies
+    // (created at commit sites; completed/presented from their handlers).
+    std::atomic<long>          cbCreated;
+    std::atomic<long>          cbCompleted;
+    std::atomic<long>          cbPresented;
+    // MTL_POOL_LOG diagnostics: live shim-created GPU resources (count/bytes),
+    // updated at every create/CFRelease site. RSS growth NOT reflected here is
+    // outside the shim (driver pools, engine CPU heap).
+    std::atomic<long>          bufLiveN;
+    std::atomic<long>          bufLiveBytes;
+    std::atomic<long>          texLiveN;
+    std::atomic<long>          texLiveBytes;
+    // Pool flow tallies (MTL_POOL_LOG): pulls/misses per create path, pushes,
+    // overflow releases — a bucket pinned at cap means pushes chronically
+    // exceed pulls; these tell WHICH path is unbalanced.
+    std::atomic<long>          texPullCreate;   // CreateTextureFmt pool hits
+    std::atomic<long>          texMissCreate;   // CreateTextureFmt fresh allocs (poolable only)
+    std::atomic<long>          texPullRename;   // RenameTexture pool hits
+    std::atomic<long>          texMissRename;   // RenameTexture fresh allocs
+    std::atomic<long>          texPushRelease;  // ReleaseTexture -> retire
+    std::atomic<long>          texPushRename;   // RenameTexture old -> retire
+    std::atomic<long>          texOverflow;     // sweep cap overflows (CFReleased)
+    std::atomic<long>          bufOverflow;     // buffer sweep cap overflows
+
     // TheSuperHackers @port macOS @bugfix: dynamic-TEXTURE rename pool — same
     // recycle discipline as the buffer pool above, for a different race.
     // UnlockRect/flushToTexture upload with [tex replaceRegion:...], which
@@ -775,6 +814,22 @@ struct MetalContext {
     // that frame — steady state re-uses 2-3 textures per dynamic surface.
     std::unordered_map<uint64_t, std::vector<void*> > texFree;      // TexPoolKey -> CF-retained textures
     std::vector<std::pair<void*, uint64_t> >          texRetired;   // (CF-retained texture, frame retired)
+    // Private-texture staged uploads (see StageUpload): each entry owns a CF
+    // ref on the texture and a pooled staging buffer; flushed into one blit
+    // command buffer per Present (or inline every 64 during load bursts).
+    struct PendingUpload { void* tex; void* buf; int w, h, rowBytes; };
+    std::vector<PendingUpload> pendingUploads;   // guarded by poolMutex (loader thread pushes)
+    // Per-texture upload history for the churn throttle (see StageUpload):
+    // tex -> (last upload frame, consecutive-frame streak). poolMutex-guarded.
+    std::unordered_map<void*, std::pair<uint64_t, uint32_t> > upHist;
+
+    // Guards ALL four pool containers above. The engine loads textures from a
+    // background loader thread (async TextureLoadTask), so CreateTextureFmt /
+    // ReleaseTexture race the render thread's Sweep*/Rename pool access — an
+    // unguarded unordered_map intermittently FAILS find() on keys it contains
+    // (observed: rename misses with 1024 same-key entries pooled → every miss
+    // leaked one texture generation; 29k pooled orphans in one session).
+    std::mutex                 poolMutex;
 
     // Stage 6: shadow mapping. shadowMap is a private depth-only texture
     // (2048×2048 Depth32Float). The shim watches every 3D opaque Draw() during
@@ -1662,6 +1717,61 @@ static inline bool TexPoolable(NSUInteger w, NSUInteger h, MTLPixelFormat pf) {
     return !off && pf == MTLPixelFormatBGRA8Unorm && w <= 256 && h <= 256;
 }
 
+// Textures default to MTLStorageModePrivate, uploaded via pooled staging
+// buffers + blit (FlushPendingUploads). The old Shared + replaceRegion path
+// (MTL_SHARED_TEX=1 reverts to it) leaks driver-side memory on macOS 26.x:
+// every modify-then-draw cycle of a Shared texture costs ~15 KB of service
+// memory the driver never returns (~130 MB/min on the CWC shell-map menu,
+// which re-bakes ~140 terrain pages/s — steady-state A/B matrix: disabling
+// mips, renames or uploads individually changed nothing; only stopping the
+// modify+draw combination did). Private textures take the driver's optimal
+// layout up front, so re-uploads are plain blits with no shadow copies.
+static inline bool PrivateTexEnabled() {
+    // Default OFF: the staged-upload experiment held load-burst staging
+    // buffers in the pool (multi-GB at map load). Opt-in for future work.
+    static int on = -1;
+    if (on < 0) on = getenv("MTL_PRIVATE_TEX") ? 1 : 0;
+    return on;
+}
+
+// MTL_POOL_LOG live-resource accounting (bufLiveN/... in MetalContext). Called
+// at EVERY shim create / CFRelease site so the pool log can split "our live
+// bytes" from driver-side growth. Approximate texture bytes (BC ~1 or 0.5
+// byte/px, else 4) — this is a diagnostic, not an allocator.
+static inline size_t TexApproxBytes(id<MTLTexture> t) {
+    size_t px = (size_t)t.width * t.height;
+    size_t base;
+    switch (t.pixelFormat) {
+        case MTLPixelFormatBC1_RGBA: base = px / 2; break;
+        case MTLPixelFormatBC2_RGBA:
+        case MTLPixelFormatBC3_RGBA: base = px;     break;
+        default:                     base = px * 4; break;
+    }
+    return t.mipmapLevelCount > 1 ? base + base / 3 : base;
+}
+static inline void DiagBufAlloc(MetalContext* c, unsigned bytes) {
+    if (!c) return;
+    c->bufLiveN.fetch_add(1, std::memory_order_relaxed);
+    c->bufLiveBytes.fetch_add((long)bytes, std::memory_order_relaxed);
+}
+static inline void DiagBufFree(void* b) {
+    MetalContext* c = s_uploadCtx;
+    if (!c || !b) return;
+    c->bufLiveN.fetch_sub(1, std::memory_order_relaxed);
+    c->bufLiveBytes.fetch_sub((long)[(__bridge id<MTLBuffer>)b length], std::memory_order_relaxed);
+}
+static inline void DiagTexAlloc(MetalContext* c, id<MTLTexture> t) {
+    if (!c || !t) return;
+    c->texLiveN.fetch_add(1, std::memory_order_relaxed);
+    c->texLiveBytes.fetch_add((long)TexApproxBytes(t), std::memory_order_relaxed);
+}
+static inline void DiagTexFree(void* tp) {
+    MetalContext* c = s_uploadCtx;
+    if (!c || !tp) return;
+    c->texLiveN.fetch_sub(1, std::memory_order_relaxed);
+    c->texLiveBytes.fetch_sub((long)TexApproxBytes((__bridge id<MTLTexture>)tp), std::memory_order_relaxed);
+}
+
 extern "C" MetalContext* MetalContext_Create(int width, int height, int /*windowed*/)
 {
     @autoreleasepool {
@@ -1710,6 +1820,22 @@ extern "C" MetalContext* MetalContext_Create(int width, int height, int /*window
         ctx->pendingMips = nil;   // lazily allocated on first mipped-texture upload
         ctx->bufFrameId = 0;
         ctx->bufCompletedFrame.store(0, std::memory_order_relaxed);
+        ctx->cbInFlight.store(0, std::memory_order_relaxed);
+        ctx->cbCreated.store(0, std::memory_order_relaxed);
+        ctx->cbCompleted.store(0, std::memory_order_relaxed);
+        ctx->cbPresented.store(0, std::memory_order_relaxed);
+        ctx->bufLiveN.store(0, std::memory_order_relaxed);
+        ctx->bufLiveBytes.store(0, std::memory_order_relaxed);
+        ctx->texLiveN.store(0, std::memory_order_relaxed);
+        ctx->texLiveBytes.store(0, std::memory_order_relaxed);
+        ctx->texPullCreate.store(0, std::memory_order_relaxed);
+        ctx->texMissCreate.store(0, std::memory_order_relaxed);
+        ctx->texPullRename.store(0, std::memory_order_relaxed);
+        ctx->texMissRename.store(0, std::memory_order_relaxed);
+        ctx->texPushRelease.store(0, std::memory_order_relaxed);
+        ctx->texPushRename.store(0, std::memory_order_relaxed);
+        ctx->texOverflow.store(0, std::memory_order_relaxed);
+        ctx->bufOverflow.store(0, std::memory_order_relaxed);
 
         // Startup banner. The msaa here is the boot default — set by
         // MTL_MSAA env override or 1 (clean baseline). The "Metal Optimised"
@@ -2502,6 +2628,10 @@ static void RunShadowReplay(MetalContext* ctx)
 static void FlushPendingMips(MetalContext* ctx);   // defined below; batched mip generation
 static void SweepRetiredBuffers(MetalContext* ctx); // defined below; dynamic-buffer recycling
 static void SweepRetiredTextures(MetalContext* ctx); // defined below; dynamic-texture recycling
+static void DecayPools(MetalContext* ctx);           // defined below; periodic pool shrink
+static void FlushPendingUploads(MetalContext* ctx);  // defined below; staged private-texture uploads
+extern "C" long MetalDiag_LiveVB8(void) __attribute__((weak)); // dx8_device.cpp
+extern "C" long MetalDiag_LiveIB8(void) __attribute__((weak)); // dx8_device.cpp
 
 extern "C" void MetalContext_Present(MetalContext* ctx)
 {
@@ -2516,7 +2646,13 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         // buffer (ctx->cmd) is committed below, so the mips are ready when the GPU
         // executes the frame. The encoder is already ended, so ctx->cmd has no
         // open encoder while this separate command buffer is built + committed.
+        static int s_da = -1; if (s_da < 0) s_da = getenv("MTL_POOL_LOG") ? 1 : 0;
+        const bool daSample = s_da && (ctx->frameIndex % 120) == 0;
+        unsigned long da0 = 0, da1 = 0, da2 = 0;
+        if (daSample) da0 = (unsigned long)ctx->device.currentAllocatedSize;
+        FlushPendingUploads(ctx);
         FlushPendingMips(ctx);
+        if (daSample) da1 = (unsigned long)ctx->device.currentAllocatedSize;
 
         // Stage 6: replay captured draws into the shadow map BEFORE present.
         // The next frame's main fragment shader will sample it. Same command
@@ -2558,9 +2694,26 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
             MetalContext* c = ctx;
             [ctx->cmd addCompletedHandler:^(id<MTLCommandBuffer>){
                 c->bufCompletedFrame.store(fid, std::memory_order_relaxed);
+                c->cbInFlight.fetch_sub(1, std::memory_order_relaxed);
+                c->cbCompleted.fetch_add(1, std::memory_order_relaxed);
+            }];
+            [ctx->drawable addPresentedHandler:^(id<MTLDrawable>){
+                c->cbPresented.fetch_add(1, std::memory_order_relaxed);
             }];
             [ctx->cmd presentDrawable:ctx->drawable];
+            const int inFlight = ctx->cbInFlight.fetch_add(1, std::memory_order_relaxed) + 1;
+            ctx->cbCreated.fetch_add(1, std::memory_order_relaxed);
             [ctx->cmd commit];
+            // Backpressure — same cap as FlushPendingMips (see cbInFlight docs).
+            // waitUntilCompleted waits for GPU execution only (not presentation),
+            // so this cannot deadlock on a stalled CoreAnimation transaction.
+            if (inFlight > 8) [ctx->cmd waitUntilCompleted];
+        }
+        if (daSample) {
+            da2 = (unsigned long)ctx->device.currentAllocatedSize;
+            fprintf(stderr, "[da] f%ld pre=%luMB mips+%ldKB commit+%ldKB\n", ctx->frameIndex,
+                    da0/(1024*1024), (long)(da1-da0)/1024, (long)(da2-da1)/1024);
+            fflush(stderr);
         }
         if (wantDump && dumpTex) {
             [ctx->cmd waitUntilCompleted];
@@ -2595,18 +2748,61 @@ extern "C" void MetalContext_Present(MetalContext* ctx)
         // counter used to tag resources retired during the next frame.
         SweepRetiredBuffers(ctx);
         SweepRetiredTextures(ctx);
+        DecayPools(ctx);
         ctx->bufFrameId++;
         // MTL_POOL_LOG=1: dump the recycle-pool sizes every 120 frames. Kept as
         // diagnostic infra — this is how the font-texture-churn leak was found
         // (texFree/bufFree stay bounded, no unbounded growth).
         { static int s_poolLog = -1; if (s_poolLog < 0) s_poolLog = getenv("MTL_POOL_LOG") ? 1 : 0;
           if (s_poolLog && (ctx->frameIndex % 120) == 0) {
+              std::lock_guard<std::mutex> lk(ctx->poolMutex);
               size_t bfN=0, bfBytes=0; for (auto& kv : ctx->bufFree) { bfN += kv.second.size(); bfBytes += (size_t)kv.first * kv.second.size(); }
-              size_t tfN=0; for (auto& kv : ctx->texFree) tfN += kv.second.size();
-              fprintf(stderr, "[pool] f%ld bufFree=%zu(%zuKB) bufRetired=%zu | texFree=%zu(keys=%zu) texRetired=%zu | pendingMips=%lu\n",
+              size_t tfN=0, tfBytes=0;
+              for (auto& kv : ctx->texFree) {
+                  tfN += kv.second.size();
+                  for (void* tp : kv.second) {
+                      id<MTLTexture> t = (__bridge id<MTLTexture>)tp;
+                      size_t px = (size_t)t.width * t.height * 4;      // pool = uncompressed only
+                      tfBytes += t.mipmapLevelCount > 1 ? px + px/3 : px;
+                  }
+              }
+              fprintf(stderr, "[pool] f%ld bufFree=%zu(%zuKB) bufRetired=%zu | texFree=%zu(%zuKB keys=%zu) texRetired=%zu | pendingMips=%lu cbInFlight=%d\n",
                       ctx->frameIndex, bfN, bfBytes/1024, ctx->bufRetired.size(),
-                      tfN, ctx->texFree.size(), ctx->texRetired.size(),
-                      (unsigned long)(ctx->pendingMips ? ctx->pendingMips.count : 0));
+                      tfN, tfBytes/1024, ctx->texFree.size(), ctx->texRetired.size(),
+                      (unsigned long)(ctx->pendingMips ? ctx->pendingMips.count : 0),
+                      ctx->cbInFlight.load(std::memory_order_relaxed));
+              fprintf(stderr, "[cb] created=%ld completed=%ld presented=%ld liveVB=%ld liveIB=%ld\n",
+                      ctx->cbCreated.load(std::memory_order_relaxed),
+                      ctx->cbCompleted.load(std::memory_order_relaxed),
+                      ctx->cbPresented.load(std::memory_order_relaxed),
+                      MetalDiag_LiveVB8 ? MetalDiag_LiveVB8() : -1,
+                      MetalDiag_LiveIB8 ? MetalDiag_LiveIB8() : -1);
+              fprintf(stderr, "[live] buf=%ld(%ldMB) tex=%ld(%ldMB) deviceAlloc=%luMB\n",
+                      ctx->bufLiveN.load(std::memory_order_relaxed),
+                      ctx->bufLiveBytes.load(std::memory_order_relaxed) / (1024*1024),
+                      ctx->texLiveN.load(std::memory_order_relaxed),
+                      ctx->texLiveBytes.load(std::memory_order_relaxed) / (1024*1024),
+                      (unsigned long)(ctx->device.currentAllocatedSize / (1024*1024)));
+              if ((ctx->frameIndex % 600) == 0) {
+                  for (auto& kv : ctx->texFree) {
+                      if (kv.second.empty()) continue;
+                      id<MTLTexture> s0 = (__bridge id<MTLTexture>)kv.second.front();
+                      fprintf(stderr, "[key] %llx: %zu tex of %lux%lu pf=%lu mips=%lu usage=0x%lx\n",
+                              (unsigned long long)kv.first, kv.second.size(),
+                              (unsigned long)s0.width, (unsigned long)s0.height,
+                              (unsigned long)s0.pixelFormat, (unsigned long)s0.mipmapLevelCount,
+                              (unsigned long)s0.usage);
+                  }
+              }
+              fprintf(stderr, "[flow] create hit=%ld miss=%ld | rename hit=%ld miss=%ld | push rel=%ld ren=%ld | ovT=%ld ovB=%ld\n",
+                      ctx->texPullCreate.load(std::memory_order_relaxed),
+                      ctx->texMissCreate.load(std::memory_order_relaxed),
+                      ctx->texPullRename.load(std::memory_order_relaxed),
+                      ctx->texMissRename.load(std::memory_order_relaxed),
+                      ctx->texPushRelease.load(std::memory_order_relaxed),
+                      ctx->texPushRename.load(std::memory_order_relaxed),
+                      ctx->texOverflow.load(std::memory_order_relaxed),
+                      ctx->bufOverflow.load(std::memory_order_relaxed));
               fflush(stderr);
           } }
         if (ctx->dbg < 0) ctx->dbg = getenv("MTL_DEBUG") ? 1 : 0;
@@ -2683,13 +2879,51 @@ static void GenerateMips(id<MTLTexture> tex)
 static void FlushPendingMips(MetalContext* ctx)
 {
     if (!ctx || !ctx->queue || !ctx->pendingMips || ctx->pendingMips.count == 0) return;
-    id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
-    id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+    // Chunked: at most kMipsPerCB textures per command buffer, low in-flight
+    // cap. A map-load burst re-uploads HUNDREDS of textures between two
+    // Presents; batching them into ONE cb makes the driver keep a pooled
+    // resource alive per generateMipmaps command until that cb completes —
+    // IOGPU sizes its per-device resource pool at that burst peak (~200 MB,
+    // malloc_history-verified: ~6100 live 32 KB blocks under
+    // renderMRCDownsample, all load-time) and NEVER shrinks it. Chunking
+    // bounds concurrent mip commands, so the pool stays a few MB. Steady-state
+    // frames flush 1-2 pending mips and take the single-chunk path unchanged.
+    const NSUInteger kMipsPerCB = 32;
+    MetalContext* c = ctx;
+    id<MTLCommandBuffer> cb = nil;
+    id<MTLBlitCommandEncoder> blit = nil;
+    NSUInteger inCb = 0;
     for (id<MTLTexture> tex in ctx->pendingMips) {
-        if (tex.mipmapLevelCount > 1) [blit generateMipmapsForTexture:tex];
+        if (tex.mipmapLevelCount <= 1) continue;
+        if (!cb) {
+            cb = [ctx->queue commandBuffer];
+            blit = [cb blitCommandEncoder];
+            inCb = 0;
+        }
+        [blit generateMipmapsForTexture:tex];
+        if (++inCb < kMipsPerCB) continue;
+        [blit endEncoding];
+        [cb addCompletedHandler:^(id<MTLCommandBuffer>){
+            c->cbInFlight.fetch_sub(1, std::memory_order_relaxed);
+            c->cbCompleted.fetch_add(1, std::memory_order_relaxed);
+        }];
+        const int inFlight = ctx->cbInFlight.fetch_add(1, std::memory_order_relaxed) + 1;
+        ctx->cbCreated.fetch_add(1, std::memory_order_relaxed);
+        [cb commit];
+        if (inFlight > 3) [cb waitUntilCompleted];   // load-burst throttle
+        cb = nil; blit = nil;
     }
-    [blit endEncoding];
-    [cb commit];
+    if (cb) {
+        [blit endEncoding];
+        [cb addCompletedHandler:^(id<MTLCommandBuffer>){
+            c->cbInFlight.fetch_sub(1, std::memory_order_relaxed);
+            c->cbCompleted.fetch_add(1, std::memory_order_relaxed);
+        }];
+        const int inFlight = ctx->cbInFlight.fetch_add(1, std::memory_order_relaxed) + 1;
+        ctx->cbCreated.fetch_add(1, std::memory_order_relaxed);
+        [cb commit];
+        if (inFlight > 8) [cb waitUntilCompleted];
+    }
     [ctx->pendingMips removeAllObjects];
 }
 
@@ -2717,6 +2951,7 @@ extern "C" void* MetalContext_CreateTextureFmt(MetalContext* ctx, int width, int
         if (!compressed && MipmapsEnabled())
             desc.mipmapLevelCount = MipCountFor(w, h);
         desc.usage = MTLTextureUsageShaderRead;
+        if (PrivateTexEnabled()) desc.storageMode = MTLStorageModePrivate;
         // Create/release recycling pool: reuse a same-descriptor texture retired
         // by MetalContext_ReleaseTexture (frame-delayed → GPU-safe) instead of
         // allocating a fresh MTLTexture. Kills the font-glyph churn leak. The
@@ -2726,14 +2961,27 @@ extern "C" void* MetalContext_CreateTextureFmt(MetalContext* ctx, int width, int
         if (TexPoolable((NSUInteger)w, (NSUInteger)h, pf)) {
             uint64_t key = TexKeyFields((NSUInteger)w, (NSUInteger)h, (unsigned)pf,
                                         desc.mipmapLevelCount, (unsigned)MTLTextureUsageShaderRead);
+            std::lock_guard<std::mutex> lk(ctx->poolMutex);
             std::unordered_map<uint64_t, std::vector<void*> >::iterator it = ctx->texFree.find(key);
             if (it != ctx->texFree.end() && !it->second.empty()) {
                 void* reuse = it->second.back();
                 it->second.pop_back();          // already CF-retained; ownership -> caller
+                ctx->texPullCreate.fetch_add(1, std::memory_order_relaxed);
                 return reuse;
             }
         }
         id<MTLTexture> tex = [ctx->device newTextureWithDescriptor:desc];
+        DiagTexAlloc(ctx, tex);
+        // MTL_POOL_LOG=1: poolable-but-pool-missed fresh create — pair with
+        // [tex-overflow] lines to spot create/retire key mismatches.
+        if (TexPoolable((NSUInteger)w, (NSUInteger)h, pf)) {
+            ctx->texMissCreate.fetch_add(1, std::memory_order_relaxed);
+            static int s_lg = -1; if (s_lg < 0) s_lg = getenv("MTL_POOL_LOG") ? 1 : 0;
+            if (s_lg) { static unsigned long n=0; if ((++n % 64) == 1) {
+                fprintf(stderr, "[tex-poolmiss] #%lu %dx%d pf=%lu mips=%lu usage=0x%lx\n",
+                        n, w, h, (unsigned long)pf, (unsigned long)desc.mipmapLevelCount,
+                        (unsigned long)tex.usage); fflush(stderr); } }
+        }
         return (void*)CFBridgingRetain(tex);
     }
 }
@@ -2743,12 +2991,100 @@ extern "C" void* MetalContext_CreateTexture(MetalContext* ctx, int width, int he
     return MetalContext_CreateTextureFmt(ctx, width, height, 0);
 }
 
+// Flush all staged uploads into ONE blit command buffer (chunked mips-style
+// backpressure). Called at Present before the frame cb commits (queue order
+// guarantees the GPU sees the new texel data before the frame's draws), and
+// inline from StageUpload when a load burst queues 64+.
+static void FlushPendingUploads(MetalContext* ctx)
+{
+    if (!ctx || !ctx->queue) return;
+    std::vector<MetalContext::PendingUpload> ups;
+    {
+        std::lock_guard<std::mutex> lk(ctx->poolMutex);
+        if (ctx->pendingUploads.empty()) return;
+        ups.swap(ctx->pendingUploads);
+    }
+    @autoreleasepool {
+        id<MTLCommandBuffer> cb = [ctx->queue commandBuffer];
+        id<MTLBlitCommandEncoder> blit = [cb blitCommandEncoder];
+        for (const MetalContext::PendingUpload& u : ups) {
+            id<MTLTexture> t = (__bridge id<MTLTexture>)u.tex;
+            id<MTLBuffer>  b = (__bridge id<MTLBuffer>)u.buf;
+            [blit copyFromBuffer:b
+                    sourceOffset:0
+               sourceBytesPerRow:(NSUInteger)u.rowBytes
+             sourceBytesPerImage:0
+                      sourceSize:MTLSizeMake((NSUInteger)u.w, (NSUInteger)u.h, 1)
+                       toTexture:t
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:MTLOriginMake(0, 0, 0)];
+            if (t.mipmapLevelCount > 1) [blit generateMipmapsForTexture:t];
+        }
+        [blit endEncoding];
+        MetalContext* c = ctx;
+        [cb addCompletedHandler:^(id<MTLCommandBuffer>){
+            c->cbInFlight.fetch_sub(1, std::memory_order_relaxed);
+            c->cbCompleted.fetch_add(1, std::memory_order_relaxed);
+        }];
+        const int inFlight = ctx->cbInFlight.fetch_add(1, std::memory_order_relaxed) + 1;
+        ctx->cbCreated.fetch_add(1, std::memory_order_relaxed);
+        [cb commit];
+        if (inFlight > 8) [cb waitUntilCompleted];
+    }
+    for (const MetalContext::PendingUpload& u : ups) {
+        MetalContext_RetireBuffer(ctx, u.buf);   // recycled once the GPU finishes
+        CFRelease(u.tex);
+    }
+}
+
+// Queue one texture upload through a pooled staging buffer (Private-texture
+// path). `h` is in PIXELS; for BC formats the buffer holds (h+3)/4 block rows
+// of `rowBytes` each. Takes a CF retain on the texture until the blit commits.
+static void StageUpload(void* texture, const void* bytes, int w, int h, int rowBytes)
+{
+    MetalContext* ctx = s_uploadCtx;
+    if (!ctx) return;
+    id<MTLTexture> t = (__bridge id<MTLTexture>)texture;
+    const MTLPixelFormat pf = t.pixelFormat;
+    const bool bc = (pf == MTLPixelFormatBC1_RGBA || pf == MTLPixelFormatBC2_RGBA ||
+                     pf == MTLPixelFormatBC3_RGBA);
+    const size_t rows  = bc ? (size_t)((h + 3) / 4) : (size_t)h;
+    const size_t total = (size_t)rowBytes * rows;
+    if (!total) return;
+    void* sbuf = MetalContext_CreateBuffer(ctx, (unsigned)total);
+    if (!sbuf) return;
+    std::memcpy(MetalContext_BufferContents(sbuf), bytes, total);
+    CFRetain(texture);
+    size_t queued;
+    {
+        std::lock_guard<std::mutex> lk(ctx->poolMutex);
+        ctx->pendingUploads.push_back(MetalContext::PendingUpload{ texture, sbuf, w, h, rowBytes });
+        queued = ctx->pendingUploads.size();
+    }
+    // Load bursts upload hundreds of textures between Presents — flush in
+    // chunks so staged buffers (and their CF refs) stay bounded.
+    if (queued >= 64) FlushPendingUploads(ctx);
+}
+
 extern "C" void MetalContext_UploadTextureRaw(void* texture, int width, int height,
                                               const void* bytes, int bytesPerRow)
 {
     if (!texture || !bytes || width <= 0 || height <= 0) return;
+    // MTL_UPLOAD_SKIP=N (diagnostic): drop N of every N+1 uploads — if the
+    // menu deviceAlloc slope scales down proportionally, the driver allocates
+    // per-replaceRegion service memory it never returns.
+    {
+        static int s_skip = -2;
+        if (s_skip == -2) { const char* e = getenv("MTL_UPLOAD_SKIP"); s_skip = e ? atoi(e) : 0; }
+        if (s_skip > 0) { static unsigned long n = 0; if ((++n % (unsigned)(s_skip + 1)) != 0) return; }
+    }
     @autoreleasepool {
         id<MTLTexture> tex = (__bridge id<MTLTexture>)texture;
+        if (tex.storageMode == MTLStorageModePrivate) {
+            StageUpload(texture, bytes, width, height, bytesPerRow);
+            return;   // mips regenerate in the upload blit (FlushPendingUploads)
+        }
         [tex replaceRegion:MTLRegionMake2D(0, 0, width, height)
                mipmapLevel:0
                  withBytes:bytes
@@ -2771,10 +3107,13 @@ extern "C" void MetalContext_ReleaseTexture(void* texture)
     if (ctx) {
         id<MTLTexture> t = (__bridge id<MTLTexture>)texture;
         if (TexPoolable(t.width, t.height, t.pixelFormat)) {
+            ctx->texPushRelease.fetch_add(1, std::memory_order_relaxed);
+            std::lock_guard<std::mutex> lk(ctx->poolMutex);
             ctx->texRetired.push_back(std::make_pair(texture, ctx->bufFrameId));
             return;   // CF ref transfers to the retire list
         }
     }
+    DiagTexFree(texture);
     CFRelease(texture);
 }
 
@@ -2782,6 +3121,10 @@ extern "C" void MetalContext_ReleaseTexture(void* texture)
 // around the Draw_Triangles call). Weak-linked so the shim still resolves if
 // the engine TU is absent (tooling builds). Returns 0 if not present.
 extern "C" int MetalDebug_InTrapezoidWater(void) __attribute__((weak));
+// Live engine-held D3D buffer-wrapper counts (defined in dx8_device.cpp; weak
+// so shim-only tooling builds still link). Printed in the MTL_POOL_LOG line.
+extern "C" long MetalDiag_LiveVB8(void) __attribute__((weak));
+extern "C" long MetalDiag_LiveIB8(void) __attribute__((weak));
 static inline int MetalDebug_InTrapWater_Get(void) {
     return MetalDebug_InTrapezoidWater ? MetalDebug_InTrapezoidWater() : 0;
 }
@@ -2929,8 +3272,18 @@ extern "C" void MetalContext_UploadTextureBGRA8(void* texture, int width, int he
                                                 const void* bgra8, int bytesPerRow)
 {
     if (!texture || !bgra8 || width <= 0 || height <= 0) return;
+    // MTL_UPLOAD_SKIP diagnostic — see MetalContext_UploadTextureRaw.
+    {
+        static int s_skip = -2;
+        if (s_skip == -2) { const char* e = getenv("MTL_UPLOAD_SKIP"); s_skip = e ? atoi(e) : 0; }
+        if (s_skip > 0) { static unsigned long n = 0; if ((++n % (unsigned)(s_skip + 1)) != 0) return; }
+    }
     @autoreleasepool {
         id<MTLTexture> tex = (__bridge id<MTLTexture>)texture;
+        if (tex.storageMode == MTLStorageModePrivate) {
+            StageUpload(texture, bgra8, width, height, bytesPerRow);
+            return;   // mips regenerate in the upload blit (FlushPendingUploads)
+        }
         [tex replaceRegion:MTLRegionMake2D(0, 0, width, height)
                mipmapLevel:0
                  withBytes:bgra8
@@ -2985,13 +3338,28 @@ static unsigned BufferBucket(unsigned len)
 static void SweepRetiredBuffers(MetalContext* ctx)
 {
     if (!ctx) return;
+    // Cap per free-bucket (mirrors SweepRetiredTextures): bounds a pathological
+    // burst without steady-state frees. Steady state must NOT free at all —
+    // every CFRelease of a pooled resource turns into "zombie" memory in the
+    // driver's own never-shrinking pool while fresh creates take NEW device
+    // memory (A/B-proved: periodic decay ratcheted device.currentAllocatedSize
+    // ~13 MB/min in heavy battles; no-decay was FLAT at half the size).
+    // Size-scaled (same reasoning as SweepRetiredTextures: a steady-state cap
+    // hit = zombie factory; big buckets kept tight so bursts can't pin GBs).
+    auto maxFreeForBucket = [](unsigned bytes) -> size_t {
+        (void)bytes;
+        return 256;
+    };
     const uint64_t done = ctx->bufCompletedFrame.load(std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lk(ctx->poolMutex);
     std::vector<std::pair<void*, uint64_t> >& r = ctx->bufRetired;
     for (size_t i = 0; i < r.size(); ) {
         if (r[i].second <= done) {
             void* b = r[i].first;
             unsigned bucket = (unsigned)[(__bridge id<MTLBuffer>)b length];
-            ctx->bufFree[bucket].push_back(b);
+            std::vector<void*>& v = ctx->bufFree[bucket];
+            if (v.size() < maxFreeForBucket(bucket)) v.push_back(b);
+            else { ctx->bufOverflow.fetch_add(1, std::memory_order_relaxed); DiagBufFree(b); CFRelease(b); }
             r[i] = r.back(); r.pop_back();      // swap-remove
         } else {
             ++i;
@@ -3006,15 +3374,38 @@ extern "C" void* MetalContext_CreateBuffer(MetalContext* ctx, unsigned length)
     const unsigned bucket = BufferBucket(length);
     // Reuse a recycled buffer of this bucket if one is free (the common path in
     // steady state — bounds allocations to the working set).
-    std::unordered_map<unsigned, std::vector<void*> >::iterator it = ctx->bufFree.find(bucket);
-    if (it != ctx->bufFree.end() && !it->second.empty()) {
-        void* b = it->second.back();
-        it->second.pop_back();
-        return b;   // already CF-retained; ownership transfers to the caller
+    {
+        std::lock_guard<std::mutex> lk(ctx->poolMutex);
+        std::unordered_map<unsigned, std::vector<void*> >::iterator it = ctx->bufFree.find(bucket);
+        if (it != ctx->bufFree.end() && !it->second.empty()) {
+            void* b = it->second.back();
+            it->second.pop_back();
+            return b;   // already CF-retained; ownership transfers to the caller
+        }
     }
     @autoreleasepool {
         id<MTLBuffer> buf = [ctx->device newBufferWithLength:bucket
                                                      options:MTLResourceStorageModeShared];
+        DiagBufAlloc(ctx, bucket);
+        // MTL_BUF_TRACE=<minKB>: print a backtrace for every FRESH buffer
+        // allocation of at least minKB (pool reuse doesn't reach here). This is
+        // the same technique that pinned the font-texture churn leak — it names
+        // the engine subsystem that keeps creating live buffers.
+        {
+            static int s_trace = -2;
+            if (s_trace == -2) { const char* e = getenv("MTL_BUF_TRACE"); s_trace = e ? atoi(e) : -1; }
+            if (s_trace >= 0 && bucket >= (unsigned)s_trace * 1024u) {
+                static std::atomic<long> s_n(0);
+                long n = s_n.fetch_add(1, std::memory_order_relaxed);
+                if ((n % 16) == 0) {
+                    fprintf(stderr, "[buftrace] #%ld fresh %u KB\n", n, bucket / 1024);
+                    void* frames[24];
+                    int cnt = backtrace(frames, 24);
+                    backtrace_symbols_fd(frames, cnt, 2);
+                    fflush(stderr);
+                }
+            }
+        }
         return (void*)CFBridgingRetain(buf);
     }
 }
@@ -3027,6 +3418,7 @@ extern "C" void MetalContext_RetireBuffer(MetalContext* ctx, void* buffer)
 {
     if (!buffer) return;
     if (!ctx) { CFRelease(buffer); return; }
+    std::lock_guard<std::mutex> lk(ctx->poolMutex);
     ctx->bufRetired.push_back(std::make_pair(buffer, ctx->bufFrameId));
 }
 
@@ -3051,24 +3443,78 @@ static uint64_t TexPoolKey(id<MTLTexture> t)
 static void SweepRetiredTextures(MetalContext* ctx)
 {
     if (!ctx) return;
-    // Cap per free-bucket. Steady state needs only a handful (renames/frame ×
-    // frames-in-flight), but the shell-map/game load re-uploads EVERY terrain
-    // page once within a frame window — thousands of 128×128 retirees at once
-    // (~450 MB observed uncapped). Keep enough to absorb a camera-jump re-bake
-    // burst; release the rest back to the allocator.
-    const size_t kMaxFreePerKey = 256;
+    // Flat cap 256/key — the empirically good configuration (in-game plateau
+    // 1.1-1.3 GB). Deeper/uncapped pools and size-scaled variants were tried
+    // for the CWC-menu leak and changed nothing (see plan Round 3).
+    auto maxFreeForTex = [](id<MTLTexture> t) -> size_t {
+        (void)t;
+        return 256;
+    };
     const uint64_t done = ctx->bufCompletedFrame.load(std::memory_order_relaxed);
+    std::lock_guard<std::mutex> lk(ctx->poolMutex);
     std::vector<std::pair<void*, uint64_t> >& r = ctx->texRetired;
     for (size_t i = 0; i < r.size(); ) {
         if (r[i].second <= done) {
             void* t = r[i].first;
             std::vector<void*>& bucket = ctx->texFree[TexPoolKey((__bridge id<MTLTexture>)t)];
-            if (bucket.size() < kMaxFreePerKey) bucket.push_back(t);
-            else                                CFRelease(t);
+            if (bucket.size() < maxFreeForTex((__bridge id<MTLTexture>)t)) bucket.push_back(t);
+            else {
+                // MTL_POOL_LOG=1: an overflow here in STEADY STATE means the
+                // create side isn't reusing this key (key mismatch) — each
+                // overflow CFRelease becomes driver-zombie memory.
+                static int s_lg = -1; if (s_lg < 0) s_lg = getenv("MTL_POOL_LOG") ? 1 : 0;
+                if (s_lg) { static unsigned long n=0; if ((++n % 64) == 1) {
+                    id<MTLTexture> tt = (__bridge id<MTLTexture>)t;
+                    fprintf(stderr, "[tex-overflow] #%lu %lux%lu pf=%lu mips=%lu usage=0x%lx\n",
+                            n, (unsigned long)tt.width, (unsigned long)tt.height,
+                            (unsigned long)tt.pixelFormat, (unsigned long)tt.mipmapLevelCount,
+                            (unsigned long)tt.usage); fflush(stderr); } }
+                ctx->texOverflow.fetch_add(1, std::memory_order_relaxed);
+                DiagTexFree(t); CFRelease(t);
+            }
             r[i] = r.back(); r.pop_back();      // swap-remove
         } else {
             ++i;
         }
+    }
+}
+
+// Periodic pool decay — DEFAULT OFF, opt-in via MTL_POOL_DECAY=1 (A/B only).
+// The first cut of the "+200 MB stays after leaving a match" fix released 1/4
+// of each free bucket every 256 frames. A/B against device.currentAllocatedSize
+// proved that CURE was the residual leak: every CFRelease of a pooled resource
+// becomes a "zombie" backing in the driver's own never-shrinking pool while
+// the next create takes NEW device memory — decay ON ratcheted deviceAlloc
+// ~13 MB/min in heavy battles, decay OFF was FLAT at roughly HALF the total.
+// Correct policy: never free in steady state (pools plateau at the working
+// set and get reused — original-game behavior); bound pathological bursts via
+// the per-bucket caps in SweepRetiredBuffers/SweepRetiredTextures instead.
+static void DecayPools(MetalContext* ctx)
+{
+    if (!ctx) return;
+    static int on = -1;
+    if (on < 0) on = getenv("MTL_POOL_DECAY") ? 1 : 0;
+    if (!on) return;
+    const long kDecayInterval = 256;
+    if ((ctx->frameIndex % kDecayInterval) != 0 || ctx->frameIndex == 0) return;
+    std::lock_guard<std::mutex> lk(ctx->poolMutex);
+    for (auto it = ctx->bufFree.begin(); it != ctx->bufFree.end(); ) {
+        std::vector<void*>& v = it->second;
+        for (size_t n = (v.size() + 3) / 4; n > 0 && !v.empty(); --n) {
+            DiagBufFree(v.back());
+            CFRelease(v.back());
+            v.pop_back();
+        }
+        it = v.empty() ? ctx->bufFree.erase(it) : ++it;
+    }
+    for (auto it = ctx->texFree.begin(); it != ctx->texFree.end(); ) {
+        std::vector<void*>& v = it->second;
+        for (size_t n = (v.size() + 3) / 4; n > 0 && !v.empty(); --n) {
+            DiagTexFree(v.back());
+            CFRelease(v.back());
+            v.pop_back();
+        }
+        it = v.empty() ? ctx->texFree.erase(it) : ++it;
     }
 }
 
@@ -3083,11 +3529,14 @@ extern "C" void* MetalContext_RenameTexture(void* oldTexture)
         id<MTLTexture> old = (__bridge id<MTLTexture>)oldTexture;
         const uint64_t key = TexPoolKey(old);
         void* fresh = nullptr;
+        std::unique_lock<std::mutex> poolLk(ctx->poolMutex);
         std::unordered_map<uint64_t, std::vector<void*> >::iterator it = ctx->texFree.find(key);
         if (it != ctx->texFree.end() && !it->second.empty()) {
             fresh = it->second.back();
             it->second.pop_back();          // already CF-retained; ownership -> caller
+            ctx->texPullRename.fetch_add(1, std::memory_order_relaxed);
         } else {
+            poolLk.unlock();   // texture allocation below is slow; re-lock for the retire push
             MTLTextureDescriptor* desc =
                 [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:old.pixelFormat
                                                                    width:old.width
@@ -3095,14 +3544,26 @@ extern "C" void* MetalContext_RenameTexture(void* oldTexture)
                                                                mipmapped:NO];
             desc.mipmapLevelCount = old.mipmapLevelCount;
             desc.usage            = old.usage;
+            desc.storageMode      = old.storageMode;
             id<MTLTexture> t = [ctx->device newTextureWithDescriptor:desc];
             if (!t) return oldTexture;      // allocation failure: fall back in-place
+            DiagTexAlloc(ctx, t);
+            ctx->texMissRename.fetch_add(1, std::memory_order_relaxed);
+            { static int lg = -1; if (lg < 0) lg = getenv("MTL_POOL_LOG") ? 1 : 0;
+              if (lg) { static unsigned long n=0; if ((++n % 64) == 1) {
+                fprintf(stderr, "[ren-miss] #%lu %lux%lu pf=%lu mips=%lu usage=0x%lx key=%llx\n",
+                        n, (unsigned long)old.width, (unsigned long)old.height,
+                        (unsigned long)old.pixelFormat, (unsigned long)old.mipmapLevelCount,
+                        (unsigned long)old.usage, (unsigned long long)key); fflush(stderr); } } }
             fresh = (void*)CFBridgingRetain(t);
             [t release];                    // MRC: new(+1) + bridge(+1) -> pool owns exactly one
         }
         // Park the old texture until the GPU finishes every frame that may
         // still reference it (the caller's CF reference transfers here).
+        if (!poolLk.owns_lock()) poolLk.lock();
+        ctx->texPushRename.fetch_add(1, std::memory_order_relaxed);
         ctx->texRetired.push_back(std::make_pair(oldTexture, ctx->bufFrameId));
+        poolLk.unlock();
         static int logOn = -1;
         if (logOn < 0) logOn = getenv("MTL_RENAME_LOG") ? 1 : 0;
         if (logOn) {
@@ -3130,7 +3591,9 @@ extern "C" void* MetalContext_BufferContents(void* buffer)
 
 extern "C" void MetalContext_ReleaseBuffer(void* buffer)
 {
-    if (buffer) CFRelease(buffer);
+    if (!buffer) return;
+    DiagBufFree(buffer);
+    CFRelease(buffer);
 }
 
 // --- Input pollers (Stage 3) ---------------------------------------------
@@ -3383,7 +3846,7 @@ extern "C" void MetalContext_Draw(MetalContext* ctx, const MetalDrawCall* dc)
                       // getBytes works. For BC-compressed textures, blit
                       // them to a temporary BGRA8 staging texture so we
                       // get fully decoded RGBA we can dump and analyse.
-                      if (realT && s_perF <= 2) {
+                      if (realT && s_perF <= 2 && realT.storageMode != MTLStorageModePrivate) {
                           NSUInteger w = realT.width, h = realT.height;
                           MTLPixelFormat pf = realT.pixelFormat;
                           @try {

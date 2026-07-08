@@ -241,6 +241,15 @@ void Display::playLogoMovie( AsciiString movieName, Int minMovieLength, Int minC
 
 void Display::playMovie( AsciiString movieName)
 {
+	// TheSuperHackers @port macOS @diag: GEN_NO_MOVIES=1 skips ALL movie
+	// playback (EA logos, mod intros, sizzles). Harness/debug convenience —
+	// an unattended run otherwise sits at a click-to-skip intro forever and
+	// never reaches the menu it is supposed to measure.
+	{
+		static int s_noMovies = -1;
+		if (s_noMovies < 0) s_noMovies = ::getenv("GEN_NO_MOVIES") ? 1 : 0;
+		if (s_noMovies) return;
+	}
 
 	stopMovie();
 

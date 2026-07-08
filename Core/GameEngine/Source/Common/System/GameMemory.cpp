@@ -1570,6 +1570,19 @@ MemoryPoolBlob* MemoryPool::createBlob(Int allocationCount)
 	// bookkeeping
 	m_totalBlocksInPool += allocationCount;
 
+	// TheSuperHackers @port macOS @diag: GEN_POOL_LOG=1 prints every blob
+	// growth with the pool's name — identifies WHICH object pool keeps
+	// growing when hunting reachable-memory leaks (heap(1) can only
+	// attribute as far as createBlob). Env-gated, zero cost when unset.
+	{
+		static int s_poolLog = -1;
+		if (s_poolLog < 0) s_poolLog = ::getenv("GEN_POOL_LOG") ? 1 : 0;
+		if (s_poolLog)
+			fprintf(stderr, "[gamepool] createBlob '%s' +%d blocks of %d B (pool total %d blocks, ~%d KB)\n",
+					m_poolName, allocationCount, getAllocationSize(),
+					m_totalBlocksInPool, (m_totalBlocksInPool * getAllocationSize()) / 1024);
+	}
+
 #ifdef MEMORYPOOL_DEBUG
 	m_factory->adjustTotals("", 0, allocationCount*getAllocationSize());
 #endif

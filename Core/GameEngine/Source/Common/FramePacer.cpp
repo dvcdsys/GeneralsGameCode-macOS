@@ -75,6 +75,17 @@ FramePacer::FramePacer()
 			m_enableLogicTimeScale = TRUE;
 			m_logicTimeScaleFPS = LOGICFRAMES_PER_SECOND;
 		}
+		// GEN_LOGIC_FPS=N (harness/debug): step the SIMULATION at N Hz instead of
+		// the stock 30 — the whole game runs N/30× fast. Used to compress leak /
+		// soak reproductions (e.g. 45 → battles evolve 1.5× faster). Single-player
+		// only, same accumulator path as above.
+		const char *lf = ::getenv("GEN_LOGIC_FPS");
+		if (lf && *lf && atoi(lf) > 0)
+		{
+			m_macHighFps = TRUE;
+			m_enableLogicTimeScale = TRUE;
+			m_logicTimeScaleFPS = atoi(lf);
+		}
 	}
 #endif
 }
