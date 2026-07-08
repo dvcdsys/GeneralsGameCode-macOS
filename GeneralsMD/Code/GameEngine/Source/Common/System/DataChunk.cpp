@@ -236,7 +236,11 @@ m_pOut(pOut)
 {
 	AsciiString tmpFileName = TheGlobalData->getPath_UserData();
 	tmpFileName.concat(TEMP_FILENAME);
+#if defined(__APPLE__)
+	m_tmp_file = ::fopen( ::apple_path::normalize(tmpFileName.str()), "wb" );
+#else
 	m_tmp_file = ::fopen( tmpFileName.str(), "wb" );
+#endif
 	m_chunkStack = nullptr;
 }
 
@@ -251,7 +255,11 @@ DataChunkOutput::~DataChunkOutput()
 	AsciiString tmpFileName = TheGlobalData->getPath_UserData();
 	tmpFileName.concat(TEMP_FILENAME);
 
+#if defined(__APPLE__)
+ 	m_tmp_file = ::fopen( ::apple_path::normalize(tmpFileName.str()), "rb" );
+#else
  	m_tmp_file = ::fopen( tmpFileName.str(), "rb" );
+#endif
 	::fseek(m_tmp_file, 0, SEEK_SET);
 
 	// append the temp m_tmp_file m_contents

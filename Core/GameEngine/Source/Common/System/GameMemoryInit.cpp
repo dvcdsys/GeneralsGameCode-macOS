@@ -119,7 +119,11 @@ void userMemoryManagerInitPools()
 	}
 	strlcat(buf, "\\Data\\INI\\MemoryPools.ini", ARRAY_SIZE(buf));
 
+#if defined(__APPLE__)
+	FILE* fp = fopen(::apple_path::normalize(buf), "r");
+#else
 	FILE* fp = fopen(buf, "r");
+#endif
 	if (fp)
 	{
 		char poolName[256];

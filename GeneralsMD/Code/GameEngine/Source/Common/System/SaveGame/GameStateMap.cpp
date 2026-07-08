@@ -129,7 +129,14 @@ static void embedPristineMap( AsciiString map, Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 static void embedInUseMap( AsciiString map, Xfer *xfer )
 {
+	// TheSuperHackers @port macOS — `map` is a full save-dir path built with `\`
+	// separators (getFilePathInSaveDirectory); normalise so POSIX fopen resolves
+	// the same on-disk file the rest of the save code writes. See XferSave.cpp.
+#if defined(__APPLE__)
+	FILE *fp = fopen( ::apple_path::normalize(map.str()), "rb" );
+#else
 	FILE *fp = fopen( map.str(), "rb" );
+#endif
 
 	// sanity
 	if( fp == nullptr )
@@ -187,7 +194,14 @@ static void extractAndSaveMap( AsciiString mapToSave, Xfer *xfer )
 	UnsignedInt dataSize;
 
 	// open handle to output file
+	// TheSuperHackers @port macOS — `mapToSave` is a full save-dir path built with
+	// `\` separators; normalise so the extracted scratch .map lands where the game
+	// later looks for it (else load can't find the map). See XferSave.cpp.
+#if defined(__APPLE__)
+	FILE *fp = fopen( ::apple_path::normalize(mapToSave.str()), "w+b" );
+#else
 	FILE *fp = fopen( mapToSave.str(), "w+b" );
+#endif
 	if( fp == nullptr )
 	{
 

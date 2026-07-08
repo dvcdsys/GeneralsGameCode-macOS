@@ -964,7 +964,11 @@ void WaterTracksRenderSystem::saveTracks()
 	WaterTracksObj *umod;
 	Int trackCount=0;
 
+#if defined(__APPLE__)
+	FILE *fp=fopen(::apple_path::normalize(fileName.str()), "wb");
+#else
 	FILE *fp=fopen(fileName.str(), "wb");
+#endif
 
 	if (fp)
 	{

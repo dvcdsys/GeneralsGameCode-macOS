@@ -6,8 +6,32 @@
 #include <cstring>
 
 #ifndef _WIN32
+
+// TheSuperHackers @port macOS — normalise Windows `\`-separated paths before
+// handing them to POSIX access/stat/chmod, so these agree with the fopen call
+// sites (which run apple_path::normalize). Without this, e.g. saveGame's
+// findNextSaveFilename() calls _access(".../Save\00000000.sav") which never
+// sees the slash-path file the game actually wrote, so it always returns the
+// first slot and silently overwrites existing saves. See win32_api.h for the
+// full rationale; the helper is shared (guarded against double definition).
+#ifndef OSDEP_COMPAT_NP_DEFINED
+#define OSDEP_COMPAT_NP_DEFINED
+#if defined(__APPLE__)
+#include "apple_path_shim.h"
+namespace osdep_compat_detail {
+  inline const char* np(const char* p)  { return p ? ::apple_path::normalize(p)   : p; }
+  inline const char* npb(const char* p) { return p ? ::apple_path::normalize_b(p) : p; }
+}
+#else
+namespace osdep_compat_detail {
+  inline const char* np(const char* p)  { return p; }
+  inline const char* npb(const char* p) { return p; }
+}
+#endif
+#endif // OSDEP_COMPAT_NP_DEFINED
+
 // _access -> POSIX access(). Mode 0 == existence check (maps to F_OK == 0).
-inline int _access(const char *path, int mode) { return ::access(path, mode); }
+inline int _access(const char *path, int mode) { return ::access(osdep_compat_detail::np(path), mode); }
 
 // MSVC `struct _stat` / `_stat()` -> POSIX `struct stat` / `stat()`. The MSVC
 // _stat layout is a subset (st_size / st_mode / st_mtime are the fields the
@@ -16,7 +40,7 @@ inline int _access(const char *path, int mode) { return ::access(path, mode); }
 #define _STAT_DEFINED_COMPAT
 struct _stat : public stat {};
 inline int _stat(const char *path, struct _stat *buf)
-{ return ::stat(path, static_cast<struct stat *>(buf)); }
+{ return ::stat(osdep_compat_detail::np(path), static_cast<struct stat *>(buf)); }
 #endif
 
 // _chmod -> POSIX chmod. MSVC only honours _S_IREAD/_S_IWRITE; map to 0444/0644.
@@ -32,7 +56,7 @@ inline int _chmod(const char *path, int mode)
   if (mode & _S_IREAD)  m |= 0444;
   if (mode & _S_IWRITE) m |= 0200;
   if (m == 0) m = 0444;
-  return ::chmod(path, m);
+  return ::chmod(osdep_compat_detail::np(path), m);
 }
 
 // _splitpath: decompose "drive:/dir/fname.ext" into its components. There are no

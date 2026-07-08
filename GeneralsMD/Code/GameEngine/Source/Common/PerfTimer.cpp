@@ -353,7 +353,11 @@ void PerfGather::reset()
 	strcpy(tmp, s_buf);
 	strlcat(tmp, ".csv", ARRAY_SIZE(tmp));
 
+#if defined(__APPLE__)
+	s_perfStatsFile = fopen(::apple_path::normalize(tmp), "w");
+#else
 	s_perfStatsFile = fopen(tmp, "w");
+#endif
 	s_perfDumpOptions = options;
 
 	if (s_perfStatsFile == nullptr)

@@ -190,7 +190,11 @@ Bool LocalFile::open( const Char *filename, Int access, size_t bufferSize )
 		mode = binary ? "rb" : "r";
 	}
 
+#if defined(__APPLE__)
+	m_file = fopen(::apple_path::normalize(filename), mode);
+#else
 	m_file = fopen(filename, mode);
+#endif
 	if (m_file == nullptr)
 	{
 		goto error;

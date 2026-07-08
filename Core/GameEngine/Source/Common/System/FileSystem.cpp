@@ -369,7 +369,14 @@ Bool FileSystem::isPathInDirectory(const AsciiString& testPath, const AsciiStrin
 		basePathNormalized.concat(pathSep);
 	}
 
-#ifdef _WIN32
+// TheSuperHackers @port macOS — macOS default APFS is case-INSENSITIVE (like
+// Windows), so path containment must compare case-insensitively too. This
+// matters for Save/Load: GameState::portableMapPathToRealMapPath() lowercases
+// the reconstructed map path (`.toLower()`) while the base dirs (getSaveDirectory
+// / getUserMapDir) keep their real on-disk case, so a case-sensitive compare
+// here spuriously reports the map as "outside the expected base path" and load
+// throws SC_INVALID_DATA ("Error loading game").
+#if defined(_WIN32) || defined(__APPLE__)
 	if (!testPathNormalized.startsWithNoCase(basePathNormalized))
 #else
 	if (!testPathNormalized.startsWith(basePathNormalized))

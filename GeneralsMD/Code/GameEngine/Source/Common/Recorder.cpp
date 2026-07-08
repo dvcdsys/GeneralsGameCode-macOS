@@ -96,7 +96,11 @@ static FILE* openStatsLogFile()
 	AsciiString statsFile = TheGlobalData->m_baseStatsDir;
 	statsFile.concat(computerName);
 	statsFile.concat(".txt");
+#if defined(__APPLE__)
+	return fopen( ::apple_path::normalize(statsFile.str()), "a+");
+#else
 	return fopen(statsFile.str(), "a+");
+#endif
 }
 #endif
 
@@ -235,7 +239,11 @@ void RecorderClass::cleanUpReplayFile()
 		debugFname.truncateBy(3);
 		debugFname.concat("txt");
 		UnsignedInt fileSize = 0;
+#if defined(__APPLE__)
+		FILE *fp = fopen( ::apple_path::normalize(logFileName), "rb");
+#else
 		FILE *fp = fopen(logFileName, "rb");
+#endif
 		if (fp)
 		{
 			fseek(fp, 0, SEEK_END);
@@ -254,8 +262,13 @@ void RecorderClass::cleanUpReplayFile()
 		else
 		{
 			DEBUG_LOG(("manual copy of %s", logFileName));
+#if defined(__APPLE__)
+			FILE *ifp = fopen( ::apple_path::normalize(logFileName), "rb");
+			FILE *ofp = fopen( ::apple_path::normalize(debugFname.str()), "wb");
+#else
 			FILE *ifp = fopen(logFileName, "rb");
 			FILE *ofp = fopen(debugFname.str(), "wb");
+#endif
 			if (ifp && ofp)
 			{
 				fseek(ifp, fileSize-MAX_DEBUG_SIZE, SEEK_SET);
@@ -1642,7 +1655,11 @@ AsciiString RecorderClass::getLastReplayFileName()
 			testString.format("%s%s%s", getReplayDir().str(), full.str(), replayExtention);
 
 			FILE *fp;
+#if defined(__APPLE__)
+			fp = fopen( ::apple_path::normalize(testString.str()), "rb");
+#else
 			fp = fopen(testString.str(), "rb");
+#endif
 			if (fp)
 			{
 				fclose(fp);
@@ -1656,7 +1673,11 @@ AsciiString RecorderClass::getLastReplayFileName()
 			{
 				fullPlusNum.format("%s_%d", full.str(), test);
 				testString.format("%s%s%s", getReplayDir().str(), fullPlusNum.str(), replayExtention);
+#if defined(__APPLE__)
+				fp = fopen( ::apple_path::normalize(testString.str()), "rb");
+#else
 				fp = fopen(testString.str(), "rb");
+#endif
 				if (fp)
 				{
 					fclose(fp);

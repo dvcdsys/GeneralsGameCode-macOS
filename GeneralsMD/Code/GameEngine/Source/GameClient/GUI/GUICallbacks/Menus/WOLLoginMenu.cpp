@@ -205,7 +205,11 @@ Bool GameSpyLoginPreferences::write()
 	if (m_filename.isEmpty())
 		return false;
 
+#if defined(__APPLE__)
+	FILE *fp = fopen( ::apple_path::normalize(m_filename.str()), "w");
+#else
 	FILE *fp = fopen(m_filename.str(), "w");
+#endif
 	if (fp)
 	{
 		fprintf(fp, "lastEmail = %s\n",   ((*this)["lastEmail"].str()));

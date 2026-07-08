@@ -428,7 +428,11 @@ void DebugInit(int flags)
 			}
 		}
 
+#if defined(__APPLE__)
+		theLogFile = fopen(::apple_path::normalize(theLogFileName), "w");
+#else
 		theLogFile = fopen(theLogFileName, "w");
+#endif
 		if (theLogFile != nullptr)
 		{
 			DebugLog("Log %s opened: %s", theLogFileName, getCurrentTimeString());
@@ -792,7 +796,11 @@ void ReleaseCrash(const char *reason)
 		}
 	}
 
+#if defined(__APPLE__)
+	theReleaseCrashLogFile = fopen(::apple_path::normalize(curbuf), "w");
+#else
 	theReleaseCrashLogFile = fopen(curbuf, "w");
+#endif
 	if (theReleaseCrashLogFile)
 	{
 		fprintf(theReleaseCrashLogFile, "Release Crash at %s; Reason %s\n", getCurrentTimeString(), reason);
@@ -880,7 +888,11 @@ void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 		}
 	}
 
+#if defined(__APPLE__)
+	theReleaseCrashLogFile = fopen(::apple_path::normalize(curbuf), "w");
+#else
 	theReleaseCrashLogFile = fopen(curbuf, "w");
+#endif
 	if (theReleaseCrashLogFile)
 	{
 		fprintf(theReleaseCrashLogFile, "Release Crash at %s; Reason %ls\n", getCurrentTimeString(), mesg.str());

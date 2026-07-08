@@ -48,6 +48,39 @@ typedef DWORD COLORREF;
 #endif
 
 // ---------------------------------------------------------------------------
+// TheSuperHackers @port macOS — path normalisation for the POSIX-backed
+// filesystem shims below (CreateDirectory, SetCurrentDirectory,
+// GetFileAttributes, DeleteFile, CreateFile, CopyFile).
+//
+// Engine code hands these Win32 APIs paths built with `\` separators — e.g.
+// GameState::getSaveDirectory() returns ".../Data/Save\". Bare mkdir/chdir/
+// stat/unlink/open treat `\` as an ordinary filename character, so the engine
+// creates a directory literally named `Save\` while the fopen call sites (which
+// already run apple_path::normalize) open `Save/00000000.sav` — a mismatch that
+// makes Save/Load silently fail (the file's parent directory never exists).
+// Route every path-taking shim through the SAME apple_path::normalize() the
+// fopen sites use so both halves agree on the on-disk path.
+//
+// `np` uses one thread-local slot, `npb` a second, so two-path calls (CopyFile)
+// don't clobber each other. Guarded so io.h can reuse it without redefinition.
+// ---------------------------------------------------------------------------
+#ifndef OSDEP_COMPAT_NP_DEFINED
+#define OSDEP_COMPAT_NP_DEFINED
+#if defined(__APPLE__)
+#include "apple_path_shim.h"
+namespace osdep_compat_detail {
+  inline const char* np(const char* p)  { return p ? ::apple_path::normalize(p)   : p; }
+  inline const char* npb(const char* p) { return p ? ::apple_path::normalize_b(p) : p; }
+}
+#else
+namespace osdep_compat_detail {
+  inline const char* np(const char* p)  { return p; }
+  inline const char* npb(const char* p) { return p; }
+}
+#endif
+#endif // OSDEP_COMPAT_NP_DEFINED
+
+// ---------------------------------------------------------------------------
 // File-handle model.
 //
 // A Win32 file HANDLE is modelled as (HANDLE)(intptr_t)(fd + 1) so that a
@@ -142,7 +175,7 @@ inline HANDLE CreateFile(const char *fileName, DWORD desiredAccess,
     flags |= O_CREAT | O_TRUNC;
   // OPEN_EXISTING -> no extra flags.
 
-  int fd = ::open(fileName, flags, 0644);
+  int fd = ::open(osdep_compat_detail::np(fileName), flags, 0644);
   if (fd < 0)
     return INVALID_HANDLE_VALUE;
   return osdep_compat_detail::fd_to_handle(fd);
@@ -196,12 +229,12 @@ inline BOOL CloseHandle(HANDLE h)
 inline BOOL CopyFile(const char *existing, const char *newFile, BOOL failIfExists)
 {
   if (failIfExists) {
-    int fd = ::open(newFile, O_RDONLY);
+    int fd = ::open(osdep_compat_detail::npb(newFile), O_RDONLY);
     if (fd >= 0) { ::close(fd); errno = 0; return FALSE; } // pretend ERROR_FILE_EXISTS
   }
-  int in = ::open(existing, O_RDONLY);
+  int in = ::open(osdep_compat_detail::np(existing), O_RDONLY);
   if (in < 0) return FALSE;
-  int out = ::open(newFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  int out = ::open(osdep_compat_detail::npb(newFile), O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (out < 0) { ::close(in); return FALSE; }
   char buf[8192];
   ssize_t n;
@@ -961,7 +994,7 @@ inline DWORD GetFileAttributes(const char *path)
 {
   if (!path) return INVALID_FILE_ATTRIBUTES;
   struct stat st;
-  if (::stat(path, &st) != 0) return INVALID_FILE_ATTRIBUTES;
+  if (::stat(osdep_compat_detail::np(path), &st) != 0) return INVALID_FILE_ATTRIBUTES;
   return (st.st_mode & S_IFDIR) ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
 }
 
@@ -1421,7 +1454,8 @@ inline BOOL FindClose(HANDLE h)
 // not we fall back to cwd-prefixing so the call still returns a usable path.
 inline DWORD GetFullPathNameA(const char *name, DWORD bufLen, char *buf, char **filePart)
 {
-  if (!name || !buf) return 0;
+  if (!name) return 0;
+  name = osdep_compat_detail::np(name);  // `\`-separated -> POSIX before realpath
   char resolved[PATH_MAX];
   if (::realpath(name, resolved) == nullptr) {
     if (name[0] == '/') { ::strncpy(resolved, name, PATH_MAX - 1); resolved[PATH_MAX-1]=0; }
@@ -1432,7 +1466,13 @@ inline DWORD GetFullPathNameA(const char *name, DWORD bufLen, char *buf, char **
     }
   }
   DWORD len = (DWORD)::strlen(resolved);
-  if (len + 1 > bufLen) return len + 1;
+  // TheSuperHackers @port macOS — support the Win32 size-probe idiom: when
+  // buf==NULL (or bufLen is too small) return the REQUIRED size *including* the
+  // null terminator so the caller can allocate and call again. The old
+  // `!buf -> return 0` guard broke Win32LocalFileSystem::normalizePath (which
+  // calls GetFullPathNameA(path,0,NULL,NULL) first to size the buffer), which in
+  // turn broke Save/Load map-path validation (FileSystem::isPathInDirectory).
+  if (!buf || len + 1 > bufLen) return len + 1;
   ::strcpy(buf, resolved);
   if (filePart) {
     char *slash = ::strrchr(buf, '/');
@@ -1447,7 +1487,7 @@ inline DWORD GetFileAttributesA(const char *path) { return GetFileAttributes(pat
 
 // CreateDirectory(A) -> mkdir. Second arg is SECURITY_ATTRIBUTES* (ignored).
 inline BOOL CreateDirectoryA(const char *path, void * /*sa*/)
-{ return (path && ::mkdir(path, 0777) == 0) ? TRUE : FALSE; }
+{ return (path && ::mkdir(osdep_compat_detail::np(path), 0777) == 0) ? TRUE : FALSE; }
 inline BOOL CreateDirectory(const char *path, void *sa) { return CreateDirectoryA(path, sa); }
 
 // MessageBoxW (wide) -> print the (narrowed) text to stderr so engine error
@@ -1784,10 +1824,10 @@ inline UINT  GetDoubleClickTime() { return 500; } // ms, Windows default
 
 // --- Filesystem helpers used by SaveGame. ----------------------------------
 inline BOOL SetCurrentDirectory(const char *path)
-{ return (path && ::chdir(path) == 0) ? TRUE : FALSE; }
+{ return (path && ::chdir(osdep_compat_detail::np(path)) == 0) ? TRUE : FALSE; }
 inline BOOL SetCurrentDirectoryA(const char *path) { return SetCurrentDirectory(path); }
 inline BOOL DeleteFile(const char *path)
-{ return (path && ::unlink(path) == 0) ? TRUE : FALSE; }
+{ return (path && ::unlink(osdep_compat_detail::np(path)) == 0) ? TRUE : FALSE; }
 inline BOOL DeleteFileA(const char *path) { return DeleteFile(path); }
 
 // --- Command line. ---------------------------------------------------------

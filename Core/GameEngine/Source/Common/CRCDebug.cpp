@@ -145,7 +145,11 @@ static void outputCRCDebugLinesPerFrame()
 		return;
 	AsciiString fname;
 	fname.format("%s/DebugFrame_%06d.txt", g_saveDebugCRCPerFrameDir.str(), lastCRCDebugFrame);
+#if defined(__APPLE__)
+	FILE *fp = fopen(::apple_path::normalize(fname.str()), "wt");
+#else
 	FILE *fp = fopen(fname.str(), "wt");
+#endif
 	int start = 0;
 	int end = nextDebugString;
 	if (numDebugStrings >= MaxStrings)

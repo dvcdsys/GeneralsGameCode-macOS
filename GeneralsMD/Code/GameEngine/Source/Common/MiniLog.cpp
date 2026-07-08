@@ -42,7 +42,11 @@ LogClass::LogClass(const char *fname)
 	}
 	// TheSuperHackers @fix Caball009 03/06/2025 Don't use AsciiString here anymore because its memory allocator may not have been initialized yet.
 	const std::string fullPath = std::string(buffer) + "\\" + fname;
+#if defined(__APPLE__)
+	m_fp = fopen(::apple_path::normalize(fullPath.c_str()), "wt");
+#else
 	m_fp = fopen(fullPath.c_str(), "wt");
+#endif
 }
 
 LogClass::~LogClass()

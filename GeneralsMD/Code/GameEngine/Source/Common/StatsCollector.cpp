@@ -216,7 +216,11 @@ void StatsCollector::incrementMoveCount()
 void StatsCollector::writeFileEnd()
 {
 	//open the file
+#if defined(__APPLE__)
+	FILE *f = fopen(::apple_path::normalize(m_statsFileName.str()), "a");
+#else
 	FILE *f = fopen(m_statsFileName.str(), "a");
+#endif
 	if(!f)
 	{
 		DEBUG_ASSERTCRASH(f, ("Unable to open file %s to write", m_statsFileName.str()));
@@ -360,7 +364,11 @@ void StatsCollector::createFileName()
 void StatsCollector::writeInitialFileInfo()
 {
 	//open the file
+#if defined(__APPLE__)
+	FILE *f = fopen(::apple_path::normalize(m_statsFileName.str()), "w");
+#else
 	FILE *f = fopen(m_statsFileName.str(), "w");
+#endif
 	if(!f)
 	{
 		DEBUG_ASSERTCRASH(f, ("Unable to open file %s to write", m_statsFileName.str()));
@@ -398,7 +406,11 @@ void StatsCollector::writeInitialFileInfo()
 void StatsCollector::writeStatInfo()
 {
 	//open the file
+#if defined(__APPLE__)
+	FILE *f = fopen(::apple_path::normalize(m_statsFileName.str()), "a");
+#else
 	FILE *f = fopen(m_statsFileName.str(), "a");
+#endif
 	if(!f)
 	{
 		DEBUG_ASSERTCRASH(f, ("Unable to open file %s to write", m_statsFileName.str()));
