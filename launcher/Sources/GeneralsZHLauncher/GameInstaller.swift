@@ -102,7 +102,16 @@ final class LauncherModel: ObservableObject {
         FileManager.default.fileExists(atPath: Config.runtimeBinary.path)
     }
 
-    var userDataURL: URL { URL(fileURLWithPath: userDataDirPath) }
+    /// User-data dir as an absolute path. Guards against an empty or relative
+    /// persisted value: the engine feeds GEN_USER_DATA into getPath_UserData()
+    /// verbatim, so a non-absolute path would make it create Replays/Save/
+    /// MapPreviews *inside the game folder* (the launch cwd) instead of the real
+    /// location ("not from root"). Falls back to the ~/Documents default.
+    var resolvedUserDataDirPath: String {
+        userDataDirPath.hasPrefix("/") ? userDataDirPath : UserData.defaultDirectory.path
+    }
+
+    var userDataURL: URL { URL(fileURLWithPath: resolvedUserDataDirPath) }
 
     /// The launcher's own version (from Info.plist / CFBundleShortVersionString).
     var currentLauncherVersion: String {
@@ -638,7 +647,9 @@ final class LauncherModel: ObservableObject {
         }
         // Relocate the user-data dir (maps, saves, Options.ini) via GEN_USER_DATA
         // (the macOS hook in GlobalData.cpp::BuildUserDataPathFromRegistry).
-        env["GEN_USER_DATA"] = userDataDirPath
+        // Always pass an ABSOLUTE path — a relative value makes the engine scatter
+        // saves/replays into the game folder ("not from root").
+        env["GEN_USER_DATA"] = resolvedUserDataDirPath
         // Render frame-rate cap. >30 makes the engine enable logic-time-scale
         // decoupling (FramePacer) so gameplay stays at 30 Hz while the picture
         // renders at the higher rate — smoother motion, correct game speed.

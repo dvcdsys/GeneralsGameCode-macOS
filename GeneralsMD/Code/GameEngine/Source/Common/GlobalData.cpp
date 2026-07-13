@@ -1332,10 +1332,16 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 	// TheSuperHackers @port macOS — launcher-controllable user-data directory.
 	// GEN_USER_DATA overrides the computed ~/Documents/<leaf>/ path so the macOS
 	// launcher can relocate maps, saves and Options.ini (all resolved through
-	// getPath_UserData()). The path is used verbatim; we only ensure a trailing
-	// '/' so the POSIX concat call sites stay well-formed. Mirrors the GEN_MOD /
-	// GEN_MOD_DIR env hooks in GameEngine.cpp.
-	if (const char *userData = ::getenv("GEN_USER_DATA"); userData && userData[0]) {
+	// getPath_UserData()). Mirrors the GEN_MOD / GEN_MOD_DIR env hooks in
+	// GameEngine.cpp.
+	// TheSuperHackers @fix macOS: only honour it when it is an ABSOLUTE path
+	// (leading '/'). The value feeds getPath_UserData() verbatim, so a relative
+	// GEN_USER_DATA would make every consumer (getReplayDir, Save, the
+	// MAP_PREVIEW_DIR_PATH cache, the root CreateDirectory) build its tree
+	// relative to the game's working directory — scattering saves/replays *inside
+	// the game folder* ("not from root"). If it is not absolute, ignore it and
+	// fall through to the computed ~/Documents path below.
+	if (const char *userData = ::getenv("GEN_USER_DATA"); userData && userData[0] == '/') {
 		AsciiString path = userData;
 		if (!path.endsWith("/"))
 			path.concat('/');
