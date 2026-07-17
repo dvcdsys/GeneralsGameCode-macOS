@@ -571,7 +571,18 @@ extern "C" void MetalView_PushChar(unsigned int ch);
 // NOTE: do NOT call [super keyDown:] / [super keyUp:] — the default impl
 // forwards up the chain to NSWindow, which beeps on unhandled ESC.
 - (void)keyDown:(NSEvent*)e {
-    if (!e.isARepeat) MetalView_PushKeyEvent((int)e.keyCode, 1);
+    if (!e.isARepeat) {
+        MetalView_PushKeyEvent((int)e.keyCode, 1);
+        // TheSuperHackers @port macOS @bugfix: macOS does NOT deliver -keyUp: for a
+        // key released while Command (Cmd) is held. Without the matching up the
+        // engine thinks the key stays down and auto-repeats it forever — e.g. with
+        // GEN_WASD_CAMERA, Cmd+W fires "select all aircraft" but W then sticks and
+        // the camera scrolls up endlessly; likewise Cmd+A/Cmd+D never fire because
+        // the command-bar hotkey triggers on key-up. A Cmd+key can't be held-repeated
+        // on macOS anyway, so treat it as a tap: synthesize the up immediately.
+        if (e.modifierFlags & NSEventModifierFlagCommand)
+            MetalView_PushKeyEvent((int)e.keyCode, 0);
+    }
     // Text-entry input: NSEvent has already applied the live system keyboard
     // layout + shift/caps/option/dead-keys, so -characters is the correct typed
     // character (unlike the raw keyCode path, which only knows a handful of

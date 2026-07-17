@@ -66,6 +66,23 @@
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
 
+// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA: when the launcher's
+// "WASD camera controls" toggle is on, W/A/S/D pan the camera (see LookAtXlat).
+// W is unused by the command bar, but A/S/D collide with build/order shortcuts
+// (Attack-Move, Stop, Dozer, ...). To avoid losing them we relocate those bare
+// shortcuts to Cmd+A/S/D — on macOS the Cmd key already maps to the engine's
+// Ctrl (CocoaKeyboard.cpp), so Cmd+letter arrives here as a CTRL-modified key.
+static Bool wasdCameraEnabled()
+{
+	static int s_enabled = -1;
+	if (s_enabled < 0)
+	{
+		const char *e = ::getenv("GEN_WASD_CAMERA");
+		s_enabled = (e && e[0] && e[0] != '0') ? 1 : 0;
+	}
+	return s_enabled ? TRUE : FALSE;
+}
+
 //-----------------------------------------------------------------------------
 GameMessageDisposition HotKeyTranslator::translateGameMessage(const GameMessage *msg)
 {
@@ -96,13 +113,41 @@ GameMessageDisposition HotKeyTranslator::translateGameMessage(const GameMessage 
 		{
 			newModState |= ALT;
 		}
-		if(newModState != 0)
-			return disp;
+
 		WideChar key = TheKeyboard->getPrintableKey((KeyDefType)msg->getArgument(0)->integer, 0);
 		UnicodeString uKey;
 		uKey.concat(key);
 		AsciiString aKey;
 		aKey.translate(uKey);
+
+		// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA conflict handling.
+		if (wasdCameraEnabled())
+		{
+			AsciiString lowKey = aKey;
+			lowKey.toLower();
+			const char *k = lowKey.str();
+			const Bool isWasdLetter = (k && k[0] && k[1] == '\0' &&
+				(k[0] == 'w' || k[0] == 'a' || k[0] == 's' || k[0] == 'd'));
+			if (isWasdLetter)
+			{
+				// Bare W/A/S/D belong to the camera now: don't fire a command button,
+				// leave the message so LookAtXlat can stop the scroll. On Cmd, only
+				// the command-bar letters A and D fire their relocated button here;
+				// W (SelectAllAircraft) and S (Stop) are meta commands already fired
+				// by MetaEventTranslator, so firing a button for them too would e.g.
+				// build a &Sniper on Cmd+S.
+				const Bool isCmdButtonLetter = (k[0] == 'a' || k[0] == 'd');
+				if (newModState == CTRL && isCmdButtonLetter &&
+						TheHotKeyManager && TheHotKeyManager->executeHotKey(aKey))
+				{
+					disp = DESTROY_MESSAGE;
+				}
+				return disp;
+			}
+		}
+
+		if(newModState != 0)
+			return disp;
 		if(TheHotKeyManager && TheHotKeyManager->executeHotKey(aKey))
 			disp = DESTROY_MESSAGE;
 	}

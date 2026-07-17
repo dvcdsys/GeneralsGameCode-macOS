@@ -62,6 +62,19 @@ final class LauncherModel: ObservableObject {
         didSet { UserDefaults.standard.set(disableMenuShellMap, forKey: "disableMenuShellMap") }
     }
 
+    /// Pan the battlefield camera with W/A/S/D as well as the arrow keys. Sets the
+    /// GEN_WASD_CAMERA env hook (LookAtXlat.cpp), which mirrors W/A/S/D onto the
+    /// camera scroll directions. The arrow keys keep working too. Those keys are
+    /// normally bound: W=SelectAllAircraft and S=Stop are meta commands (localized
+    /// CommandMap.ini), A/D and the build shortcut on each letter are command-bar
+    /// buttons; while this mode is on all of them relocate to Cmd+key (MetaEvent.cpp
+    /// + HotKey.cpp), so nothing is lost from the keyboard. Defaults to OFF
+    /// (original arrow-only behaviour). Persisted.
+    @Published var wasdCamera: Bool =
+        (UserDefaults.standard.object(forKey: "wasdCamera") as? Bool) ?? false {
+        didSet { UserDefaults.standard.set(wasdCamera, forKey: "wasdCamera") }
+    }
+
     // Update state (populated by checkForUpdates).
     @Published var latestEngineVersion: String? = nil
     @Published var latestLauncherVersion: String? = nil
@@ -661,6 +674,11 @@ final class LauncherModel: ObservableObject {
         // GEN_NO_SHELLMAP is applied after INI and sticks.
         env.removeValue(forKey: "GEN_NO_SHELLMAP")
         if disableMenuShellMap { env["GEN_NO_SHELLMAP"] = "1" }
+        // Pan the camera with W/A/S/D as well as the arrow keys (LookAtXlat.cpp).
+        // When on, the engine relocates the A/S/D command-bar shortcuts to
+        // Cmd+A/S/D (HotKey.cpp) so nothing is lost from the keyboard.
+        env.removeValue(forKey: "GEN_WASD_CAMERA")
+        if wasdCamera { env["GEN_WASD_CAMERA"] = "1" }
         proc.environment = env
         proc.terminationHandler = { [weak self] _ in
             Task { @MainActor in

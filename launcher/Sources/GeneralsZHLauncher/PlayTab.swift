@@ -147,6 +147,19 @@ struct PlayTab: View {
                         + "the animated scene. (Sets GEN_NO_SHELLMAP for the engine.)")
                 Spacer()
             }
+            HStack {
+                Toggle("WASD camera controls", isOn: $model.wasdCamera)
+                    .toggleStyle(.checkbox)
+                    .disabled(model.gameRunning)
+                    .help("Pan the battlefield with W/A/S/D as well as the arrow keys "
+                        + "(arrows keep working). Those keys normally do other things — "
+                        + "W selects all aircraft, S stops, A is attack-move, D builds a "
+                        + "dozer, plus the build shortcut on each letter — so while this "
+                        + "is on they move to \u{2318} (Command): \u{2318}W, \u{2318}S, "
+                        + "\u{2318}A, \u{2318}D. Nothing is lost from the keyboard. "
+                        + "Off by default. (Sets GEN_WASD_CAMERA for the engine.)")
+                Spacer()
+            }
             if model.gameRunning {
                 Text("Quit the game to change display settings.")
                     .font(.caption2).foregroundColor(.secondary)

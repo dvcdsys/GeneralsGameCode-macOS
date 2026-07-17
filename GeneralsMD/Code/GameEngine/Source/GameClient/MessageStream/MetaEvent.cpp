@@ -436,6 +436,23 @@ static Bool isMessageUsable(CommandUsableInType usableIn)
 }
 
 //-------------------------------------------------------------------------------------------------
+// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA: see LookAtXlat.cpp. The
+// localized CommandMap (Data\<lang>\CommandMap.ini) binds bare W = SELECT_ALL_AIRCRAFT
+// and bare S = STOP as meta-events, which this translator (priority 20) would fire
+// and destroy before the camera translator (priority 60) ever sees the key. When
+// WASD mode is on we let bare W/A/S/D fall through to pan, and move those meta
+// commands to Cmd+W/S (macOS Cmd maps to the engine's Ctrl, CocoaKeyboard.cpp).
+static Bool wasdCameraEnabled()
+{
+	static int s_enabled = -1;
+	if (s_enabled < 0)
+	{
+		const char *e = ::getenv("GEN_WASD_CAMERA");
+		s_enabled = (e && e[0] && e[0] != '0') ? 1 : 0;
+	}
+	return s_enabled ? TRUE : FALSE;
+}
+
 GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessage *msg)
 {
 	GameMessageDisposition disp = KEEP_MESSAGE;
@@ -465,8 +482,36 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 			newModState |= ALT;
 		}
 
+		// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA conflict handling.
+		// Bare W/A/S/D now pan the camera, so they must not fire/eat their meta
+		// command here. Cmd(Ctrl)+W/A/S/D fires the command the bare key used to map
+		// to — done with a targeted lookup of the un-modified binding rather than by
+		// mutating newModState (which would trip the "mods-only" special case below
+		// and spuriously destroy Cmd+A / Cmd+D, blocking their command-bar relocation).
+		Bool wasdSkipMetaMatch = FALSE;
+		if (wasdCameraEnabled() &&
+				(key == MK_W || key == MK_A || key == MK_S || key == MK_D) &&
+				!(keyState & KEY_STATE_ALT))
+		{
+			wasdSkipMetaMatch = TRUE;
+			if (keyState & KEY_STATE_CONTROL)
+			{
+				for (const MetaMapRec *m = TheMetaMap->getFirstMetaMapRec(); m; m = m->m_next)
+				{
+					if (m->m_key == key && m->m_modState == NONE && isMessageUsable(m->m_usableIn) &&
+							( (m->m_transition == DOWN && (keyState & KEY_STATE_DOWN)) ||
+								(m->m_transition == UP   && (keyState & KEY_STATE_UP)) ))
+					{
+						if (!(keyState & KEY_STATE_AUTOREPEAT))
+							TheMessageStream->appendMessage(m->m_meta);
+						disp = DESTROY_MESSAGE;
+						break;
+					}
+				}
+			}
+		}
 
-		for (const MetaMapRec *map = TheMetaMap->getFirstMetaMapRec(); map; map = map->m_next)
+		for (const MetaMapRec *map = TheMetaMap->getFirstMetaMapRec(); !wasdSkipMetaMatch && map; map = map->m_next)
 		{
 			if (!isMessageUsable(map->m_usableIn))
 				continue;

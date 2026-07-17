@@ -65,6 +65,23 @@ enum
 
 static Bool scrollDir[4] = { false, false, false, false };
 
+// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA=1 lets W/A/S/D pan the
+// camera exactly like the arrow keys (arrows keep working too). Opt-in, set by
+// the macOS launcher's "WASD camera controls" toggle. W is free in the retail/CWC
+// key layout; A/S/D normally trigger command-bar shortcuts (Attack-Move, Stop,
+// Dozer, ...), so when this mode is on those are relocated to Cmd+A/S/D in
+// HotKey.cpp and the bare keys are freed up here to scroll.
+static Bool wasdCameraEnabled()
+{
+	static int s_enabled = -1;
+	if (s_enabled < 0)
+	{
+		const char *e = ::getenv("GEN_WASD_CAMERA");
+		s_enabled = (e && e[0] && e[0] != '0') ? 1 : 0;
+	}
+	return s_enabled ? TRUE : FALSE;
+}
+
 // TheSuperHackers @tweak Introduces the SCROLL_MULTIPLIER for all scrolling to
 //
 //  1. bring the RMB scroll speed back to how it was at 30 FPS in the retail game version
@@ -229,6 +246,36 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			case KEY_RIGHT:
 				scrollDir[DIR_RIGHT] = isPressed;
 				break;
+			}
+
+			// TheSuperHackers @port macOS @feature GEN_WASD_CAMERA: mirror W/A/S/D
+			// onto the same scroll directions as the arrow keys. On press we only
+			// START a pan when no Cmd/Ctrl and no Alt is held, so Cmd+A/S/D (the
+			// relocated command-bar shortcuts, see HotKey.cpp) reach the command bar
+			// instead of panning. On release we always CLEAR, so adding/removing a
+			// modifier mid-press can never leave the camera stuck scrolling.
+			if (wasdCameraEnabled())
+			{
+				const Bool modBlocksStart =
+					(state & KEY_STATE_CONTROL) || (state & KEY_STATE_ALT);
+				if (!isPressed || !modBlocksStart)
+				{
+					switch (key)
+					{
+					case KEY_W:
+						scrollDir[DIR_UP] = isPressed;
+						break;
+					case KEY_S:
+						scrollDir[DIR_DOWN] = isPressed;
+						break;
+					case KEY_A:
+						scrollDir[DIR_LEFT] = isPressed;
+						break;
+					case KEY_D:
+						scrollDir[DIR_RIGHT] = isPressed;
+						break;
+					}
+				}
 			}
 
 			if (TheInGameUI->isSelecting() || (m_isScrolling && m_scrollType != SCROLL_KEY))
